@@ -1,0 +1,9 @@
+google-adk==2.12.0
+fastapi
+uvicorn[standard]
+pillow
+python-dotenv
+pytest
+litellm
+mcp
+httpx

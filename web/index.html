@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Progress Claim Check</title>
+<link rel="icon" href="data:,">
+<style>
+:root {
+  --bg: #f4f3ef; --panel: #ffffff; --ink: #1c1f22; --muted: #667079; --line: #e2e0d9; --soft: #f8f7f4;
+  --ok: #2f7d54; --ok-bg: #e6f2eb; --weak: #b4432f; --weak-bg: #f9e8e4; --unbilled: #1d6a96; --unbilled-bg: #e3eff6;
+  --inspect: #94690f; --inspect-bg: #f8f0da; --billing: #6b4aa0; --billing-bg: #efe9f7; --accent: #1c1f22;
+  --num: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+header { background: var(--panel); border-bottom: 1px solid var(--line); padding: 14px 24px; display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+h1 { font-size: 17px; margin: 0; font-weight: 650; letter-spacing: -0.01em; }
+.sub { color: var(--muted); font-size: 13px; }
+.spacer { flex: 1; }
+select, button { max-width: 100%; font: inherit; border-radius: 7px; padding: 7px 12px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; cursor: pointer; }
+button.primary:disabled { opacity: .55; cursor: default; }
+.notice { background: #fbf6e6; border-bottom: 1px solid #ece3c5; color: #6b5a1f; padding: 6px 24px; font-size: 12.5px; }
+.notice.mock { background: #eef1f4; border-color: #dde2e7; color: #46525e; }
+main { padding: 18px 24px 40px; max-width: 1560px; margin: 0 auto; }
+.kpis { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; margin-bottom: 16px; }
+.kpi { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; min-width: 0; }
+.kpi .k { font-size: 12px; color: var(--muted); }
+.kpi .v { font: 600 19px/1.3 var(--num); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kpi .n { font-size: 12px; color: var(--muted); margin-top: 1px; }
+.kpi.unbilled .v { color: var(--unbilled); } .kpi.weak .v { color: var(--weak); } .kpi.billing .v { color: var(--billing); }
+.kpi.inspect .v { color: var(--inspect); } .kpi.ok .v { color: var(--ok); }
+.layout { display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 16px; align-items: start; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
+.panel > h2 { font-size: 13px; font-weight: 650; margin: 0; padding: 11px 14px; border-bottom: 1px solid var(--line); }
+.flow { padding: 14px; display: flex; flex-direction: column; align-items: stretch; gap: 0; }
+.node { border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; background: var(--soft); transition: background .2s, border-color .2s; min-width: 0; }
+.node .t { font-weight: 600; font-size: 13px; display: flex; justify-content: space-between; gap: 6px; }
+.node .c { font: 500 11.5px var(--num); color: var(--muted); }
+.node .d { font-size: 11.5px; color: var(--muted); }
+.node.working { border-color: var(--ink); background: #fff; box-shadow: 0 0 0 2px rgba(28,31,34,.12); animation: pulse 1.2s ease-in-out infinite; }
+.node.done { background: var(--ok-bg); border-color: #bfdccb; }
+.node.failed { background: var(--weak-bg); border-color: #e7bfb6; }
+.node.code .t::after { content: none; }
+@keyframes pulse { 50% { box-shadow: 0 0 0 4px rgba(28,31,34,.06); } }
+@media (prefers-reduced-motion: reduce) { .node.working { animation: none; } tr.flash td { animation: none !important; } }
+.arrow { height: 14px; position: relative; }
+.arrow::before { content: ""; position: absolute; left: 50%; top: 1px; bottom: 1px; width: 1px; background: #b9b6ad; }
+.parallel { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.feed { max-height: 330px; overflow-y: auto; padding: 8px 14px 12px; border-top: 1px solid var(--line); font-size: 12.5px; }
+.feed div { padding: 3px 0; color: #3f474e; border-bottom: 1px dotted #ece9e2; overflow-wrap: anywhere; }
+.feed b { font-weight: 600; color: var(--ink); }
+.feed .bad { color: var(--weak); }
+.summary { padding: 13px 16px; margin-bottom: 12px; display: none; }
+.summary .h { font-size: 12px; color: var(--muted); margin-bottom: 3px; }
+.summary.stopped { border-color: #e7bfb6; background: var(--weak-bg); }
+.tablewrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th { text-align: right; font-size: 11.5px; font-weight: 600; color: var(--muted); padding: 9px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; position: sticky; top: 0; background: var(--panel); }
+th:first-child, td:first-child { text-align: left; }
+th.s, td.s { text-align: left; }
+td { padding: 7px 10px; border-bottom: 1px solid #f0eee8; text-align: right; font-family: var(--num); font-size: 12.5px; white-space: nowrap; }
+td:first-child { font-family: inherit; font-size: 13px; white-space: normal; min-width: 180px; }
+td .code { color: var(--muted); font: 500 11px var(--num); margin-right: 6px; }
+td .na { color: #a4a9ae; }
+tbody tr { cursor: pointer; }
+tbody tr:hover { background: var(--soft); }
+tr.flash td { animation: flash .7s ease-out; }
+@keyframes flash { from { background: #fff4c9; } to { background: transparent; } }
+.pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font: 600 11.5px system-ui, sans-serif; white-space: nowrap; }
+.pill.pending { color: var(--muted); background: #f1efe9; font-weight: 500; }
+.pill.supported { color: var(--ok); background: var(--ok-bg); }
+.pill.weak_evidence { color: var(--weak); background: var(--weak-bg); }
+.pill.unbilled { color: var(--unbilled); background: var(--unbilled-bg); }
+.pill.needs_inspection { color: var(--inspect); background: var(--inspect-bg); }
+.pill.billing_error { color: var(--billing); background: var(--billing-bg); }
+.pill.unruled::after { content: " · checking"; font-weight: 500; opacity: .8; }
+.below { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
+.below .body { padding: 12px 14px; font-size: 13px; }
+.below .empty { color: var(--muted); }
+.score { font-family: var(--num); font-size: 12.5px; line-height: 1.8; }
+.fine { color: var(--muted); font-size: 12px; margin-top: 6px; }
+aside { position: fixed; top: 0; right: 0; bottom: 0; width: min(560px, 100vw); background: var(--panel); border-left: 1px solid var(--line); box-shadow: -10px 0 30px rgba(0,0,0,.08); transform: translateX(102%); transition: transform .2s; overflow-y: auto; padding: 18px 20px 30px; z-index: 5; }
+aside.open { transform: none; }
+aside h3 { margin: 0 0 2px; font-size: 16px; }
+aside .close { float: right; cursor: pointer; }
+aside h4 { font-size: 12px; color: var(--muted); font-weight: 600; margin: 18px 0 6px; }
+.reads { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.reads > div { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+.reads .k { font-size: 11.5px; color: var(--muted); }
+.reads .v { font: 600 16px var(--num); }
+aside img { width: 100%; border-radius: 8px; border: 1px solid var(--line); margin-bottom: 8px; display: block; }
+.log { font-size: 12.5px; padding: 5px 0; border-bottom: 1px dotted var(--line); }
+.log span { font: 500 11.5px var(--num); color: var(--muted); margin-right: 6px; }
+@media (max-width: 1100px) { .layout, .below { grid-template-columns: minmax(0, 1fr); } .kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 620px) { .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } main { padding: 12px; } header { padding: 12px; } }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Progress Claim Check</h1>
+    <div class="sub" id="project">Loading…</div>
+  </div>
+  <div class="spacer"></div>
+  <select id="mode" aria-label="Model">
+    <option value="mock">Offline mock (no cost)</option>
+    <option value="gemini">Gemini on Google ADK (real, paid)</option>
+  </select>
+  <button id="replay" hidden>Replay last run</button>
+  <button class="primary" id="run">Review claim</button>
+</header>
+<div class="notice" id="notice">Synthetic data. No real project, company or person.</div>
+<main>
+  <section class="kpis">
+    <div class="kpi"><div class="k">Claim total</div><div class="v" id="k-total">–</div><div class="n" id="k-lines">&nbsp;</div></div>
+    <div class="kpi unbilled"><div class="k">Not billed yet</div><div class="v" id="k-unbilled">–</div><div class="n" id="n-unbilled">&nbsp;</div></div>
+    <div class="kpi weak"><div class="k">Claimed beyond evidence</div><div class="v" id="k-weak">–</div><div class="n" id="n-weak">&nbsp;</div></div>
+    <div class="kpi billing"><div class="k">Billing errors</div><div class="v" id="k-billing">–</div><div class="n" id="n-billing">&nbsp;</div></div>
+    <div class="kpi inspect"><div class="k">Needs a site check</div><div class="v" id="k-inspect">–</div><div class="n">lines</div></div>
+    <div class="kpi ok"><div class="k">Supported</div><div class="v" id="k-ok">–</div><div class="n">lines</div></div>
+  </section>
+  <div class="panel summary" id="summary"><div class="h" id="summary-h">Summary from the lead agent</div><div id="summary-t"></div></div>
+  <section class="layout">
+    <div class="panel">
+      <h2 style="display:flex;justify-content:space-between">Agent swarm <span class="sub" id="spend"></span></h2>
+      <div class="flow" id="flow"></div>
+      <div class="feed" id="feed" aria-live="polite"></div>
+    </div>
+    <div class="panel">
+      <h2>Claim lines</h2>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Item</th><th>Value (Rp)</th><th>Claimed</th><th>Photos</th><th>Daily log</th><th>Plan</th><th>BoQ</th><th class="s">Status</th><th>Difference (Rp)</th></tr></thead>
+          <tbody id="lines"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+  <section class="below">
+    <div class="panel"><h2>Extra work without a change order</h2><div class="body" id="extra"><span class="empty">Appears after the review.</span></div></div>
+    <div class="panel"><h2>Test against the planted problems</h2><div class="body" id="score"><span class="empty">Appears after the review.</span></div></div>
+  </section>
+</main>
+<aside id="drawer" aria-label="Line details"></aside>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const num = v => Number(v).toLocaleString("en-US");
+const short = v => { v = Number(v); const a = Math.abs(v);
+  return a >= 1e9 ? `Rp ${(v/1e9).toFixed(2)} bn` : a >= 1e6 ? `Rp ${(v/1e6).toFixed(1)} m` : `Rp ${num(v)}`; };
+const pct = v => v === null || v === undefined ? '<span class="na">–</span>' : `${Number(v).toFixed(Number(v) % 1 ? 1 : 0)}%`;
+const LABEL = {supported: "Supported", weak_evidence: "Beyond evidence", unbilled: "Not billed yet", needs_inspection: "Site check", billing_error: "Billing error"};
+const ACTIVITY = {get_claim_overview: "reads the draft claim", list_site_photos: "lists the site photos", read_schedule: "reads the schedule", read_daily_logs: "reads the daily logs",
+  read_change_orders: "reads the change orders", read_claim_and_boq: "reads the claim beside the BoQ", get_flagged_items: "opens the conclusions to check", get_final_report: "reads the final report"};
+
+let meta, lines = {}, finals = null, queue = [], draining = false, counts = {};
+
+async function init() {
+  const [project, cfg] = await Promise.all([fetch("/api/project").then(r => r.json()), fetch("/api/config").then(r => r.json())]);
+  meta = project; window.cfg = cfg;
+  const p = project.project;
+  $("project").textContent = `${p.name} · ${p.contractor} · Claim no. ${p.claim_no} · cut-off ${p.cutoff}`;
+  $("mode").options[1].disabled = !cfg.gemini_ready;
+  if (!cfg.gemini_ready) $("mode").options[1].textContent += " · add a key to .env";
+  drawFlow();
+  reset();
+  checkReplay();
+}
+
+function reset() {
+  lines = {}; finals = null; counts = {}; queue = [];
+  meta.lines.forEach(l => lines[l.code] = {...l, field_pct: undefined, log_pct: undefined, planned_pct: undefined, cost: undefined, status: null, impact: 0, billing_difference: 0, unruled: false});
+  $("feed").innerHTML = ""; $("summary").style.display = "none"; $("summary").classList.remove("stopped");
+  $("extra").innerHTML = '<span class="empty">Appears after the review.</span>';
+  $("score").innerHTML = '<span class="empty">Appears after the review.</span>';
+  ["unbilled","weak","billing","inspect","ok"].forEach(k => $("k-"+k).textContent = "–");
+  ["unbilled","weak","billing"].forEach(k => $("n-"+k).innerHTML = "&nbsp;");
+  const total = meta.lines.reduce((s, l) => s + l.amount_claimed, 0);
+  $("k-total").textContent = short(total); $("k-lines").textContent = `${meta.lines.length} lines`;
+  $("lines").innerHTML = meta.lines.map(l => `<tr id="row-${l.code}" data-code="${l.code}"></tr>`).join("");
+  meta.lines.forEach(l => drawRow(l.code));
+  document.querySelectorAll(".node").forEach(n => { n.className = n.className.replace(/ ?(working|done|failed)/g, ""); const c = n.querySelector(".c"); if (c) c.textContent = ""; });
+}
+
+function drawFlow() {
+  const node = name => { const a = meta.agents.find(x => x.name === name);
+    return `<div class="node" id="node-${name}"><div class="t"><span>${esc(a.label)}</span><span class="c"></span></div><div class="d">${esc(a.does)}</div></div>`; };
+  const arrow = '<div class="arrow"></div>';
+  $("flow").innerHTML = node("lead_plan") + arrow + `<div class="parallel">${node("field")}${node("schedule")}${node("documents")}${node("cost")}</div>`
+    + arrow + node("reconcile") + arrow + node("verifier") + arrow + node("finalize") + arrow + node("lead_summary");
+}
+
+function drawRow(code) {
+  const l = lines[code], cost = l.cost === undefined ? '<span class="na">–</span>' : l.cost === "ok" ? "OK" : '<span style="color:var(--billing)">Off</span>';
+  const status = l.status ? `<span class="pill ${l.status}${l.unruled ? " unruled" : ""}">${LABEL[l.status]}</span>` : '<span class="pill pending">Waiting</span>';
+  const diff = l.status === "billing_error" ? l.billing_difference : l.impact;
+  $("row-"+code).innerHTML = `<td><span class="code">${code}</span>${esc(l.name)}</td><td>${num(l.value)}</td><td>${pct(l.claimed_pct)}</td><td>${pct(l.field_pct)}</td><td>${pct(l.log_pct)}</td><td>${pct(l.planned_pct)}</td><td>${cost}</td><td class="s">${status}</td><td>${diff ? num(diff) : '<span class="na">–</span>'}</td>`;
+}
+
+function flash(code) { const r = $("row-"+code); r.classList.remove("flash"); void r.offsetWidth; r.classList.add("flash"); clearTimeout(r.flashOff); r.flashOff = setTimeout(() => r.classList.remove("flash"), 700); }
+function say(html, bad) { const d = document.createElement("div"); d.innerHTML = html; if (bad) d.className = "bad"; $("feed").appendChild(d); $("feed").scrollTop = 1e9; }
+const agentLabel = n => { const a = meta.agents.find(x => x.name === n); return a ? a.label : n; };
+
+function bump(agent) {
+  counts[agent] = (counts[agent] || 0) + 1;
+  const c = document.querySelector(`#node-${agent} .c`); if (c) c.textContent = `${counts[agent]}/${meta.lines.length}`;
+}
+
+const HANDLERS = {
+  start(e) { setNotice(e.mode); say(`<b>Run started</b> on ${e.mode === "mock" ? "the offline mock" : "real models, limit $" + e.limits.max_usd.toFixed(2)}.`); },
+  agent(e) { const n = $("node-"+e.agent); if (n) { n.classList.remove("working","done"); n.classList.add(e.status); } },
+  plan(e) { say(`<b>Lead</b>: ${esc(e.plan)}`); },
+  tool(e) {
+    if (e.name === "inspect_photos") say(`<b>Field</b> reads ${(e.args.photo_ids||[]).length} photos`);
+    else if (e.name === "open_evidence") say(`<b>Verifier</b> opens ${(e.args.evidence_ids||[]).length} evidence records`);
+    else if (ACTIVITY[e.name]) say(`<b>${esc(agentLabel(e.agent))}</b> ${ACTIVITY[e.name]}`);
+  },
+  finding(e) { const l = lines[e.code]; if (!l) return;
+    const k = {field: "field_pct", documents: "log_pct", schedule: "planned_pct"}[e.source]; l[k] = e.pct; drawRow(e.code); flash(e.code); bump(e.source); },
+  cost_check(e) { const l = lines[e.code]; if (!l) return; l.cost = e.result; drawRow(e.code); flash(e.code); bump("cost"); },
+  extra_work(e) { say(`<b>Documents</b> found work with no change order: ${esc(e.title)}`); },
+  refused(e) { say(`<b>Check refused</b> ${esc(agentLabel(e.agent))} on ${esc(e.code)}: ${esc(e.reason)}`, true); },
+  reconciled(e) { e.lines.forEach(x => { Object.assign(lines[x.code], x, {unruled: x.status === "weak_evidence" || x.status === "unbilled"}); drawRow(x.code); flash(x.code); });
+    say("<b>Compare</b> set each line's status and rupiah difference"); },
+  ruling(e) { const l = lines[e.code]; if (!l) return; l.unruled = false; drawRow(e.code); flash(e.code);
+    say(`<b>Verifier</b> ${e.decision === "confirmed" ? "confirmed" : "<span style='color:var(--weak)'>rejected</span>"} ${esc(e.code)}: ${esc(e.reason)}`); },
+  finalized(e) { e.lines.forEach(x => { Object.assign(lines[x.code], x, {unruled: false}); drawRow(x.code); }); drawTotals(e.totals); },
+  say(e) { if (!["lead_summary", "reconcile", "finalize"].includes(e.agent)) say(`<b>${esc(agentLabel(e.agent))}</b>: ${esc(e.text)}`); },
+  usage(e) { $("spend").textContent = `${e.llm_calls} model turns · about $${e.usd.toFixed(3)}`; },
+  error(e) { say(`<b>Problem</b>: ${esc(e.message)}`, true); },
+  final(e) { finish(e.report); },
+};
+
+function drawTotals(t) {
+  $("k-unbilled").textContent = short(t.unbilled_value); $("n-unbilled").textContent = `${t.unbilled} lines`;
+  $("k-weak").textContent = short(t.weak_evidence_value); $("n-weak").textContent = `${t.weak_evidence} lines`;
+  $("k-billing").textContent = short(t.billing_error_value); $("n-billing").textContent = `${t.billing_error} lines`;
+  $("k-inspect").textContent = t.needs_inspection; $("k-ok").textContent = t.supported;
+}
+
+function finish(r) {
+  finals = r; drawTotals(r.totals);
+  r.lines.forEach(x => { Object.assign(lines[x.code], x, {unruled: false}); drawRow(x.code); });
+  $("summary").style.display = "block"; $("summary-t").textContent = r.summary;
+  $("summary-h").textContent = r.status === "complete" ? (r.summary_from_lead ? "Summary from the lead agent" : "Summary written by code") : "Run stopped early: lines without evidence go to a site check";
+  $("summary").classList.toggle("stopped", r.status !== "complete");
+  if (r.status !== "complete") say(`<b>Stopped</b>: ${esc(r.stop_reason)}`, true);
+  $("extra").innerHTML = r.extra_work.length ? r.extra_work.map(x => `<div><b>${esc(x.title)}</b><div class="fine">${esc(x.note)} Log entries: ${x.log_ids.map(esc).join(", ")}</div></div>`).join("") : '<span class="empty">None found.</span>';
+  const s = r.score;
+  $("score").innerHTML = `<div class="score">Lines right: ${s.lines_correct}/${s.lines}<br>Planted problems found: ${s.planted_found}/${s.planted}<br>False alarms on clean lines: ${s.false_alarms}/${s.clean_lines}<br>Extra work found: ${s.extra_work_found}/${s.extra_work_planted}${s.extra_work_false ? ` (${s.extra_work_false} false)` : ""}<br>Photo readings wrong: ${s.photo_readings_wrong.length ? s.photo_readings_wrong.map(esc).join(", ") : "none"}<br>Log readings wrong: ${s.log_readings_wrong.length ? s.log_readings_wrong.map(esc).join(", ") : "none"}${s.misses.length ? "<br>Lines missed: " + s.misses.map(m => `${esc(m.code)} (expected ${esc(LABEL[m.expected])}, got ${esc(LABEL[m.got])})`).join(", ") : ""}</div><div class="fine">${esc(s.note)}</div><div class="fine">Model turns: ${r.usage.llm_calls}. Tokens: ${num(r.usage.input_tokens + r.usage.output_tokens)}. Estimated cost: $${r.usage.usd.toFixed(4)}.</div>`;
+  say("<b>Review finished.</b> Click a line to see its evidence.");
+}
+
+function pump() {
+  if (!queue.length) { draining = false; return; }
+  draining = true;
+  const e = queue.shift();
+  (HANDLERS[e.type] || (() => {}))(e);
+  setTimeout(pump, e.type === "finding" || e.type === "cost_check" ? 22 : e.type === "ruling" ? 220 : 40);
+}
+
+function setNotice(mode) {
+  $("notice").classList.toggle("mock", mode === "mock");
+  $("notice").textContent = mode === "mock" ? "Offline mock: the ADK agents, tools and checks run for real, but the model's answers and photo readings are scripted. This shows the wiring, not accuracy. Synthetic data." : "Real models on synthetic data. No real project, company or person.";
+}
+
+function follow(run_id) {
+  const source = new EventSource(`/api/runs/${run_id}/events`);
+  source.onmessage = m => {
+    const e = JSON.parse(m.data);
+    if (e.type === "done") { source.close(); const wait = setInterval(() => { if (!queue.length && !draining) { clearInterval(wait); $("run").disabled = false; $("replay").disabled = false; $("run").textContent = "Review again"; checkReplay(); } }, 100); return; }
+    queue.push(e); if (!draining) pump();
+  };
+  source.onerror = () => { if (source.readyState === EventSource.CLOSED) return; say("Connection to the server dropped, retrying…", true); };
+}
+
+async function checkReplay() {
+  const last = await fetch("/api/runs/latest").then(r => r.json());
+  $("replay").hidden = !last.id;
+  $("replay").dataset.run = last.id || "";
+  $("replay").textContent = last.mode && last.mode !== "mock" ? "Replay last real run" : "Replay last run";
+}
+
+function replay() {
+  reset(); $("spend").textContent = ""; $("run").disabled = true; $("replay").disabled = true;
+  follow($("replay").dataset.run);
+}
+
+async function start() {
+  const mode = $("mode").value;
+  if (mode === "gemini" && !confirm(`This run uses your API key and spends real money. It stops at $${cfg.max_usd.toFixed(2)} or ${cfg.max_llm_calls} model calls. Start it?`)) return;
+  reset();
+  $("run").disabled = true; $("run").textContent = "Reviewing…";
+  setNotice(mode);
+  $("spend").textContent = "";
+  let res;
+  try {
+    res = await fetch("/api/runs", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({mode, confirm_paid: mode === "gemini"})});
+    if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
+  } catch (err) { say(`<b>Could not start</b>: ${esc(err.message)}`, true); $("run").disabled = false; $("run").textContent = "Review claim"; return; }
+  const {run_id} = await res.json();
+  follow(run_id);
+}
+
+async function openLine(code) {
+  const l = lines[code];
+  const d = $("drawer");
+  const status = l.status ? `<span class="pill ${l.status}">${LABEL[l.status]}</span>` : '<span class="pill pending">Waiting</span>';
+  const ruling = l.ruling ? `<h4>Verifier</h4><div>${l.ruling.decision === "confirmed" ? "Confirmed" : "Rejected"}: ${esc(l.ruling.reason)}</div>` : "";
+  d.innerHTML = `<button class="close" id="close">Close</button><h3>${esc(l.name)}</h3><div class="sub">${esc(code)} · ${esc(l.area)} · value Rp ${num(l.value)}</div>
+    <div style="margin:12px 0 4px">${status}</div><div>${esc(l.reason || "The review has not reached this line yet.")}</div>
+    <h4>What each source shows</h4><div class="reads"><div><div class="k">Claimed</div><div class="v">${pct(l.claimed_pct)}</div></div><div><div class="k">Photos</div><div class="v">${pct(l.field_pct)}</div></div><div><div class="k">Daily log</div><div class="v">${pct(l.log_pct)}</div></div><div><div class="k">Plan</div><div class="v">${pct(l.planned_pct)}</div></div></div>
+    ${ruling}<div id="evidence"></div>`;
+  d.classList.add("open");
+  $("close").onclick = () => d.classList.remove("open");
+  const ids = l.evidence_ids || [];
+  const photos = ids.filter(i => i.startsWith("P-")), logs = ids.filter(i => i.startsWith("LOG-"));
+  let html = "";
+  if (photos.length) html += "<h4>Site view used</h4>" + photos.map(p => `<img src="/api/photos/${encodeURIComponent(p)}" alt="Site view ${esc(p)}">`).join("");
+  if (logs.length) {
+    const records = await Promise.all(logs.map(i => fetch(`/api/evidence/${encodeURIComponent(i)}`).then(r => r.json())));
+    html += "<h4>Daily log entries used</h4>" + records.map(r => `<div class="log"><span>${esc(r.date)} ${esc(r.id)}</span>${esc(r.text)}</div>`).join("");
+  }
+  $("evidence").innerHTML = html;
+}
+
+$("run").onclick = start;
+$("replay").onclick = replay;
+$("lines").onclick = e => { const tr = e.target.closest("tr"); if (tr) openLine(tr.dataset.code); };
+document.addEventListener("keydown", e => { if (e.key === "Escape") $("drawer").classList.remove("open"); });
+init();
+</script>
+</body>
+</html>
