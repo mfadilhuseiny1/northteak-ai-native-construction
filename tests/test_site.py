@@ -10,10 +10,7 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-from google.adk.models import BaseLlm, LlmResponse
-from google.genai import types
-
-from swarm import firm, firm_api, project as P, site_case as C
+from swarm import firm, firm_api, llm, project as P, site_case as C
 from swarm.mock_firm import MockFirmLlm
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -210,14 +207,14 @@ def test_a_daily_report_stays_unverified_until_someone_verifies_it():
     r = P.add_daily_report({"area": "Level 3", "text": "Rebar re-inspected.", "package": "WP-REB", "crew": 26})
     assert not r["verified"]
     row = next(x for x in P.overview()["chain"] if x["id"] == "WP-REB")
-    assert next(s for s in row["steps"] if s["key"] == "report")["sub"] == "1 to verify"
+    assert next(s for s in row["steps"] if s["key"] == "kanban")["sub"] == "1 to verify"
     assert r in P.daily_reports("Level 3")
     assert P.verify_daily_report(r["id"])["verified"]
 
 
 def test_every_package_counts_the_reports_that_mention_its_work():
     row = next(x for x in P.overview()["chain"] if x["id"] == "WP-REB")
-    assert next(s for s in row["steps"] if s["key"] == "report")["text"] != "0 reports"
+    assert next(s for s in row["steps"] if s["key"] == "kanban")["sub"].endswith("reports")
 
 
 def test_an_agents_rfi_draft_is_hidden_from_the_log_until_a_person_issues_it():
@@ -519,8 +516,9 @@ def test_no_code_reads_the_openai_key_or_calls_openai():
 
 def test_real_model_calls_go_to_meta_with_the_meta_key(monkeypatch):
     monkeypatch.setattr(firm_api.config, "setting", lambda name, default="": "the-meta-key" if name == "META_API_KEY" else default)
-    llm = firm_api.model_of("muse")("site_l3", firm.SPARK, 100)
-    assert llm._additional_args["api_base"] == "https://api.meta.ai/v1" and llm._additional_args["api_key"] == "the-meta-key"
+    model = firm_api.model_of("muse")("site_l3", firm.SPARK, 100)
+    assert str(model._async_client.base_url).rstrip("/") == "https://api.meta.ai/v1" and model._async_client.api_key == "the-meta-key"
+    assert str(model.model_type) == firm.SPARK and model.model_config_dict["max_tokens"] == 100
 
 
 def test_a_real_review_may_spend_up_to_the_meta_credit():
@@ -536,14 +534,11 @@ def test_the_spending_limit_stops_the_firm_before_the_next_agent():
     assert asyncio.run(f.work("site_l3", "x", [], "y")).startswith("(not run")
 
 
-class Chatty(BaseLlm):
+class Chatty(llm.Scripted):
     """A model that says what it is doing before each tool call, as Muse does."""
 
-    async def generate_content_async(self, llm_request, stream=False):
-        called = any(p.function_response for c in llm_request.contents or [] for p in c.parts or [])
-        parts = [types.Part(text="The report.")] if called else [types.Part(text="Reading the note now."), types.Part.from_function_call(name="read_note", args={})]
-        usage = types.GenerateContentResponseUsageMetadata(prompt_token_count=0, candidates_token_count=0, total_token_count=0)
-        yield LlmResponse(content=types.Content(role="model", parts=parts), usage_metadata=usage)
+    def answer(self, results, tools):
+        return "The report." if results else llm.Said("Reading the note now.", [("read_note", {})])
 
 
 def test_a_models_status_lines_between_tool_calls_stay_out_of_its_report():
@@ -552,5 +547,5 @@ def test_a_models_status_lines_between_tool_calls_stay_out_of_its_report():
         return {"note": "x"}
 
     firm._emit.set(lambda e: None)
-    f = firm.Firm(lambda key, model, n: Chatty(model="mock/chatty"), 1.0, firm.BRIEF, mock=True)
+    f = firm.Firm(lambda key, model, n: Chatty("mock/chatty"), 1.0, firm.BRIEF, mock=True)
     assert asyncio.run(f.turn("partner", firm.SPARK, "Call read_note.", [read_note], "Go.", 4)) == "The report."

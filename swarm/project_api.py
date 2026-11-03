@@ -2,45 +2,171 @@
 
 from __future__ import annotations
 
+import asyncio
+import re
+import time
 from typing import Callable
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, PlainTextResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, BeforeValidator
 
-from . import opc, project as P
+from . import extract, memory, model3d, module_agents as A, modules as M, package as K, project as P, wbs
 from .data import ProjectData
 
 router = APIRouter()
 
 
 def guarded(fn: Callable, *a, **k):
-    """A record that does not exist is a 404; a step the workflow does not allow is a 409, with why."""
+    """A record that does not exist is a 404; a step the workflow does not allow is a 409, with why. The records themselves refusing (a locked file, a disk that will not write) is a 503, never a bare 500."""
     try:
         return fn(*a, **k)
     except KeyError as e:
         raise HTTPException(404, f"no such record: {e.args[0]}") from e
     except ValueError as e:
         raise HTTPException(409, str(e)) from e
+    except OSError as e:
+        raise HTTPException(503, f"the records could not be read or written: {e}") from e
+
+
+MAX_UPLOAD = 64 * 1024 * 1024
+
+
+def _whole(v):
+    """A number typed with a fraction (100.5) is rounded to a whole one, not refused: money, men and days are whole here, and the form's arithmetic often is not."""
+    if v is None or isinstance(v, bool):
+        return v
+    try:
+        return int(round(float(v)))
+    except (TypeError, ValueError):
+        return v
+
+
+from typing import Annotated
+
+Whole = Annotated[int, BeforeValidator(_whole)]
+DOC_KINDS = {"scope", "drawing", "spec", "itp", "boq", "estimate", "programme", "wbs", "clarification", "contract", "method", "rates", "tender", "award", "note", "other"}
+DOC_TYPES = {".pdf", ".txt", ".md", ".csv", ".png", ".jpg", ".jpeg", ".dwg", ".dxf", ".xlsx", ".docx"}
+PHOTO_TYPES = {".png", ".jpg", ".jpeg"}
 
 
 class ActivityIn(BaseModel):
-    progress: int | None = None
-    duration: int | None = None
+    progress: Whole | None = None
+    duration: Whole | None = None
+    predecessors: list[str] | None = None
+    by: str | None = None
+
+
+class NewActivity(BaseModel):
+    name: str
+    package: str
+    duration: Whole = 5
+    predecessors: list[str] = []
+    by: str = "self"
+
+
+class NewPackage(BaseModel):
+    name: str
+    sub: str = ""
+    budget: Whole = 0
+
+
+class NewMilestone(BaseModel):
+    name: str
+    activity: str
+    contract_date: str
+
+
+class NewProject(BaseModel):
+    name: str
+    owner: str = ""
+    contractor: str = ""
+    location: str = ""
+    start: str = ""
+    finish: str = ""
+    template: bool = True
+
+
+class NewBoq(BaseModel):
+    name: str
+    unit: str
+    qty: float
+    unit_price: Whole
+    package: str
+    activity: str = ""
+    area: str = ""
+
+
+class NewOrder(BaseModel):
+    item: str
+    supplier: str
+    activity: str = ""
+    needed: str
+    promised: str = ""
+    value: Whole = 0
+    package: str = ""
+
+
+class NewInspection(BaseModel):
+    title: str
+    activity: str = ""
+    by: str = ""
+    next: str = ""
+    criteria: str = ""
+    hold_point: bool = False
+
+
+class InspectionResult(BaseModel):
+    result: str
+    checklist: list[dict] | None = None
+    note: str = ""
+    photos: list[str] | None = None
+
+
+class CardMove(BaseModel):
+    status: str
+
+
+class Assign(BaseModel):
+    activity: str
+    by: str
+    section: str = ""
+
+
+class DocDecision(BaseModel):
+    status: str
+    note: str = ""
+
+
+class DocLink(BaseModel):
+    activity: str
+
+
+class Mode(BaseModel):
+    mode: str = "mock"
+
+
+class DraftRfi(BaseModel):
+    subject: str
+    question: str
+    to: str = "Engineer"
+    activity: str = ""
+    impact: str = ""
 
 
 class CostIn(BaseModel):
     package: str
     description: str
-    amount: int
+    amount: Whole
     recoverable_from: str = ""
+    actual: bool = False
 
 
 class SubIn(BaseModel):
     name: str
     trade: str
     scope: str = ""
-    crew: int = 0
+    crew: Whole = 0
 
 
 class DocIn(BaseModel):
@@ -50,13 +176,15 @@ class DocIn(BaseModel):
 
 class PromiseIn(BaseModel):
     promised: str = ""
+    supplier: str = ""
 
 
 class ReportIn(BaseModel):
     date: str = ""
     area: str
     package: str = ""
-    crew: int | None = None
+    activity: str = ""
+    crew: Whole | None = None
     weather: str = ""
     author: str = ""
     text: str
@@ -67,6 +195,7 @@ class NcrIn(BaseModel):
     by: str
     activity: str = ""
     due: str = ""
+    photo: str = ""
 
 
 class NcrClose(BaseModel):
@@ -101,10 +230,16 @@ class WorkItemIn(BaseModel):
     owner: str
     due: str = ""
     activity: str = ""
+    physical: bool = False
+    by: str = ""
 
 
-class WorkItemStatus(BaseModel):
-    status: str
+class WorkItemChange(BaseModel):
+    status: str = ""
+    owner: str | None = None
+    due: str | None = None
+    progress: Whole | None = None
+    by: str | None = None
 
 
 class PlanDecision(BaseModel):
@@ -123,18 +258,19 @@ def overview() -> dict:
 
 @router.post("/api/project/reset")
 def reset() -> dict:
-    P.reset()
+    guarded(P.reset)
+    guarded(memory.clear)
     return {"status": "reset"}
 
 
 @router.get("/api/project/schedule")
 def schedule() -> dict:
-    return P.schedule()
+    return M.schedule_view()
 
 
 @router.post("/api/project/schedule/{aid}")
 def update_activity(aid: str, body: ActivityIn) -> dict:
-    return guarded(P.update_activity, aid, body.progress, body.duration)
+    return guarded(P.update_activity, aid, body.progress, body.duration, body.predecessors, body.by)
 
 
 @router.get("/api/project/budget")
@@ -144,7 +280,7 @@ def budget() -> dict:
 
 @router.post("/api/project/cost-items")
 def add_cost(body: CostIn) -> dict:
-    return guarded(P.add_cost_item, body.package, body.description, body.amount, body.recoverable_from)
+    return guarded(P.add_cost_item, body.package, body.description, body.amount, body.recoverable_from, actual=body.actual)
 
 
 @router.get("/api/project/subcontractors")
@@ -174,19 +310,19 @@ def invoice(iid: str, action: str) -> dict:
 
 @router.get("/api/project/procurement")
 def procurement() -> dict:
-    return {"orders": P.all_of("po"), "today": P.TODAY}
+    codes = P.wbs_codes()
+    return {"orders": [{**o, "wbs": codes.get(o.get("activity") or "") or codes.get(o.get("package") or "", "")} for o in P.all_of("po") if o["status"] != "cancelled"], "today": P.TODAY, "activities": [{"id": a[0], "name": a[1]} for a in P.activity_rows()]}
 
 
 @router.post("/api/project/orders/{pid}/{action}")
 def order(pid: str, action: str, body: PromiseIn) -> dict:
-    return guarded(P.po_action, pid, action, body.promised)
+    return guarded(P.po_action, pid, action, body.promised, body.supplier)
 
 
 @router.get("/api/project/daily-reports")
 def daily_reports() -> dict:
-    data = ProjectData.load()
-    return {"reports": sorted(P.daily_reports(), key=lambda r: (r["date"], r["id"]), reverse=True), "photos": sorted(data.photos, key=lambda p: p["date"], reverse=True), "today": P.TODAY,
-            "packages": [{"id": p["id"], "name": p["name"]} for p in P.all_of("package")]}
+    return {"reports": sorted(P.daily_reports(), key=lambda r: (r["date"], r["id"]), reverse=True), "photos": M.photos()["photos"], "today": P.TODAY,
+            "packages": [{"id": p["id"], "name": p["name"]} for p in P.all_of("package")], "activities": [{"id": a[0], "name": a[1]} for a in P.activity_rows()]}
 
 
 @router.post("/api/project/daily-reports")
@@ -201,11 +337,10 @@ def verify_report(rid: str) -> dict:
 
 @router.get("/api/project/photos/{photo_id}")
 def photo(photo_id: str) -> FileResponse:
-    data = ProjectData.load()
-    rec = data.photo(photo_id)  # looked up by ID, never a path from the request
+    rec = (None if P.is_blank() else ProjectData.load().photo(photo_id)) or P.get("photo", photo_id)  # looked up by ID, never a path from the request
     if not rec:
         raise HTTPException(404, "no such photo")
-    return FileResponse(data.folder / "photos" / rec["file"])
+    return FileResponse(A.photo_file(rec))
 
 
 @router.get("/api/project/quality")
@@ -215,7 +350,7 @@ def quality() -> dict:
 
 @router.post("/api/project/ncrs")
 def raise_ncr(body: NcrIn) -> dict:
-    return guarded(P.raise_ncr, body.title, body.by, body.activity, body.due)
+    return guarded(P.raise_ncr, body.title, body.by, body.activity, body.due, photo=body.photo)
 
 
 @router.post("/api/project/ncrs/{nid}/close")
@@ -246,7 +381,7 @@ def answer_rfi(rid: str, body: RfiAnswer) -> dict:
 
 @router.get("/api/project/claim")
 def claim() -> dict:
-    return P.claim()
+    return P.claim() or {"none": True}
 
 
 @router.post("/api/project/claim/{action}")
@@ -276,23 +411,35 @@ def message(mid: str, action: str) -> dict:
 
 @router.post("/api/project/work-items")
 def add_work_item(body: WorkItemIn) -> dict:
-    return guarded(P.add_work_item, body.title, body.owner, body.due, body.activity)
+    return guarded(P.add_work_item, body.title, body.owner, body.due, body.activity, P.PM, physical=body.physical, by=body.by)
 
 
 @router.post("/api/project/work-items/{wid}")
-def set_work_item(wid: str, body: WorkItemStatus) -> dict:
-    return guarded(P.set_work_item, wid, body.status)
+def set_work_item(wid: str, body: WorkItemChange) -> dict:
+    return guarded(P.set_work_item, wid, body.status, body.owner, body.due, body.progress, body.by)
 
 
 @router.get("/api/project/plan-package")
 def plan_package() -> dict:
-    return {"documents": P.plan_documents(), "scope": P.PC.SCOPE}
+    if P.is_blank():
+        return {"documents": [], "scope": {}, "scenario": False}
+    return {"documents": P.plan_documents(), "scope": P.PC.SCOPE, "scenario": True}
 
 
 @router.get("/api/project/plans")
 def plans() -> dict:
     who = {s["id"]: s["name"].replace(" (fictional)", "") for s in P.all_of("subcontractor")}
     return {"plans": P.plans(), "today": P.TODAY, "who": {**who, "self": "Own crew"}}
+
+
+@router.post("/api/project/plans/{pid}/review")
+def review_plan(pid: str, body: ReviewIn) -> dict:
+    return guarded(P.review_plan, pid, body.keys, body.verdict, body.note)
+
+
+@router.post("/api/project/plans/{pid}/edit")
+def edit_plan_item(pid: str, body: ItemEdit) -> dict:
+    return guarded(P.edit_plan_item, pid, body.key, body.text)
 
 
 @router.post("/api/project/plans/{pid}/approve")
@@ -312,9 +459,412 @@ def plan_actual(pid: str, step_id: str, body: ActualIn) -> dict:
 
 @router.get("/api/project/plans/{pid}/procedure.md", response_class=PlainTextResponse)
 def plan_procedure(pid: str) -> str:
-    return opc.procedure_markdown(guarded(P.plan_by_id, pid))
+    rec = guarded(P.plan_by_id, pid)
+    return M.procedure_document(rec) if rec["plan"].get("kind") == "package" else wbs.procedure_markdown(rec)
 
 
 @router.get("/api/project/plans/{pid}/table.csv", response_class=PlainTextResponse)
 def plan_table(pid: str) -> str:
-    return opc.table_csv(guarded(P.plan_by_id, pid))
+    rec = guarded(P.plan_by_id, pid)
+    return M.procedure_table(rec) if rec["plan"].get("kind") == "package" else wbs.table_csv(rec)
+
+
+# ------------------------------------------------------------------------------------------------ the WBS: the spine every module hangs on
+
+
+@router.get("/api/project/wbs")
+def wbs_tree() -> dict:
+    return M.tree()
+
+
+@router.get("/api/project/wbs/node")
+def wbs_node(code: str) -> dict:
+    return guarded(M.node_detail, code)
+
+
+@router.post("/api/project/packages")
+def add_package(body: NewPackage) -> dict:
+    return guarded(P.add_package, body.name, body.sub, body.budget)
+
+
+@router.post("/api/project/activities")
+def add_activity(body: NewActivity) -> dict:
+    return guarded(P.add_activity, body.name, body.package, body.duration, body.predecessors, body.by)
+
+
+@router.post("/api/project/milestones")
+def add_milestone(body: NewMilestone) -> dict:
+    return guarded(P.add_milestone, body.name, body.activity, body.contract_date)
+
+
+# ------------------------------------------------------------------------------------------------ projects
+
+
+@router.get("/api/projects")
+def projects() -> dict:
+    return P.projects()
+
+
+@router.post("/api/projects")
+def create_project(body: NewProject) -> dict:
+    return guarded(P.create_project, body.name, body.owner, body.contractor, body.location, body.start, body.finish, body.template)
+
+
+@router.post("/api/projects/{pid}/open")
+def open_project(pid: str) -> dict:
+    return guarded(P.open_project, pid)
+
+
+# ------------------------------------------------------------------------------------------------ Kanban
+
+
+@router.get("/api/project/board")
+def board() -> dict:
+    return M.board()
+
+
+@router.post("/api/project/board/activity/{aid}")
+def move_activity_card(aid: str, body: CardMove) -> dict:
+    return guarded(M.move_activity_card, aid, body.status)
+
+
+# ------------------------------------------------------------------------------------------------ BOQ and cost
+
+
+@router.get("/api/project/boq")
+def boq() -> dict:
+    return M.boq_view()
+
+
+@router.post("/api/project/boq")
+def add_boq(body: NewBoq) -> dict:
+    return guarded(P.add_boq_line, body.name, body.unit, body.qty, body.unit_price, body.package, body.activity, body.area)
+
+
+# ------------------------------------------------------------------------------------------------ documents and RFIs
+
+
+def _saved_name(prefix: str, name: str, allowed: set[str]) -> str:
+    """The name a file is kept under: ours, never a path from the request. Only its type comes from the upload."""
+    suffix = "." + (name or "").rsplit(".", 1)[-1].lower() if "." in (name or "") else ""
+    if suffix not in allowed:
+        raise HTTPException(400, f"this file type is not accepted. Accepted: {', '.join(sorted(allowed))}")
+    return f"{prefix}{suffix}"
+
+
+async def _keep(file: UploadFile, target) -> None:
+    data = await file.read(MAX_UPLOAD + 1)
+    if len(data) > MAX_UPLOAD:
+        raise HTTPException(413, "the file is larger than 64 MB")
+    if not data:
+        raise HTTPException(400, "the file is empty")
+    target.write_bytes(data)
+
+
+@router.get("/api/project/documents")
+def documents() -> dict:
+    return M.documents()
+
+
+@router.post("/api/project/documents")
+async def upload_document(file: UploadFile = File(...), title: str = Form(""), kind: str = Form("other"), activity: str = Form(""), issued_by: str = Form(""), issued_on: str = Form("")) -> dict:
+    """A document you upload is yours: it is kept on this machine, and goes nowhere unless a person asks a real model to read it."""
+    rid = P.next_id("document")
+    saved = _saved_name(rid, file.filename or "", DOC_TYPES)
+    target = A.upload_folder() / saved
+    await _keep(file, target)
+    clean = re.sub(r"[^\w .,()\-]", "_", file.filename or saved)[:120]
+    try:
+        pages = await asyncio.to_thread(K.read_pages, target)  # hundreds of pages take a while, and the API has other requests to answer
+    except Exception as e:  # noqa: BLE001 - a broken file is a fact about the file, not a failure of the upload
+        pages, broken = [], f"the file could not be read: {type(e).__name__}"
+    else:
+        broken = ""
+    text = "\n\n".join(pages).strip()[:extract.MAX_TEXT]
+    how = broken or (f"{target.suffix[1:].upper()}, {len(pages)} pages" if text else f"{len(pages)} pages of images: no text to read without a model" if pages else "kept as a file: no text to read")
+    K.keep_pages(rid, pages)
+    sorted_kind, use, why = K.classify(file.filename or saved, pages)
+    kind = sorted_kind if kind in ("auto", "") else kind
+    sorting = {"use": use, "why": why, "pages": len(pages), "words": sum(len(p.split()) for p in pages), "digest": K.digest_of(target)}
+    return P.put("document", rid, {"id": rid, "source": "upload", "kind": kind, "title": title.strip() or clean, "from": issued_by, "date": issued_on or time.strftime("%Y-%m-%d"), **sorting, "text": text, "how_read": how, "file": saved, "filename": clean, "activities": [activity] if activity else [], "status": "received", "facts": extract.facts(text)}, P.PM, "uploaded a document", clean)
+
+
+@router.get("/api/project/documents/{did}/text")
+def document_text(did: str) -> dict:
+    return guarded(M.document_text, did)
+
+
+@router.get("/api/project/documents/{did}/file")
+def document_file(did: str) -> FileResponse:
+    rec = P.get("document", did)
+    if not rec or not rec.get("file"):
+        raise HTTPException(404, "no file for this document")
+    return FileResponse(A.upload_folder() / rec["file"], filename=rec.get("filename") or rec["file"], content_disposition_type="inline")  # inline, so that a source can be read beside what cites it
+
+
+@router.post("/api/project/documents/{did}/decide")
+def decide_document(did: str, body: DocDecision) -> dict:
+    return guarded(M.decide_document, did, body.status, body.note)
+
+
+@router.post("/api/project/documents/{did}/link")
+def link_document(did: str, body: DocLink) -> dict:
+    return guarded(M.link_document, did, body.activity)
+
+
+@router.post("/api/project/documents/{did}/read")
+async def read_document(did: str, body: Mode) -> dict:
+    try:
+        return await A.read_document(did, body.mode)
+    except KeyError as e:
+        raise HTTPException(404, f"no such record: {e.args[0]}") from e
+    except ValueError as e:
+        raise HTTPException(409, str(e)) from e
+
+
+@router.post("/api/project/rfi-drafts")
+def draft_rfi(body: DraftRfi) -> dict:
+    """A draft to look at, from a document or a person's note. Issuing it is a separate step."""
+    return guarded(P.add_rfi, {"subject": body.subject, "question": body.question, "to": body.to, "activity": body.activity, "impact": body.impact, "drafted_by": "Document agent"}, "draft", P.PM)
+
+
+@router.get("/api/project/readiness")
+def readiness() -> dict:
+    return M.readiness()
+
+
+# ------------------------------------------------------------------------------------------------ procurement and subcontractors
+
+
+@router.post("/api/project/orders")
+def add_order(body: NewOrder) -> dict:
+    return guarded(P.add_order, body.item, body.supplier, body.activity, body.needed, body.promised, body.value, body.package)
+
+
+@router.get("/api/project/materials")
+def materials() -> dict:
+    return M.materials()
+
+
+@router.get("/api/project/suppliers")
+def suppliers() -> dict:
+    return M.suppliers()
+
+
+@router.get("/api/project/assignments")
+def assignments() -> dict:
+    return M.assignments()
+
+
+@router.post("/api/project/assignments")
+def assign(body: Assign) -> dict:
+    if body.section:
+        return guarded(M.reassign, body.activity, body.section, body.by)
+    return guarded(M.confirm_assignment, body.activity, body.by)
+
+
+# ------------------------------------------------------------------------------------------------ QA/QC
+
+
+@router.post("/api/project/inspections")
+def add_inspection(body: NewInspection) -> dict:
+    return guarded(P.add_inspection, body.title, body.activity, body.by, body.next, body.criteria, body.hold_point)
+
+
+@router.post("/api/project/inspections/{iid}/result")
+def inspection_result(iid: str, body: InspectionResult) -> dict:
+    return guarded(P.inspection_result, iid, body.result, body.checklist, body.note, body.photos)
+
+
+@router.get("/api/project/photos")
+def photos() -> dict:
+    return M.photos()
+
+
+@router.post("/api/project/photos")
+async def upload_photo(file: UploadFile = File(...), caption: str = Form(""), activity: str = Form(""), area: str = Form(""), taken_by: str = Form("")) -> dict:
+    rid = P.next_id("photo")
+    saved = _saved_name(rid, file.filename or "", PHOTO_TYPES)
+    await _keep(file, A.upload_folder() / saved)
+    return P.put("photo", rid, {"id": rid, "source": "upload", "file": saved, "caption": caption.strip() or rid, "activity": activity, "area": area, "date": P.TODAY, "taken_by": taken_by or P.PM}, P.PM, "uploaded a photo", caption)
+
+
+@router.post("/api/project/photos/{photo_id}/review")
+async def review_photo(photo_id: str, body: Mode) -> dict:
+    try:
+        return await A.review_photo(photo_id, body.mode)
+    except KeyError as e:
+        raise HTTPException(404, f"no such record: {e.args[0]}") from e
+    except ValueError as e:
+        raise HTTPException(409, str(e)) from e
+
+
+# ------------------------------------------------------------------------------------------------ the control tower and each module's agents
+
+
+@router.get("/api/project/tower")
+def tower() -> dict:
+    return M.tower()
+
+
+class RiskIn(BaseModel):
+    title: str
+    category: str = "General"
+    detail: str = ""
+    activity: str = ""
+    probability: Whole = 3
+    impact: Whole = 3
+    owner: str = ""
+    strategy: str = "Mitigate"
+    response: str = ""
+    due: str = ""
+
+
+class RiskChange(BaseModel):
+    probability: Whole | None = None
+    impact: Whole | None = None
+    owner: str | None = None
+    strategy: str | None = None
+    response: str | None = None
+    due: str | None = None
+    status: str | None = None
+
+
+@router.get("/api/project/risks")
+def risks() -> dict:
+    return M.risk_register()
+
+
+@router.post("/api/project/risks")
+def add_risk(body: RiskIn) -> dict:
+    return guarded(P.add_risk, body.title, body.category, body.detail, body.activity, body.probability, body.impact, body.owner, body.strategy, body.response, body.due)
+
+
+@router.post("/api/project/risks/{rid}")
+def set_risk(rid: str, body: RiskChange) -> dict:
+    return guarded(P.set_risk, rid, body.probability, body.impact, body.owner, body.strategy, body.response, body.due, body.status)
+
+
+class KindIn(BaseModel):
+    kind: str
+
+
+class ReviewIn(BaseModel):
+    keys: list[str]
+    verdict: str
+    note: str = ""
+
+
+class ItemEdit(BaseModel):
+    key: str
+    text: str
+
+
+class NoteIn(BaseModel):
+    text: str
+    module: str = "tower"
+
+
+@router.get("/api/project/memory")
+def memories() -> dict:
+    return A.memories()
+
+
+@router.post("/api/project/memory")
+def remember(body: NoteIn) -> dict:
+    return guarded(A.note, body.module, body.text)
+
+
+@router.post("/api/project/memory/{mid}/forget")
+def forget(mid: str) -> dict:
+    return guarded(A.forget, mid)
+
+
+class UseIn(BaseModel):
+    use: bool
+
+
+@router.get("/api/project/package")
+def package_review() -> dict:
+    return K.review()
+
+
+@router.post("/api/project/documents/{did}/kind")
+def set_document_kind(did: str, body: KindIn) -> dict:
+    """A person puts a document in another category, and the agents read it as that."""
+    rec = P.get("document", did)
+    if not rec or rec.get("source") != "upload":
+        raise HTTPException(404, "no such upload")
+    if body.kind not in DOC_KINDS:
+        raise HTTPException(400, f"no such category: {body.kind}")
+    return P.patch("document", did, {"kind": body.kind, "overruled": True}, P.PM, "put a document in a category", f"{rec['title']}: {body.kind}")
+
+
+@router.post("/api/project/documents/{did}/use")
+def use_document(did: str, body: UseIn) -> dict:
+    """A person overrules the sorting: what goes to a model is their decision."""
+    rec = P.get("document", did)
+    if not rec or rec.get("source") != "upload":
+        raise HTTPException(404, "no such upload")
+    return P.patch("document", did, {"use": body.use, "overruled": True, "why": "You chose to send it to the agents" if body.use else "You left it out"}, P.PM, "sorted a document", f"{rec['title']}: {'used' if body.use else 'left out'}")
+
+
+@router.get("/api/project/control-accounts")
+def control_accounts() -> dict:
+    return M.control_accounts()
+
+
+@router.get("/api/project/work-packages")
+def work_packages() -> dict:
+    return M.work_packages()
+
+
+@router.get("/api/project/wbs-dictionary")
+def wbs_dictionary() -> dict:
+    return M.dictionary()
+
+
+@router.get("/api/project/procedures")
+def procedures() -> dict:
+    return M.procedures()
+
+
+@router.get("/api/project/critical-path")
+def critical_path() -> dict:
+    return M.critical_path()
+
+
+@router.get("/api/project/model-3d")
+def model_3d() -> dict:
+    """The building through time, for the 3D timeline: a schematic model, from the WBS, the schedule's dates and the drawings' grid."""
+    return model3d.build()
+
+
+@router.get("/api/project/cost-estimate")
+def cost_estimate() -> dict:
+    return M.cost_estimate()
+
+
+@router.get("/api/project/agents")
+def agents_bench() -> dict:
+    return A.bench()
+
+
+@router.get("/api/project/agents/{module}")
+def agent_view(module: str) -> dict:
+    return guarded(A.view, module)
+
+
+@router.post("/api/project/agents/{module}/ask")
+async def agent_ask(module: str, body: Mode) -> dict:
+    try:
+        return await A.ask(module, body.mode)
+    except KeyError as e:
+        raise HTTPException(404, f"no such module: {e.args[0]}") from e
+    except ValueError as e:
+        raise HTTPException(409, str(e)) from e
+
+
+@router.post("/api/project/agents/{module}/{index}/{verdict}")
+def agent_decide(module: str, index: int, verdict: str) -> dict:
+    return guarded(A.decide, module, index, verdict)

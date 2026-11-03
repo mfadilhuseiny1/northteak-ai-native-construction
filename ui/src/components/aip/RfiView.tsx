@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import { Icon } from "@/components/Icon";
+import { inFocus, notifyChanged, useFocus, useGo } from "@/components/site/kit";
 import { API_URL } from "@/lib/api";
 
 /* The RFI register: every request for information, who owes the answer, by when, and what it holds up on the schedule. People raise, issue and
@@ -22,19 +23,27 @@ async function call<T>(path: string, body?: unknown): Promise<T> {
 
 const field = "w-full rounded border border-white/15 bg-black/20 px-2 py-1 text-[12px] text-white placeholder:text-[#6b7480]";
 
-export function RfiView() {
+export function RfiView({ target }: { target?: string }) {
+  const { focus } = useFocus();
+  const go = useGo();
   const [reg, setReg] = useState<Register | null>(null);
-  const [sel, setSel] = useState<string | null>(null);
+  const [sel, setSel] = useState<string | null>(target || null);
   const [filter, setFilter] = useState("all");
   const [err, setErr] = useState("");
   const [form, setForm] = useState<typeof EMPTY | null>(null);
   const [answer, setAnswer] = useState("");
   const load = useCallback(() => call<Register>("/api/rfis").then((r) => { setReg(r); setErr(""); }).catch((e) => setErr((e as Error).message)), []);
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => { if (target) setSel(target); }, [target]);
+  useEffect(() => {
+    const again = () => void load();
+    window.addEventListener("records-changed", again);
+    return () => window.removeEventListener("records-changed", again);
+  }, [load]);
   const act = async (fn: () => Promise<unknown>) => {
-    try { await fn(); setErr(""); await load(); } catch (e) { setErr((e as Error).message); }
+    try { await fn(); setErr(""); await load(); notifyChanged(); } catch (e) { setErr((e as Error).message); }
   };
-  const rows = (reg?.rfis ?? []).filter((r) => filter === "all" || r.status === filter);
+  const rows = (reg?.rfis ?? []).filter((r) => (filter === "all" || r.status === filter) && (!focus || focus.type === "project" || inFocus(focus, { activity: r.activity })));
   const open = reg?.rfis.find((r) => r.id === sel) ?? null;
   return (
     <div className="flex min-h-0 flex-1 overflow-hidden text-[12px]">
@@ -63,7 +72,7 @@ export function RfiView() {
                   <td className="px-3 py-2"><span className={`rounded-full px-2 py-0.5 text-[10.5px] ${STATUS[r.status]}`}>{r.status}</span></td>
                   <td className="whitespace-nowrap px-3 py-2 text-[#d3d8de]">{r.ball_in_court || "–"}</td>
                   <td className={`whitespace-nowrap px-3 py-2 tabular-nums ${r.overdue ? "font-medium text-[#ffb4b4]" : "text-[#d3d8de]"}`}>{r.due || "–"}{r.overdue ? " · overdue" : ""}</td>
-                  <td className="whitespace-nowrap px-3 py-2 text-[#d3d8de]">{r.activity || "–"}{r.critical && <span className="ml-1 text-[10px] text-[#fbd38d]">critical</span>}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-[#d3d8de]">{r.activity ? <button onClick={(e) => { e.stopPropagation(); go(`schedule/gantt:${r.activity}`); }} className="hover:underline">{r.activity}</button> : "–"}{r.critical && <span className="ml-1 text-[10px] text-[#fbd38d]">critical</span>}</td>
                   <td className="px-3 py-2 text-[#abb3bf]">{r.raised_by}</td>
                 </tr>
               ))}

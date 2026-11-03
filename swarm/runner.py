@@ -1,21 +1,21 @@
-"""Runs the swarm once and turns ADK's events into the events the UI shows."""
+"""Runs the first prototype's swarm once, in plain code, and tells the UI what happens."""
 
 from __future__ import annotations
 
 import asyncio
+import functools
+import inspect
 import re
 import traceback
 import uuid
 from typing import Callable
 
-from google.adk.agents.run_config import RunConfig
-from google.adk.runners import Runner
-from google.adk.sessions import InMemorySessionService
-from google.genai import types
-
-from . import agents, config, score, vision
+from . import agents, config, llm, score, vision
 from .data import ProjectData
-from .tools import RUNS, RunContext
+from .reconcile import reconcile
+from .tools import RUNS, STATE, TOOLS, RunContext
+
+MODEL_CALLS = 40  # for one agent: the run's own limit is the one that stops it
 
 
 def rupiah(value: int) -> str:
@@ -42,17 +42,8 @@ def checked_summary(text: str | None, core: dict) -> tuple[str, bool]:
     return text.strip(), True
 
 
-def _emit_adk_event(run: RunContext, event) -> None:
-    usage = event.usage_metadata
-    if usage:
-        run.input_tokens += usage.prompt_token_count or 0
-        run.output_tokens += config.output_tokens(usage)
-        run.emit({"type": "usage", "llm_calls": run.llm_calls, "input_tokens": run.input_tokens, "output_tokens": run.output_tokens, "usd": round(run.usd, 4)})
-    for part in (event.content.parts if event.content and event.content.parts else []):
-        if part.function_call:
-            run.emit({"type": "tool", "agent": event.author, "name": part.function_call.name, "args": dict(part.function_call.args or {})})
-        elif part.text and not part.thought and event.is_final_response():
-            run.emit({"type": "say", "agent": event.author, "text": part.text})
+class Stop(Exception):
+    """A limit was reached: no more model calls in this run."""
 
 
 async def run_review(mode: str = "mock", emit: Callable[[dict], None] | None = None, model_of: Callable[[str], object] | None = None,
@@ -60,46 +51,95 @@ async def run_review(mode: str = "mock", emit: Callable[[dict], None] | None = N
     run_id = run_id or f"run-{uuid.uuid4().hex[:10]}"
     emit = emit or (lambda e: None)
     data = ProjectData.load()
-    if mode == "gemini":
-        config.export_google_env()
-        backend = vision.GeminiVision(data.folder)
-    else:
-        backend = vision.MockVision(data.folder)
+    backend = vision.MuseVision(data.folder, config.MODEL_VISION) if mode == "muse" else vision.MockVision(data.folder)
     run = RunContext(data=data, vision=backend, emit=emit)
     RUNS[run_id] = run
     limit_calls = max_llm_calls or config.MAX_LLM_CALLS
     limit_usd = max_usd if max_usd is not None else config.MAX_USD
+    model_of = model_of or (lambda role: agents.model_for(mode, role, delay))
 
     emit({"type": "start", "run_id": run_id, "mode": mode, "limits": {"max_llm_calls": limit_calls, "max_usd": limit_usd}})
-    swarm = agents.build_swarm(model_of or (lambda role: agents.model_for(mode, role, delay)))
-    sessions = InMemorySessionService()
-    runner = Runner(app_name="claim_review", agent=swarm, session_service=sessions)
-    session = await sessions.create_session(app_name="claim_review", user_id="pm", state={"run_id": run_id})
-    message = types.Content(role="user", parts=[types.Part(text="Review the draft progress claim.")])
-
+    state: dict = {"run_id": run_id}
+    STATE.set(state)
     status, stop_reason = "complete", None
-    abort = asyncio.Event()
-    stream = runner.run_async(user_id="pm", session_id=session.id, new_message=message, run_config=RunConfig(max_llm_calls=limit_calls), abort_signal=abort)
-    try:
-        async for event in stream:
-            _emit_adk_event(run, event)
-            if event.error_code:
-                raise RuntimeError(f"{event.error_code}: {event.error_message}")
-            if run.usd > limit_usd:
-                status, stop_reason = "partial", f"Stopped at the spending limit of ${limit_usd:.2f}."
-                emit({"type": "error", "message": stop_reason})
-                break
-    except Exception as e:  # a failed run still reports what it has: lines without their evidence go to inspection
-        status, stop_reason = "partial", f"{type(e).__name__}: {e}"
-        emit({"type": "error", "message": stop_reason})
-        traceback.print_exc()
-    finally:
-        abort.set()
-        await stream.aclose()  # or the parallel agents would keep calling the model after a stop
 
-    state = (await sessions.get_session(app_name="claim_review", user_id="pm", session_id=session.id)).state
+    def gate() -> None:
+        """Before every model call, in every agent: side by side, one reaching a limit stops them all."""
+        nonlocal stop_reason
+        if run.llm_calls >= limit_calls:
+            stop_reason = stop_reason or f"Stopped at the limit of {limit_calls} model calls."
+        elif run.usd > limit_usd:
+            stop_reason = stop_reason or f"Stopped at the spending limit of ${limit_usd:.2f}."
+        if stop_reason:
+            raise Stop(stop_reason)
+        run.llm_calls += 1  # counted as it starts, or agents side by side would all pass at once
+
+    def count(used_in: int, used_out: int) -> None:
+        run.input_tokens += used_in
+        run.output_tokens += used_out
+        emit({"type": "usage", "llm_calls": run.llm_calls, "input_tokens": run.input_tokens, "output_tokens": run.output_tokens, "usd": round(run.usd, 4)})
+
+    def tooled(role: str, fn: Callable) -> Callable:
+        """The UI hears each tool call."""
+        if inspect.iscoroutinefunction(fn):
+            @functools.wraps(fn)
+            async def run_async(**k):
+                emit({"type": "tool", "agent": role, "name": fn.__name__, "args": dict(k)})
+                return await fn(**k)
+            return run_async
+
+        @functools.wraps(fn)
+        def run_sync(**k):
+            emit({"type": "tool", "agent": role, "name": fn.__name__, "args": dict(k)})
+            return fn(**k)
+        return run_sync
+
+    async def agent(role: str) -> str:
+        emit({"type": "agent", "agent": role, "status": "working"})
+        text = await llm.turn(model_of(role), f"{agents.COMMON}\n\n{agents.INSTRUCTIONS[role]}", [tooled(role, t) for t in TOOLS[role]], "Review the draft progress claim.", MODEL_CALLS, count, gate)
+        if text:
+            emit({"type": "say", "agent": role, "text": text})
+        emit({"type": "agent", "agent": role, "status": "done"})
+        return text
+
+    def step(role: str, work: Callable[[], str]) -> None:
+        emit({"type": "agent", "agent": role, "status": "working"})
+        emit({"type": "say", "agent": role, "text": work()})
+        emit({"type": "agent", "agent": role, "status": "done"})
+
+    def compare() -> str:
+        state["reconciled"] = lines = reconcile(data, agents.collect_findings(state))
+        emit({"type": "reconciled", "lines": lines})
+        return f"Compared {len(lines)} lines across the sources."
+
+    def finalize() -> str:
+        state["report_core"] = core = agents.build_report_core(data, state)
+        emit({"type": "finalized", **core})
+        return "Rulings applied and totals added up."
+
+    summary_text = None
+    try:
+        await agent("lead_plan")
+        async with asyncio.TaskGroup() as side_by_side:  # one failing cancels the others, so they stop calling the model
+            for role in ("field", "schedule", "documents", "cost"):
+                side_by_side.create_task(agent(role))
+        step("reconcile", compare)
+        await agent("verifier")
+        step("finalize", finalize)
+        summary_text = await agent("lead_summary")
+    except BaseException as e:  # noqa: BLE001 - a failed run still reports what it has: lines without their evidence go to inspection
+        if isinstance(e, (KeyboardInterrupt, SystemExit, asyncio.CancelledError)):
+            raise
+        while isinstance(e, BaseExceptionGroup):  # what really went wrong, not the group agents side by side raise it in
+            e = e.exceptions[0]
+        status, limited = "partial", bool(stop_reason)
+        stop_reason = stop_reason or f"{type(e).__name__}: {e}"
+        emit({"type": "error", "message": stop_reason})
+        if not limited:
+            traceback.print_exc()
+
     core = state.get("report_core") or agents.build_report_core(data, state)
-    summary, from_lead = checked_summary(state.get("lead_summary_text") if status == "complete" else None, core)
+    summary, from_lead = checked_summary(summary_text if status == "complete" else None, core)
     report = {"run_id": run_id, "mode": mode, "status": status, "stop_reason": stop_reason, "project": data.project, **core, "summary": summary,
               "summary_from_lead": from_lead, "plan": state.get("plan"), "refused": run.refused,
               "usage": {"llm_calls": run.llm_calls, "input_tokens": run.input_tokens, "output_tokens": run.output_tokens, "usd": round(run.usd, 4)}}

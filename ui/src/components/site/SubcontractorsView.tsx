@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api, Bar, clean, field, full, good, Kpi, Kpis, Label, Loading, money, Pill, primary, Problem, quiet, short, Side, Table, td, tr, useData, type Rec, type Tone } from "./kit";
 
 /* Subcontractors: onboarding, documents and their expiry, packages, invoices and what each one owes. A subcontractor cannot be approved with a document missing or expired, and an invoice cannot be certified past the work verified. */
@@ -8,9 +8,10 @@ const RATING: Record<string, Tone> = { good: "ok", watch: "warn", new: "violet" 
 const INVOICE: Record<string, Tone> = { submitted: "warn", certified: "info", paid: "ok" };
 const EMPTY = { name: "", trade: "", scope: "", crew: "" };
 
-export function SubcontractorsView() {
+export function SubcontractorsView({ target }: { target?: string }) {
   const { data, err, act } = useData("/api/project/subcontractors");
-  const [sel, setSel] = useState<string | null>(null);
+  const [sel, setSel] = useState<string | null>(target || null);
+  useEffect(() => { if (target) setSel(target); }, [target]);
   const [form, setForm] = useState<typeof EMPTY | null>(null);
   const [doc, setDoc] = useState({ name: "", expires: "" });
   if (!data) return <div className="flex-1"><Problem err={err} />{!err && <Loading />}</div>;
@@ -18,7 +19,7 @@ export function SubcontractorsView() {
   const open = rows.find((s) => s.id === sel);
   const paid = rows.reduce((n, s) => n + s.paid_to_date, 0), held = rows.reduce((n, s) => n + s.retention_held, 0);
   return (
-    <div className="flex min-w-0 flex-1 overflow-hidden text-[12px]">
+    <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden text-[12px]">
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <Bar title="Subcontractors" note="packages, documents, performance and payments">
           <button onClick={() => { setForm({ ...EMPTY }); setSel(null); }} className={primary}>Add a subcontractor</button>

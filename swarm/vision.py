@@ -37,29 +37,6 @@ class MockVision:
         return result(photo["id"], self.annotations[photo["id"]], "mock (generator's annotations)"), 0, 0
 
 
-class GeminiVision:
-    def __init__(self, folder: Path, model: str | None = None):
-        from google import genai
-        from google.genai import types
-
-        self.client = genai.Client(http_options=types.HttpOptions(retry_options=types.HttpRetryOptions(attempts=4)))
-        self.model, self.folder = model or config.MODEL_VISION, folder
-
-    async def inspect(self, photo: dict) -> tuple[dict, int, int]:
-        from google.genai import types
-
-        file = self.folder / "photos" / photo["file"]
-        mime = "image/jpeg" if file.suffix == ".jpg" else "image/png"
-        question = PROMPT.format(caption=photo["caption"], what_to_count=photo["what_to_count"])
-        r = await self.client.aio.models.generate_content(
-            model=self.model, contents=[types.Part.from_bytes(data=file.read_bytes(), mime_type=mime), question],
-            config=types.GenerateContentConfig(temperature=0, response_mime_type="application/json"))
-        usage = r.usage_metadata
-        seen = parse(r.text)
-        return (result(photo["id"], seen, f"vision: {self.model}"), (usage.prompt_token_count or 0) if usage else 0,
-                config.output_tokens(usage) if usage else 0)
-
-
 class MuseVision:
     """Muse Spark reads the photo through the Meta Model API."""
 

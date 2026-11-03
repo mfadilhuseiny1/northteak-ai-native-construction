@@ -5,11 +5,18 @@ from __future__ import annotations
 
 import json
 
-from mcp.server.mcpserver import MCPServer
+from mcp.server import FastMCP
 
-from swarm.site_case import MESSAGES
+try:
+    from swarm.site_case import MESSAGES
+except ModuleNotFoundError:  # run as a file, not as a module: the package root is one folder up
+    import pathlib
+    import sys
 
-mcp = MCPServer("demo-messages")
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+    from swarm.site_case import MESSAGES
+
+mcp = FastMCP("demo-messages")
 DRAFTS: list[dict] = []
 
 

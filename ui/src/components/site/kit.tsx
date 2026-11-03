@@ -1,9 +1,23 @@
 "use client";
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { Icon } from "@/components/Icon";
 import { API_URL } from "@/lib/api";
 
-/* What the project screens share: calling the API, and the few pieces every screen draws. */
+/* What the project screens share: calling the API, moving between modules, the WBS focus, and the few pieces every screen draws. */
+
+/** A change in one module shows in the others: whoever changes a record says so, and every screen reads its data again. */
+export const notifyChanged = () => window.dispatchEvent(new Event("records-changed"));
+
+/** Move to a module: "kanban", "kanban/daily", or "documents/rfis:RFI-035" to open that record there. */
+export const GoContext = createContext<(path: string) => void>(() => {});
+export const useGo = () => useContext(GoContext);
+
+/** One node of the WBS, picked out: every module then shows only what hangs on it. */
+export type Focus = { code: string; name: string; type: string; package?: string; activities: string[] } | null;
+export const FocusContext = createContext<{ focus: Focus; setFocus: (f: Focus) => void }>({ focus: null, setFocus: () => {} });
+export const useFocus = () => useContext(FocusContext);
+export const inFocus = (focus: Focus, r: { activity?: string; package?: string }) =>
+  !focus || focus.type === "project" || (r.activity ? focus.activities.includes(r.activity) : !!focus.package && r.package === focus.package);
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type Rec = Record<string, any>;
@@ -20,8 +34,13 @@ export function useData<T = Rec>(path: string) {
   const [err, setErr] = useState("");
   const reload = useCallback(() => api<T>(path).then((d) => { setData(d); setErr(""); }).catch((e) => setErr((e as Error).message)), [path]);
   useEffect(() => { void reload(); }, [reload]);
+  useEffect(() => {
+    const again = () => void reload();
+    window.addEventListener("records-changed", again);
+    return () => window.removeEventListener("records-changed", again);
+  }, [reload]);
   const act = async (fn: () => Promise<unknown>) => {
-    try { await fn(); setErr(""); await reload(); return true; } catch (e) { setErr((e as Error).message); return false; }
+    try { await fn(); setErr(""); await reload(); notifyChanged(); return true; } catch (e) { setErr((e as Error).message); return false; }
   };
   return { data, err, reload, act };
 }
@@ -32,7 +51,11 @@ export const money = (n?: number | null) => {
   return a >= 1e9 ? `Rp ${(v / 1e9).toFixed(2)} bn` : a >= 1e6 ? `Rp ${(v / 1e6).toFixed(1)} m` : `Rp ${v.toLocaleString("en-US")}`;
 };
 export const full = (n?: number | null) => (n == null ? "–" : `Rp ${Number(n).toLocaleString("en-US")}`);
+export const num = (n: number, d = 1) => Number(n).toLocaleString("en-US", { maximumFractionDigits: d });
+export const inDays = (from: string, to: string) => Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86400000);
 export const short = (d?: string) => (d ? d.slice(5) : "–");
+/** From when to when. The year shows when it changes: "11-09 to 11-07" reads as ending before it starts. */
+export const dates = (a?: string, b?: string) => (a && b && a.slice(0, 4) !== b.slice(0, 4) ? `${a} to ${b}` : `${short(a)} to ${short(b)}`);
 export const clean = (s?: string) => (s ?? "").replace(" (fictional)", "");
 
 export type Tone = "ok" | "warn" | "bad" | "info" | "none" | "violet";
@@ -100,8 +123,33 @@ export const primary = "rounded bg-[#5b5fd6] px-2.5 py-1 text-[11.5px] font-medi
 export const good = "rounded bg-[#29a383] px-2.5 py-1 text-[11.5px] font-medium text-white hover:brightness-110 disabled:opacity-40";
 export const quiet = "rounded border border-white/15 px-2 py-0.5 text-[11px] text-[#d3d8de] hover:bg-white/5 disabled:opacity-40";
 
+/** A link to a record in another module. */
+export function Ref({ to, tone = "none", children }: { to: string; tone?: Tone; children: ReactNode }) {
+  const go = useGo();
+  return <button onClick={(e) => { e.stopPropagation(); go(to); }} className="hover:brightness-125"><Pill tone={tone}>{children}</Pill></button>;
+}
+
+/** The module's own tabs, under the main ones. */
+export function SubTabs({ base, tabs, sub, right }: { base: string; tabs: [string, string, (number | string)?][]; sub: string; right?: ReactNode }) {
+  const go = useGo();
+  return (
+    <div className="flex shrink-0 flex-wrap items-center gap-1 border-b border-white/10 bg-[#1c2127] px-3 pt-1.5" role="tablist">
+      {tabs.map(([k, label, n]) => (
+        <button key={k} role="tab" aria-selected={sub === k} onClick={() => go(`${base}/${k}`)} className={`rounded-t px-2.5 py-1 text-[11.5px] ${sub === k ? "bg-[#161a1f] font-medium text-white" : "text-[#abb3bf] hover:text-white"}`}>
+          {label}{n ? <span className="ml-1 rounded-full bg-[#fab219] px-1.5 text-[10px] font-semibold text-black">{n}</span> : null}
+        </button>
+      ))}
+      {right && <div className="mb-1 ml-auto flex items-center gap-1.5">{right}</div>}
+    </div>
+  );
+}
+
+export function Empty({ children }: { children: ReactNode }) {
+  return <p className="p-6 text-center text-[#8f99a8]">{children}</p>;
+}
+
 export function Problem({ err }: { err: string }) {
-  return err ? <p className="shrink-0 bg-[#e5484d]/10 px-4 py-1 text-[11px] text-[#ffb4b4]">{err}</p> : null;
+  return err ? <p className="shrink-0 bg-[#e5484d]/10 px-4 py-1 text-[11px] text-[#ffb4b4]">{err[0].toUpperCase() + err.slice(1)}</p> : null;
 }
 export function Loading() {
   return <p className="p-6 text-[#abb3bf]">Loading…</p>;

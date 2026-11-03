@@ -1,22 +1,14 @@
-"""The swarm, as ADK agents:
+"""The first prototype's swarm:
 
     lead_plan -> [field | schedule | documents | cost, in parallel] -> reconcile (code) -> verifier -> finalize (code) -> lead_summary
 
-To move to another model family, change `model_for`: nothing else here depends on the provider.
+The order is plain code, in runner.py. To move to another model, change `model_for`: nothing else here depends on the provider.
 """
 
 from __future__ import annotations
 
-from typing import AsyncGenerator, Callable
-
-from google.adk.agents import BaseAgent, LlmAgent, ParallelAgent, SequentialAgent
-from google.adk.events import Event, EventActions
-from google.adk.models import Gemini
-from google.genai import types
-
-from . import config, mock_llm
+from . import config, llm, mock_llm
 from .reconcile import apply_rulings, reconcile, totals
-from .tools import RUNS, TOOLS
 
 AGENTS = [
     {"name": "lead_plan", "label": "Lead", "does": "Reads the claim and sets the plan"},
@@ -64,78 +56,26 @@ Use only the numbers in the report, written the same way, as rupiah. Call them d
 def model_for(mode: str, role: str, delay: float = 0.0):
     if mode == "mock":
         return mock_llm.MockLlm(model=f"mock/{role}", brain=mock_llm.BRAINS[role], delay=delay)
-    if mode == "gemini":
-        name = config.MODEL_LEAD if role in ("lead_plan", "verifier", "lead_summary") else config.MODEL_WORKER
-        return Gemini(model=name, retry_options=types.HttpRetryOptions(attempts=4))
-    raise ValueError(f"unknown mode {mode}")  # Muse goes here: an OpenAI-style endpoint through ADK's LiteLlm wrapper
+    if mode == "muse":
+        return llm.muse(config.MODEL_LEAD if role in ("lead_plan", "verifier", "lead_summary") else config.MODEL_WORKER)
+    raise ValueError(f"unknown mode {mode}")
 
 
-def _started(callback_context) -> None:
-    RUNS[callback_context.state["run_id"]].emit({"type": "agent", "agent": callback_context.agent_name, "status": "working"})
-
-
-def _finished(callback_context) -> None:
-    RUNS[callback_context.state["run_id"]].emit({"type": "agent", "agent": callback_context.agent_name, "status": "done"})
-
-
-def _count_call(callback_context, llm_response) -> None:
-    RUNS[callback_context.state["run_id"]].llm_calls += 1  # after the model: a call ADK's limit blocked does not count
-
-
-def collect_findings(state) -> dict[str, dict[str, dict]]:
+def collect_findings(state: dict) -> dict[str, dict[str, dict]]:
     findings: dict[str, dict[str, dict]] = {}
-    for key, value in state.to_dict().items() if hasattr(state, "to_dict") else state.items():
+    for key, value in state.items():
         if key.startswith("finding:"):
             _, source, code = key.split(":", 2)
             findings.setdefault(source, {})[code] = value
     return findings
 
 
-def collect(state, prefix: str) -> dict[str, dict]:
-    items = state.to_dict().items() if hasattr(state, "to_dict") else state.items()
-    return {key[len(prefix):]: value for key, value in items if key.startswith(prefix)}
+def collect(state: dict, prefix: str) -> dict[str, dict]:
+    return {key[len(prefix):]: value for key, value in state.items() if key.startswith(prefix)}
 
 
-def build_report_core(data, state) -> dict:
+def build_report_core(data, state: dict) -> dict:
     """Lines, totals and extra work from whatever the state holds: also used when a run was cut short."""
     lines = state.get("reconciled") or reconcile(data, collect_findings(state))
     lines = apply_rulings(lines, collect(state, "ruling:"))
     return {"lines": lines, "totals": totals(lines), "extra_work": list(collect(state, "extra:").values())}
-
-
-class ReconcileAgent(BaseAgent):
-    async def _run_async_impl(self, ctx) -> AsyncGenerator[Event, None]:
-        state = ctx.session.state
-        run = RUNS[state["run_id"]]
-        lines = reconcile(run.data, collect_findings(state))
-        run.emit({"type": "reconciled", "lines": lines})
-        yield Event(author=self.name, invocation_id=ctx.invocation_id, branch=ctx.branch, actions=EventActions(state_delta={"reconciled": lines}),
-                    content=types.Content(role="model", parts=[types.Part(text=f"Compared {len(lines)} lines across the sources.")]))
-
-
-class FinalizeAgent(BaseAgent):
-    async def _run_async_impl(self, ctx) -> AsyncGenerator[Event, None]:
-        state = ctx.session.state
-        run = RUNS[state["run_id"]]
-        core = build_report_core(run.data, state)
-        run.emit({"type": "finalized", **core})
-        yield Event(author=self.name, invocation_id=ctx.invocation_id, branch=ctx.branch, actions=EventActions(state_delta={"report_core": core}),
-                    content=types.Content(role="model", parts=[types.Part(text="Rulings applied and totals added up.")]))
-
-
-def _agent(role: str, model_of: Callable[[str], object], output_key: str | None = None) -> LlmAgent:
-    return LlmAgent(name=role, model=model_of(role), instruction=f"{COMMON}\n\n{INSTRUCTIONS[role]}", tools=TOOLS[role], include_contents="none",
-                    output_key=output_key, disallow_transfer_to_parent=True, disallow_transfer_to_peers=True,
-                    generate_content_config=types.GenerateContentConfig(temperature=0.1),
-                    before_agent_callback=_started, after_agent_callback=_finished, after_model_callback=_count_call)
-
-
-def build_swarm(model_of: Callable[[str], object]) -> SequentialAgent:
-    return SequentialAgent(name="claim_review", sub_agents=[
-        _agent("lead_plan", model_of),
-        ParallelAgent(name="specialists", sub_agents=[_agent(role, model_of) for role in ("field", "schedule", "documents", "cost")]),
-        ReconcileAgent(name="reconcile", before_agent_callback=_started, after_agent_callback=_finished),
-        _agent("verifier", model_of),
-        FinalizeAgent(name="finalize", before_agent_callback=_started, after_agent_callback=_finished),
-        _agent("lead_summary", model_of, output_key="lead_summary_text"),
-    ])

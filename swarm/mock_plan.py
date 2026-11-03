@@ -2,14 +2,10 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
-from typing import AsyncGenerator
 
-from google.adk.models import BaseLlm, LlmRequest, LlmResponse
-from google.genai import types
-
-from .mock_firm import HANDOFF, _results
+from .llm import Scripted
+from .mock_firm import HANDOFF
 
 SECTIONS = {
     "rebar": [("rb_cut", "Cut rebar to length", "Cut D22 main bars and D10 stirrup bars to the cutting list in the yard with the bar cutter. Keep off-cuts sorted by size for stirrups. Wear gloves and eye protection.", [], "SNI-6.17", "Q-REBAR", 20, ["rebar"], False, ["PLAN-RKS-03", "PLAN-DWG-S401-B"]),
@@ -47,11 +43,11 @@ def script(key: str, r: dict, tools: set[str] = frozenset()) -> list[tuple[str, 
             if "read_package_index" not in r:
                 return [("read_package_index", {}), ("read_package", {"kind": "scope"})]
             return json.dumps({"ringkasan": "Level 4 columns: 12 columns C1 in activities A50 and A60. The plan must say how to build them, with what, and what in the package disagrees.", "hipotesis": [{"id": "H1", "teks": "The BoQ may not match the drawing in force."}, {"id": "H2", "teks": "The programme's crew may be too thin."}],
-                               "sections": [{"id": "rebar", "name": "Steel rebar", "by": "besi"}, {"id": "formwork", "name": "Formwork", "by": "rangka"}, {"id": "concrete", "name": "Concrete mixture", "by": "self"}, {"id": "assembly", "name": "Erection and casting", "by": "self"}],
+                               "sections": [{"id": "rebar", "name": "Steel rebar", "by": "besi", "activity": "A50"}, {"id": "formwork", "name": "Formwork", "by": "rangka", "activity": "A50"}, {"id": "concrete", "name": "Concrete mixture", "by": "self", "activity": "A60"}, {"id": "assembly", "name": "Erection and casting", "by": "self", "activity": ""}],
                                "kontrak": ["Every number comes from code.", "Every inspection can still stop a mistake.", "What in the package disagrees is said plainly."]})
         if "read_plan" not in r:
             return [("read_plan", {})]
-        return "## What this plan does\nIt builds the 12 columns of Level 4 in the order on the chart, with the workforce, material and waste of each step worked out from the standard.\n\n## Settle these before work starts\nThe BoQ was priced on the superseded drawing, so raise a variation. The specification and drawing differ on stirrups near the column ends, so ask the engineer. PT Besi Karya is not programmed on A50. Columns E2 and E4 wait for the answer to RFI-035.\n\n## Watch on site\nThe hold point on the cages needs 24 hours' notice to the engineer. The programme allows too few workers: the crew on the chart is what the work needs."
+        return "## What this plan does\nIt breaks the 12 columns of Level 4 down into the tasks in the WBS, in order, with the workforce, material and waste of each task worked out from the standard.\n\n## Settle these before work starts\nThe BoQ was priced on the superseded drawing, so raise a variation. The specification and drawing differ on stirrups near the column ends, so ask the engineer. PT Besi Karya is not programmed on A50. Columns E2 and E4 wait for the answer to RFI-035.\n\n## Watch on site\nThe hold point on the cages needs 24 hours' notice to the engineer. The programme allows too few workers: the crew in the WBS is what the work needs."
     if key == "doc_drawings":
         if "read_package" not in r:
             return [("read_package", {"kind": "drawing"}), ("read_package", {"kind": "spec"}), ("read_package", {"kind": "boq"}), ("read_norms", {})]
@@ -99,13 +95,13 @@ def script(key: str, r: dict, tools: set[str] = frozenset()) -> list[tuple[str, 
             return [("read_steps", {})]
         if "link_steps" not in r:
             return [("link_steps", {"step": s, "after": a}) for s, a in LINKS]
-        return f"The feeders merge into the main stem.\n{HANDOFF}"
+        return f"The sections link into the assembly section.\n{HANDOFF}"
     if key == "quality":
         if "read_package" not in r:
             return [("read_package", {"kind": "itp"}), ("read_package", {"kind": "spec"}), ("read_steps", {})]
         if "add_inspection" not in r:
             return [("add_inspection", {"ref": f, "name": n, "section": sc, "itp": i, "criteria": c, "by_whom": b, "hold_point": hp, "after": a, "before": bf, "hours": h, "wait_days": w, "procedure": p, "evidence_ids": e}) for f, n, sc, i, c, b, hp, a, bf, h, w, p, e in INSPECTIONS]
-        return f"All four inspection plan items are on the chart.\n{HANDOFF}"
+        return f"All four inspection plan items are in the WBS.\n{HANDOFF}"
     if key == "site":
         if "read_package" not in r:
             return [("read_package", {"kind": "method"}), ("read_steps", {})]
@@ -155,18 +151,14 @@ def script(key: str, r: dict, tools: set[str] = frozenset()) -> list[tuple[str, 
     if key == "validator":
         if "read_package" not in r:
             return [("read_package", {"kind": "itp"})]
-        return json.dumps({"checks": [{"klaim": "Every inspection plan item is on the chart", "ok": True, "bukti": "PLAN-ITP-12"}], "kontrak": [{"id": "k1", "ok": True, "bukti": "checked"}, {"id": "k2", "ok": True, "bukti": "checked"}, {"id": "k3", "ok": True, "bukti": "checked"}]})
+        return json.dumps({"checks": [{"klaim": "Every inspection plan item is in the WBS", "ok": True, "bukti": "PLAN-ITP-12"}], "kontrak": [{"id": "k1", "ok": True, "bukti": "checked"}, {"id": "k2", "ok": True, "bukti": "checked"}, {"id": "k3", "ok": True, "bukti": "checked"}]})
     return f"Done.\n{HANDOFF}"
 
 
-class MockPlanLlm(BaseLlm):
-    agent_key: str = ""
-    delay: float = 0.0
+class MockPlanLlm(Scripted):
+    def __init__(self, model: str = "mock", agent_key: str = "", delay: float = 0.0):
+        super().__init__(model, delay)
+        self.agent_key = agent_key
 
-    async def generate_content_async(self, llm_request: LlmRequest, stream: bool = False) -> AsyncGenerator[LlmResponse, None]:
-        if self.delay:
-            await asyncio.sleep(self.delay)
-        answer = script(self.agent_key, _results(llm_request), set(llm_request.tools_dict or {}))
-        parts = [types.Part(text=answer)] if isinstance(answer, str) else [types.Part.from_function_call(name=n, args=a) for n, a in answer]
-        usage = types.GenerateContentResponseUsageMetadata(prompt_token_count=0, candidates_token_count=0, total_token_count=0)
-        yield LlmResponse(content=types.Content(role="model", parts=parts), usage_metadata=usage)
+    def answer(self, results: dict, tools: set[str]) -> list[tuple[str, dict]] | str:
+        return script(self.agent_key, results, tools)

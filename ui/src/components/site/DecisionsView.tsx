@@ -1,9 +1,9 @@
 "use client";
 import { useState } from "react";
 import { Markdown } from "@/components/aip/Briefing";
-import { api, Bar, Card, field, full, good, Kpi, Kpis, Label, Loading, Pill, primary, Problem, quiet, short, Table, td, tr, useData, type Rec, type Tone } from "./kit";
+import { api, Bar, Card, field, full, good, Kpi, Kpis, Label, Loading, Pill, Problem, quiet, short, Table, td, tr, useData, useGo, type Rec, type Tone } from "./kit";
 
-/* Where agents' proposals become real, or don't. Approving a plan moves the schedule, adds its cost to the forecast and opens its work items; a message waits here for its own approval. Every step lands in the audit trail. */
+/* Where agents' proposals become real, or don't. Approving a plan moves the schedule, adds its cost to the forecast and opens its work items on the board; a message waits here for its own approval. Every step lands in the audit trail. */
 
 const VERDICT: Record<string, Tone> = { recommended: "ok", risky: "warn", rejected: "bad" };
 const STATUS: Record<string, Tone> = { pending: "warn", approved: "ok", rejected: "bad", superseded: "none", proposed: "violet", open: "info", done: "ok", draft: "violet" };
@@ -61,15 +61,15 @@ function Decision({ d, act }: { d: Rec; act: (fn: () => Promise<unknown>) => Pro
 
 export function DecisionsView() {
   const { data, err, act } = useData("/api/project/decisions");
-  const [form, setForm] = useState<Rec | null>(null);
+  const go = useGo();
   if (!data) return <div className="flex-1"><Problem err={err} />{!err && <Loading />}</div>;
   const decisions = data.decisions as Rec[], items = data.work_items as Rec[], messages = data.messages as Rec[], audit = data.audit as Rec[];
   const live = decisions.filter((d) => d.status !== "superseded");
   const openItems = items.filter((w) => w.status === "open");
   const drafts = messages.filter((m) => m.status === "draft");
   return (
-    <div className="flex min-w-0 flex-1 flex-col overflow-hidden text-[12px]">
-      <Bar title="Decisions" note="agents propose, people decide, and every step is recorded" />
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden text-[12px]">
+      <Bar title="Decisions" note="agents propose, people decide, and every step is recorded"><button onClick={() => go("kanban/board")} className={quiet}>Their work items are on the board</button></Bar>
       <Problem err={err} />
       <Kpis>
         <Kpi label="waiting for your decision" value={decisions.filter((d) => d.status === "pending").length} tone={decisions.some((d) => d.status === "pending") ? "warn" : undefined} />
@@ -78,30 +78,8 @@ export function DecisionsView() {
         <Kpi label="audit entries" value={audit.length} />
       </Kpis>
       <div className="min-h-0 flex-1 space-y-3 overflow-auto bg-[#161a1f] p-3">
-        {!live.length && <p className="rounded border border-white/10 bg-[#1c2127] p-6 text-center text-[#8f99a8]">No decision yet. Run a review in the AI Agent Swarm tab, and its recovery plan arrives here.</p>}
+        {!live.length && <p className="rounded border border-white/10 bg-[#1c2127] p-6 text-center text-[#8f99a8]">No decision yet. Run a review in the AI agent swarm, and its recovery plan arrives here.</p>}
         {live.slice(0, 3).map((d) => <Decision key={d.id} d={d} act={act} />)}
-        <Card title={`Work items (${items.length})`} right={<button onClick={() => setForm({ title: "", owner: "", due: "", activity: "" })} className={quiet}>Add one</button>}>
-          {form && (
-            <div className="grid grid-cols-[minmax(0,1fr)_200px_140px_90px_auto] gap-2 border-b border-white/5 p-2 max-lg:grid-cols-2">
-              <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="What must be done" className={field} />
-              <input value={form.owner} onChange={(e) => setForm({ ...form, owner: e.target.value })} placeholder="Who" className={field} />
-              <input type="date" aria-label="Due" value={form.due} onChange={(e) => setForm({ ...form, due: e.target.value })} className={field} />
-              <input value={form.activity} onChange={(e) => setForm({ ...form, activity: e.target.value })} placeholder="Activity" className={field} />
-              <button disabled={!form.title.trim() || !form.owner.trim()} onClick={async () => { if (await act(() => api("/api/project/work-items", form))) setForm(null); }} className={primary}>Add</button>
-            </div>
-          )}
-          {items.length ? (
-            <Table heads={["Item", "What", "Who", "Due", "Holds", "Proposed by", "Status", ""]}>
-              {items.map((w) => (
-                <tr key={w.id} className={tr}>
-                  <td className={td}>{w.id}</td><td className={td}><span className="text-white">{w.title}</span>{w.why && <p className="text-[10.5px] text-[#8f99a8]">{w.why}</p>}</td><td className={td}>{(w.owner ?? "").replace(" (fictional)", "")}</td><td className={td}>{short(w.due)}</td><td className={td}>{w.activity || "–"}</td><td className={td}>{w.proposed_by}</td>
-                  <td className={td}><Pill tone={STATUS[w.status] ?? "none"}>{w.status}</Pill></td>
-                  <td className={td}>{w.status === "open" && <button onClick={() => act(() => api(`/api/project/work-items/${w.id}`, { status: "done" }))} className={quiet}>Done</button>}{w.status === "done" && <button onClick={() => act(() => api(`/api/project/work-items/${w.id}`, { status: "open" }))} className={quiet}>Reopen</button>}</td>
-                </tr>
-              ))}
-            </Table>
-          ) : <p className="p-4 text-center text-[#8f99a8]">None yet.</p>}
-        </Card>
         <Card title={`Messages (${messages.length})`} right={<span className="text-[10.5px] font-normal text-[#8f99a8]">demo connector: approving records it, nothing is really sent</span>}>
           {messages.length ? messages.map((m) => (
             <div key={m.id} className="border-t border-white/5 px-3 py-2 first:border-t-0">

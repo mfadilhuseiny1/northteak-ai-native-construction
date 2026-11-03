@@ -126,7 +126,7 @@ export function ProjectHome({ cfg, project, count, busy, running, onStart, onCre
           </button>
           <p className="mt-2 max-w-[520px] text-center text-[11px] text-[#8f99a8]">
             {count ? `${count} reviews in this project (list on the left). ` : "No reviews in this project yet. "}
-            A disruption review's recovery plan arrives in the Decisions tab, and a planning review's chart in the Work plans tab. Nothing changes and nothing is sent until you approve it.
+            A disruption review's recovery plan arrives in Decisions, and a planning review's WBS in Project & WBS. Nothing changes and nothing is sent until you approve it.
           </p>
         </>
       ) : (

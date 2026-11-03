@@ -3,14 +3,15 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { Icon } from "@/components/Icon";
 import { Markdown } from "@/components/aip/Briefing";
+import { WbsReport } from "@/components/site/WbsDiagram";
 import { aip, modelName, txt, usd, wib, type AipEvent, type Rec, type Run } from "@/components/aip/aipRun";
 import { useTampilBiaya } from "@/components/aip/costToggle";
 import { firm, REVIEWED, STRENGTH, VERSI_BADGE, type FirmAgent, type FirmConfig, type Project, type Sizing, type Team } from "@/components/aip/firmApi";
 import { ProjectFormDialog, ProjectHome, StartForm, usdLimit } from "@/components/aip/ProjectViews";
 import { ContractCard, HandoffBlock, Lessons, ScrutinyCard, type Contract } from "@/components/aip/RunConcept";
 import { RunAnatomy } from "@/components/aip/RunAnatomy";
-import { FullReportView } from "@/components/aip/FullReportView";
 import { demoActive, demoPoll, useDemoSwarm } from "@/components/aip/demoSwarm";
+import { notifyChanged } from "@/components/site/kit";
 
 // the animation of the agents at work, loaded with this tab (it imports LINI from here: a static import would be a cycle)
 const AgentAnimation = dynamic(() => import("@/components/aip/AgentAnimation").then((m) => m.AgentAnimation), { ssr: false });
@@ -59,7 +60,7 @@ function useEngagement(id: string | null) {
           after = r.next;
           if (r.events.length) setEvents((es) => [...es, ...r.events]);
           setRun(r.run);
-          if (r.run.status !== "running") return;
+          if (r.run.status !== "running") { notifyChanged(); return; }
         }
       }
     }).catch(() => {});
@@ -256,7 +257,8 @@ export function SwarmView() {
       </div>
       {report?.statistik && <p className="mb-2 text-[11px] text-[#8f99a8]">{Object.entries(report.statistik as Rec).map(([k, v]) => `${k.replace(/_/g, " ")}: ${typeof v === "object" ? JSON.stringify(v) : v}`).join(" · ")}</p>}
       {copiedNote}
-      <Markdown text={String(report?.laporan ?? draft ?? "")} />
+      {isPlan && report && !report.wbs && <p className="mb-3 rounded bg-white/[.04] px-2 py-1 text-[11px] text-[#c5cbd3]">This review was saved before reports drew the WBS, so its steps show as a table. Plan it again from Project &amp; WBS to see the breakdown.</p>}
+      <WbsReport text={String(report?.laporan ?? draft ?? "")} plan={report?.wbs as Rec | undefined} />
     </section>
   ) : null;
 
@@ -273,11 +275,11 @@ export function SwarmView() {
           <p className="line-clamp-4 text-[11px] leading-snug text-[#abb3bf]">The agents work one review on this project's records (synthetic data): the orchestrator, each domain lead leading its analysts (site analysts, subcontract specialists, risk register option analysts, impact analysts), the validator with QA and the red team. The validation contract is written before work; code validators close each phase.</p>
           <button disabled={!cfg} onClick={() => setForm({ project: null })} title={cfg ? undefined : "loading configuration…"}
             className="flex w-full items-center justify-center gap-1 rounded-sm bg-[#5b5fd6] py-1.5 font-medium text-white hover:bg-[#6a6ee0] disabled:opacity-40">
-            <Icon name="plus" className="h-3 w-3" />Create new project
+            <Icon name="plus" className="h-3 w-3" />New review workspace
           </button>
           {err && ask !== "mulai" && <p className="text-[11px] text-red-300">{err}</p>}
         </div>
-        <p className="px-3 pt-2 font-semibold text-[#e5e8eb]">Projects</p>
+        <p className="px-3 pt-2 font-semibold text-[#e5e8eb]">Review workspaces</p>
         <div className="min-h-0 flex-1 overflow-y-auto">
           {all.map((p) => {
             const rs = runsOf(p.id);
@@ -335,7 +337,7 @@ export function SwarmView() {
               </div>
             );
           })}
-          {!all.length && <p className="px-3 py-2 text-[11px] text-[#8f99a8]">No projects yet.</p>}
+          {!all.length && <p className="px-3 py-2 text-[11px] text-[#8f99a8]">No workspaces yet.</p>}
         </div>
         {sizing.length > 0 && (
           <details className="border-t border-white/5 px-3 py-2">
@@ -373,7 +375,7 @@ export function SwarmView() {
               </div>
             );
           })}
-          <button disabled={!cfg} onClick={() => setForm({ project: null })} title="Create new project" aria-label="Create new project"
+          <button disabled={!cfg} onClick={() => setForm({ project: null })} title="New review workspace" aria-label="New review workspace"
             className="mb-1 ml-1 shrink-0 rounded p-1 text-[#abb3bf] hover:bg-white/10 hover:text-white disabled:opacity-40"><Icon name="plus" className="h-3.5 w-3.5" /></button>
           {project && (
             <div className="mb-1 ml-auto flex shrink-0 items-center gap-1.5 pl-3">
@@ -423,7 +425,7 @@ export function SwarmView() {
           <div className="ml-auto flex flex-wrap gap-1">
             {["penugasan", "lapangan", "register", "investigasi", "sintesis", "qa", "laporan"].map((p) => {
               const st = phases[p]?.status;
-              return <span key={p} className={`rounded-full border px-2 py-0.5 text-[10.5px] ${st === "selesai" ? "border-[#29a383]/50 text-[#7ee2c0]" : st === "mulai" ? "border-[#b8a9ff] text-white" : "border-white/10 text-[#8f99a8]"}`}>{((isPlan ? { penugasan: "Assign", lapangan: "Document reading", register: "Quantities", investigasi: "Section planning", sintesis: "Integration", qa: "QA & red team", laporan: "OPC & procedure" } : { penugasan: "Assign", lapangan: "Field reading", register: "Risk register", investigasi: "Option analysis", sintesis: "Synthesis", qa: "QA & red team", laporan: "Recovery plan" }) as Record<string, string>)[p] ?? p}</span>;
+              return <span key={p} className={`rounded-full border px-2 py-0.5 text-[10.5px] ${st === "selesai" ? "border-[#29a383]/50 text-[#7ee2c0]" : st === "mulai" ? "border-[#b8a9ff] text-white" : "border-white/10 text-[#8f99a8]"}`}>{((isPlan ? { penugasan: "Assign", lapangan: "Document reading", register: "Quantities", investigasi: "Section planning", sintesis: "Integration", qa: "QA & red team", laporan: "WBS & procedure" } : { penugasan: "Assign", lapangan: "Field reading", register: "Risk register", investigasi: "Option analysis", sintesis: "Synthesis", qa: "QA & red team", laporan: "Recovery plan" }) as Record<string, string>)[p] ?? p}</span>;
             })}
           </div>
         </div>
@@ -449,7 +451,7 @@ export function SwarmView() {
         </div>
         <div className="p-3">
           {tab === "laporan" && (report && run?.status === "succeeded" && sel ? (
-            <>{copiedNote}<FullReportView key={sel} run={sel} verdict={finalVerdict} fallback={orchestratorReport} /></>
+            orchestratorReport
           ) : orchestratorReport ?? (
             <p className="py-10 text-center text-[#8f99a8]">The report is written in the review's last phase: outline first, then each section from its sources, checked by the validator. Meanwhile, see Work trail and Signals.</p>
           ))}

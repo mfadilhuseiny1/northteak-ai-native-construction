@@ -52,7 +52,7 @@ const PLAN_PHASES: [string, string, string][] = [
   ["investigasi", "Section planning", "One planner per section writes its operations and procedures, on the national standard's norms."],
   ["sintesis", "Integration", "Leads merge the sections, place inspections and handling, assign crews, find waste and settle what disagrees."],
   ["qa", "QA & red team", "A reviewer and the red team, on the other model, try to break the plan."],
-  ["laporan", "OPC & procedure", "The chart and procedure go to a person to approve; the validator judges them against the contract."],
+  ["laporan", "WBS & procedure", "The WBS and procedure go to a person to approve; the validator judges them against the contract."],
 ];
 const PLAN_CARDS: Record<string, [string, string]> = {
   indikasi: ["Findings", "what in the package does not agree"],
@@ -861,7 +861,7 @@ export function AgentAnimation({ full = false, initialRun, embedded = false, pla
                           </g>
                         ))}
                         <text x={12} y={126} className="fill-[#c5cbd3] text-[9.5px]">{L.final ? `report validator: ${L.final.passed}/${L.final.total}` : "report validator: waiting"}{L.report ? " · report handed over" : ""}</text>
-                        <text x={12} y={142} className="fill-[#8f99a8] text-[9.5px]">{isPlan ? "a person approves it, in the Work plans tab" : "the project manager decides, in the Decisions tab"}</text>
+                        <text x={12} y={142} className="fill-[#8f99a8] text-[9.5px]">{isPlan ? "a person approves it, in Project & WBS" : "the project manager decides, in the Control Tower"}</text>
                         
                       </g>
                     )}
@@ -991,7 +991,7 @@ export function AgentAnimation({ full = false, initialRun, embedded = false, pla
               )}
               {focus.card === "keputusan" && (
                 <div className="space-y-1 text-[11px] text-[#c5cbd3]">
-                  <p>{isPlan ? "Each section planner writes its operations and procedures. The chart goes to a person, who approves it in the Work plans tab." : "Option analysts recommend an option ruling per item (rejected only if Schedule, Cost and Constraints are all met); the project manager decides in the Decisions tab."}</p>
+                  <p>{isPlan ? "Each section planner writes its operations and procedures. The WBS goes to a person, who approves it in Project & WBS." : "Option analysts recommend an option ruling per item (rejected only if Schedule, Cost and Constraints are all met); the project manager decides in Decisions."}</p>
                   <ul className="space-y-0.5">{L.log.filter((l) => l.kind === "decision" && l.key !== "partner").slice(-12).map((l) => <li key={l.i} className="truncate" title={l.text}>{l.text}</li>)}</ul>
                 </div>
               )}
