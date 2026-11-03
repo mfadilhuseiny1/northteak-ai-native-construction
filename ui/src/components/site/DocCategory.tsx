@@ -22,8 +22,8 @@ export function CategorySelect({ kind, onChange, auto = false }: { kind: string;
   const now = kind ? categoryOf(kind).id : "";
   return (
     <select aria-label="Category" value={now} onChange={(e) => { const c = CATEGORIES.find((x) => x.id === e.target.value); if (c?.id !== now) onChange(c?.kinds[0] ?? ""); }} className={SELECT}>
-      {auto && <option value="" className="bg-[#1c2127]">Detect from the file</option>}
-      {CATEGORIES.map((c) => <option key={c.id} value={c.id} className="bg-[#1c2127]">{c.name}</option>)}
+      {auto && <option value="" className="bg-[#1c2733]">Detect from the file</option>}
+      {CATEGORIES.map((c) => <option key={c.id} value={c.id} className="bg-[#1c2733]">{c.name}</option>)}
     </select>
   );
 }

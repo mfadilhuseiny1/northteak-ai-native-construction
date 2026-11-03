@@ -51,7 +51,7 @@ export function PlanningModule() {
           <button onClick={() => setUploaded([])} className={`${quiet} ml-auto`}>Dismiss</button>
         </div>
       )}
-      <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_320px] items-start gap-3 overflow-y-auto bg-[#161a1f] p-3 max-xl:grid-cols-1">
+      <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_320px] items-start gap-3 overflow-y-auto bg-[#111820] p-3 max-xl:grid-cols-1">
         <Card title={scenario ? `Documents (${rows.length})` : `Documents (${rows.length}): the agents read ${review.used}`}>
           {rows.map((d) => (
             <div key={d.id} className={`flex items-center gap-2 border-t border-white/5 px-3 py-1.5 first:border-t-0 ${!scenario && !d.use ? "opacity-60" : ""}`}>
@@ -106,7 +106,7 @@ export function PlanningModule() {
       </div>
       {upload && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6" role="dialog" aria-modal="true" aria-label="Upload planning documents" onClick={() => setUpload(false)}>
-          <div className="max-h-[92vh] w-full max-w-[520px] space-y-2 overflow-y-auto rounded-lg border border-white/10 bg-[#1c2127] p-4 text-[12px] shadow-2xl" onClick={(e) => e.stopPropagation()}>
+          <div className="max-h-[92vh] w-full max-w-[520px] space-y-2 overflow-y-auto rounded-lg border border-white/10 bg-[#1c2733] p-4 text-[12px] shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-2"><p className="text-[14px] font-semibold text-white">Upload planning documents</p><button onClick={() => setUpload(false)} aria-label="Close" className="ml-auto rounded p-1 text-[#8f99a8] hover:bg-white/10"><Icon name="x" className="h-3.5 w-3.5" /></button></div>
             <UploadForm activities={(docs.data.activities ?? []) as Rec[]} onDone={(saved) => { setUpload(false); setUploaded(saved); void docs.reload(); void sorted.reload(); notifyChanged(); }} />
           </div>

@@ -46,7 +46,7 @@ function InspectionPanel({ i, photos, act, onClose }: { i: Rec; photos: Rec[]; a
           {photos.slice(0, 18).map((p) => {
             const on = chosen.includes(p.id);
             return (
-              <button key={p.id} disabled={decided} aria-pressed={on} onClick={() => setChosen(on ? chosen.filter((x) => x !== p.id) : [...chosen, p.id])} title={p.caption} className={`overflow-hidden rounded border-2 ${on ? "border-[#9d8cff]" : "border-transparent opacity-70 hover:opacity-100"}`}>
+              <button key={p.id} disabled={decided} aria-pressed={on} onClick={() => setChosen(on ? chosen.filter((x) => x !== p.id) : [...chosen, p.id])} title={p.caption} className={`overflow-hidden rounded border-2 ${on ? "border-[#f5b82e]" : "border-transparent opacity-70 hover:opacity-100"}`}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={`${API_URL}/api/project/photos/${p.id}`} alt={p.caption} loading="lazy" className="h-[40px] w-[58px] object-cover" />
               </button>
@@ -94,7 +94,7 @@ function Inspections({ target }: { target: string }) {
           <Kpi label="planned" value={ins.filter((i) => i.status === "planned").length} />
           <Kpi label="hold points not signed" value={ins.filter((i) => i.hold_point && i.status !== "passed").length} tone={ins.some((i) => i.hold_point && i.status !== "passed") ? "warn" : "ok"} />
         </Kpis>
-        <div className="min-h-0 flex-1 overflow-auto bg-[#161a1f]">
+        <div className="min-h-0 flex-1 overflow-auto bg-[#111820]">
           <Table heads={["ID", "What", "By", "Holds", "Last inspected", "Next", "Checklist", "Result"]}>
             {rows.map((i) => (
               <tr key={i.id} onClick={() => { setForm(null); setSel(i.id); }} className={`${tr} cursor-pointer ${sel === i.id ? "bg-white/[.07]" : ""}`}>
@@ -109,7 +109,7 @@ function Inspections({ target }: { target: string }) {
       {form && (
         <Side title="Plan an inspection" onClose={() => setForm(null)}>
           <label className="block"><Label>What</Label><input autoFocus value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className={field} /></label>
-          <label className="block"><Label>On which activity</Label><select value={form.activity} onChange={(e) => setForm({ ...form, activity: e.target.value })} className={field}><option value="" className="bg-[#1c2127]">None</option>{((wbs.data?.activities ?? []) as Rec[]).map((a) => <option key={a.id} value={a.id} className="bg-[#1c2127]">{a.id} {a.name}</option>)}</select></label>
+          <label className="block"><Label>On which activity</Label><select value={form.activity} onChange={(e) => setForm({ ...form, activity: e.target.value })} className={field}><option value="" className="bg-[#1c2733]">None</option>{((wbs.data?.activities ?? []) as Rec[]).map((a) => <option key={a.id} value={a.id} className="bg-[#1c2733]">{a.id} {a.name}</option>)}</select></label>
           <div className="grid grid-cols-2 gap-2"><label><Label>By</Label><input value={form.by} onChange={(e) => setForm({ ...form, by: e.target.value })} className={field} /></label><label><Label>On</Label><input type="date" value={form.next} onChange={(e) => setForm({ ...form, next: e.target.value })} className={field} /></label></div>
           <label className="block"><Label>What passes</Label><textarea value={form.criteria} onChange={(e) => setForm({ ...form, criteria: e.target.value })} rows={2} placeholder="Separate points with commas: each becomes a line on the checklist" className={field} /></label>
           <label className="flex items-center gap-2 text-[#d3d8de]"><input type="checkbox" checked={form.hold_point} onChange={(e) => setForm({ ...form, hold_point: e.target.checked })} />Hold point: work stops until it is signed</label>
@@ -138,7 +138,7 @@ function Ncrs({ target }: { target: string }) {
       <Problem err={err} />
       <Kpis><Kpi label="open" value={open.length} tone={open.length ? "bad" : "ok"} /><Kpi label="closed" value={ncrs.length - open.length} /></Kpis>
       {form && (
-        <div className="grid shrink-0 grid-cols-[minmax(0,1fr)_170px_100px_140px_auto] gap-2 border-b border-white/5 bg-[#1c2127] p-2 max-lg:grid-cols-2">
+        <div className="grid shrink-0 grid-cols-[minmax(0,1fr)_170px_100px_140px_auto] gap-2 border-b border-white/5 bg-[#1c2733] p-2 max-lg:grid-cols-2">
           <input autoFocus value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="What is wrong" className={field} />
           <input value={form.by} onChange={(e) => setForm({ ...form, by: e.target.value })} placeholder="Responsible" className={field} />
           <input value={form.activity} onChange={(e) => setForm({ ...form, activity: e.target.value })} placeholder="Activity" className={field} />
@@ -146,7 +146,7 @@ function Ncrs({ target }: { target: string }) {
           <button disabled={!form.title.trim()} onClick={async () => { if (await act(() => api("/api/project/ncrs", form))) setForm(null); }} className={primary}>Raise</button>
         </div>
       )}
-      <div className="min-h-0 flex-1 overflow-auto bg-[#161a1f]">
+      <div className="min-h-0 flex-1 overflow-auto bg-[#111820]">
         <Table heads={["NCR", "What", "Responsible", "Holds", "Raised", "Due", "Status", ""]}>
           {ncrs.map((n) => (
             <tr key={n.id} className={`${tr} ${target === n.id ? "bg-white/[.07]" : ""}`}>
@@ -205,9 +205,9 @@ function Photos() {
         <Bar title="Photo evidence" note="an agent can look for defects: a person raises the NCR"><button onClick={() => { setSel(null); setUpload({ caption: "", activity: "", area: "", taken_by: "" }); }} className={primary}><Icon name="upload" className="mr-1 inline h-3 w-3" />Upload a photo</button></Bar>
         <Problem err={err || problem} />
         <Kpis><Kpi label="photos" value={rows.length} /><Kpi label="reviewed" value={rows.filter((p) => p.review).length} /><Kpi label="with possible defects" value={flagged.length} tone={flagged.length ? "bad" : "ok"} /></Kpis>
-        <div className="grid min-h-0 flex-1 grid-cols-[repeat(auto-fill,minmax(170px,1fr))] content-start gap-2 overflow-auto bg-[#161a1f] p-3">
+        <div className="grid min-h-0 flex-1 grid-cols-[repeat(auto-fill,minmax(170px,1fr))] content-start gap-2 overflow-auto bg-[#111820] p-3">
           {rows.map((p) => (
-            <button key={p.id} onClick={() => { setUpload(null); setSel(p.id); }} className={`overflow-hidden rounded border text-left ${sel === p.id ? "border-white" : p.review?.defects?.length ? "border-[#e5484d]/70" : "border-white/10 hover:border-white/30"} bg-[#1c2127]`}>
+            <button key={p.id} onClick={() => { setUpload(null); setSel(p.id); }} className={`overflow-hidden rounded border text-left ${sel === p.id ? "border-white" : p.review?.defects?.length ? "border-[#e5484d]/70" : "border-white/10 hover:border-white/30"} bg-[#1c2733]`}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={`${API_URL}/api/project/photos/${p.id}`} alt={p.caption} loading="lazy" className="h-[110px] w-full object-cover" />
               <span className="block p-1.5"><span className="block truncate text-[11px] text-white">{p.caption}</span><span className="block truncate text-[10px] text-[#8f99a8]">{p.id} · {short(p.date)}{p.wbs ? ` · ${p.wbs}` : ""}</span>{p.review?.defects?.length > 0 && <span className="text-[10px] font-medium text-[#ffb4b4]">{p.review.defects.length} possible defect{p.review.defects.length === 1 ? "" : "s"}</span>}</span>
@@ -220,7 +220,7 @@ function Photos() {
         <Side title="Upload a photo" onClose={() => setUpload(null)}>
           <input ref={file} type="file" aria-label="Photo" accept=".png,.jpg,.jpeg" className="w-full text-[11px] text-[#d3d8de] file:mr-2 file:rounded file:border-0 file:bg-white/10 file:px-2 file:py-1 file:text-white" />
           <label className="block"><Label>Caption</Label><input value={upload.caption} onChange={(e) => setUpload({ ...upload, caption: e.target.value })} className={field} /></label>
-          <label className="block"><Label>Activity</Label><select value={upload.activity} onChange={(e) => setUpload({ ...upload, activity: e.target.value })} className={field}><option value="" className="bg-[#1c2127]">None</option>{((wbs.data?.activities ?? []) as Rec[]).map((a) => <option key={a.id} value={a.id} className="bg-[#1c2127]">{a.id} {a.name}</option>)}</select></label>
+          <label className="block"><Label>Activity</Label><select value={upload.activity} onChange={(e) => setUpload({ ...upload, activity: e.target.value })} className={field}><option value="" className="bg-[#1c2733]">None</option>{((wbs.data?.activities ?? []) as Rec[]).map((a) => <option key={a.id} value={a.id} className="bg-[#1c2733]">{a.id} {a.name}</option>)}</select></label>
           <button onClick={send} className={`${primary} w-full`}>Upload</button>
           {problem && <p className="text-[#ffb4b4]">{problem}</p>}
         </Side>

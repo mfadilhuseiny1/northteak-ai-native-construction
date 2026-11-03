@@ -87,6 +87,26 @@ def task(step: str) -> dict:
     return next(w for w in P.all_of("work_item") if w.get("step") == step)
 
 
+def finish_prerequisites(w: dict) -> None:
+    """Under the board's rule a card cannot start until what it waits for is done: finish that chain first, in CPM order. An inspection in the chain is signed in QA/QC, as a person would."""
+    for _ in range(40):
+        waiting = P.unfinished_prerequisites(w)
+        if not waiting:
+            return
+        first = waiting[0]
+        target = next(x for x in P.all_of("work_item") if x.get("plan") == w.get("plan") and x.get("step") == first["step"])
+        finish_prerequisites(target)
+        if target.get("kind") == "inspection":
+            rec = P.get("plan", w["plan"])
+            step = next(x for x in rec["plan"]["steps"] if x["id"] == first["step"])
+            hold = P.get("inspection", step.get("itp") or first["step"])
+            P.inspection_result(hold["id"], "pass", [{**c, "ok": True} for c in hold["checklist"]], "Signed.")
+        else:
+            P.set_work_item(target["id"], "doing")
+            P.set_work_item(target["id"], "done")
+    raise AssertionError("the chain did not finish")
+
+
 def activity(aid: str) -> dict:
     return next(a for a in P.schedule()["activities"] if a["id"] == aid)
 
@@ -187,6 +207,7 @@ def test_a_hold_point_stops_what_follows_it_until_it_is_signed_in_qaqc(approved)
     hold = P.get("inspection", "HP-21")
     P.inspection_result("HP-21", "pass", [{**c, "ok": True} for c in hold["checklist"]], "Checked.")
     assert not card("O-9")["stopped"]
+    finish_prerequisites(forms)
     assert P.set_work_item(forms["id"], "doing")["status"] == "doing"
 
 
@@ -194,6 +215,7 @@ def test_an_inspection_card_cannot_be_dragged_to_done_only_its_result_closes_it(
     look = task("I-2")
     with pytest.raises(ValueError, match="QA/QC"):
         P.set_work_item(look["id"], "done")
+    finish_prerequisites(look)
     assert P.set_work_item(look["id"], "review")["status"] == "review"
     hold = P.get("inspection", "HP-21")
     P.inspection_result("HP-21", "pass", [{**c, "ok": True} for c in hold["checklist"]], "")
@@ -254,15 +276,22 @@ def test_bottlenecks_name_the_root_cause_first_and_count_what_waits_behind_it(ap
 
 
 def test_too_much_work_for_a_crew_is_a_bottleneck(approved):
-    for step in ("O-1", "O-2", "O-3"):
-        P.set_work_item(task(step)["id"], "doing")
-    assert any(x["kind"] == "capacity" and x["ref"] == "besi" for x in M.board()["bottlenecks"])
+    """A crew asked for more people than it has is a bottleneck. Under the board's prerequisite rule one chain
+    can only run one card at a time, so the overload is made the honest way: the crew shrinks under work already
+    legitimately under way."""
+    first = sorted((c for c in M.board()["cards"] if c["type"] == "task" and c.get("by") == "besi"), key=lambda c: c.get("cpm_rank") or 999)[0]
+    P.set_work_item(first["id"], "doing")
+    assert not any(x["kind"] == "capacity" for x in M.board()["bottlenecks"])
+    P.patch("subcontractor", "besi", {"crew": 5}, P.PM, "test", "the rebar crew is five people short")
+    hit = next(x for x in M.board()["bottlenecks"] if x["kind"] == "capacity")
+    assert hit["ref"] == "besi" and hit["held"] == 1
 
 
 def test_an_activity_card_moves_its_progress_and_a_failed_inspection_stops_it():
     with pytest.raises(ValueError, match="NCR-014"):
         M.move_activity_card("A30", "doing")
     P.close_ncr("NCR-014", "Done.")
+    P.update_activity("A20", 100, None)  # A30's predecessor finishes first: the board's rule
     M.move_activity_card("A30", "doing")
     assert activity("A30")["progress"] == 10
     M.move_activity_card("A30", "done")
@@ -831,6 +860,7 @@ def test_the_whole_chain_through_the_api_from_plan_to_control_tower(client):
     assert client.post("/api/project/ncrs/NCR-014/close", json={"action": "Reworked."}).status_code == 200
     hold = next(i for i in client.get("/api/project/quality").json()["inspections"] if i["id"] == "HP-21")
     assert client.post("/api/project/inspections/HP-21/result", json={"result": "pass", "checklist": [{**c, "ok": True} for c in hold["checklist"]], "note": "Signed."}).status_code == 200
+    finish_prerequisites(P.get("work_item", cards["O-9"]["id"]))
     assert client.post(f"/api/project/work-items/{cards['O-9']['id']}", json={"status": "doing", "owner": "Mandor A", "progress": 50}).status_code == 200
     a50 = next(a for a in client.get("/api/project/schedule").json()["activities"] if a["id"] == "A50")
     assert a50["progress"] > 0 and a50["progress_from"] == "tasks" and any(t["status"] == "doing" for t in a50["tasks"])
@@ -928,3 +958,93 @@ def test_asking_the_operator_runs_a_conversation_the_screen_can_follow(client, m
         _time.sleep(0.05)
     assert seen["thread"] and seen["thread"][0]["q"] == "How far along are we?", "a follow-up reads the conversation it follows"
     assert client.post("/api/aip/operator", json={"q": "  "}).status_code == 400
+def test_the_boards_top_priority_is_the_earliest_node_on_the_critical_path(approved):
+    b = M.board()
+    live = [c for c in b["cards"] if c["status"] in ("open", "doing", "review")]
+    ranked = sorted(live, key=lambda c: c["cpm_rank"])
+    assert [c["cpm_rank"] for c in ranked] == list(range(1, len(ranked) + 1)), "every live card carries one priority rank"
+    crit = [c for c in ranked if c["critical"]]
+    assert crit and crit == ranked[:len(crit)], "critical-path cards outrank everything else"
+    starts = [(c.get("start") or "9999", c["float_days"] if c.get("float_days") is not None else 9999) for c in crit]
+    assert starts == sorted(starts), "and among them the earliest node comes first"
+    assert b["priority"]["id"] == crit[0]["id"] and b["priority"]["rank"] == crit[0]["cpm_rank"]
+def test_a_card_cannot_start_until_its_prerequisite_is_done(approved):
+    cards = [c for c in M.board()["cards"] if c["type"] == "task" and c["status"] in ("open", "doing", "review")]
+    by_step = {(c.get("plan"), c.get("step")): c for c in cards}
+    waiting = next(c for c in sorted(cards, key=lambda c: c["cpm_rank"]) if P.unfinished_prerequisites(c))
+    first = P.unfinished_prerequisites(waiting)[0]
+    root = by_step[(waiting["plan"], first["step"])]
+    assert not P.unfinished_prerequisites(root), "the test needs a prerequisite that can itself be finished"
+    with pytest.raises(ValueError, match="must be done first"):
+        P.set_work_item(waiting["id"], "doing")
+    with pytest.raises(ValueError, match="must be done first"):
+        P.set_work_item(waiting["id"], "done")
+    P.set_work_item(root["id"], "doing")
+    P.set_work_item(root["id"], "done")
+    if len(P.unfinished_prerequisites(waiting)) == 0:
+        P.set_work_item(waiting["id"], "doing")
+        assert P.get("work_item", waiting["id"])["status"] == "doing"
+
+
+def test_an_activity_card_cannot_start_until_its_predecessor_finishes(approved):
+    card = next(c for c in M.board()["cards"] if c["type"] == "activity" and c["blockers"] and all(b["kind"] == "activity" for b in c["blockers"]))
+    pred = next(b["ref"] for b in card["blockers"] if b["kind"] == "activity")
+    with pytest.raises(ValueError, match="must finish first"):
+        M.move_activity_card(card["id"], "doing")
+    P.update_activity(pred, 100, None)
+    M.move_activity_card(card["id"], "doing")
+
+
+def test_who_does_a_work_package_can_be_changed(approved):
+    """Choosing self-perform or a subcontractor programmes the activity and moves its open cards; that is what the WBS node's Who does this work control does."""
+    P.update_activity("A50", None, None, None, "arus")
+    assert next(x for x in P.schedule()["activities"] if x["id"] == "A50")["by"] == "arus"
+    row = next(r for r in M.assignments()["rows"] if r["activity"] == "A50" and r["sections"])
+    assert row["programmed"] == "arus"
+    moved = M.reassign("A50", row["sections"][0], "self")
+    assert moved["owner"] == "Own crew"
+    assert all(w["owner"] == "Own crew" for w in P.all_of("work_item") if w.get("activity") == "A50" and w.get("section") == row["sections"][0] and w["status"] in ("open", "doing", "review"))
+
+
+def test_subcontractor_partner_database(records):
+    """The partner database: a subcontractor added with its contact is an option wherever work is given out, and its details can be corrected."""
+    s = P.add_subcontractor("PT Uji Beton", "Concrete", "Columns and beams", 12, contact="Budi", phone="0812")
+    assert s["status"] == "onboarding" and s["contact"] == "Budi"
+    P.set_subcontractor(s["id"], crew=20, phone="0813")
+    row = next(x for x in P.subcontractors() if x["id"] == s["id"])
+    assert row["crew"] == 20 and row["phone"] == "0813"
+    sub = next(x for x in M.assignments()["subs"] if x["id"] == s["id"])
+    assert sub["trade"] == "Concrete" and sub["crew"] == 20 and sub["status"] == "onboarding"
+    with pytest.raises(ValueError):
+        P.set_subcontractor(s["id"], name="  ")
+    with pytest.raises(KeyError):
+        P.set_subcontractor("sub-nope", crew=1)
+
+
+def test_sample_partners_seed_and_remove(records):
+    """Sample partners fill an empty database once; one comes out again, but not while work is programmed to them."""
+    made = P.seed_sample_subcontractors()
+    assert len(made) == 5 and P.seed_sample_subcontractors() == []
+    beton = next(x for x in P.subcontractors() if "Beton Karya" in x["name"])
+    assert beton["status"] == "active" and beton["rating"] == "good" and beton["contact"]
+    P.update_activity("A50", None, None, None, beton["id"])
+    with pytest.raises(ValueError, match="programmed"):
+        P.remove_subcontractor(beton["id"])
+    P.update_activity("A50", None, None, None, "self")
+    assert P.remove_subcontractor(beton["id"])["removed"] == beton["id"]
+    assert all(x["id"] != beton["id"] for x in P.subcontractors())
+
+
+def test_node_detail_resolves_ids_and_plan_codes(approved):
+    """A click may carry a record id, or a code from a plan document's own numbering: both land on the live node for the same work, and only a truly unknown code is refused."""
+    plan = M.live_plan()["plan"]
+    step = plan["steps"][0]
+    by_id = M.node_detail(step["activity"])
+    assert by_id["node"]["type"] == "activity" and by_id["node"]["ref"] == step["activity"]
+    by_step = M.node_detail(step["code"])
+    assert by_step["node"]["ref"] == step["id"]
+    branch = next(b for b in plan["tree"] if b["activity"] == step["activity"])
+    by_branch = M.node_detail(branch["code"])
+    assert by_branch["node"]["ref"] == step["activity"]
+    with pytest.raises(KeyError):
+        M.node_detail("9.99.9")

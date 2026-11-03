@@ -2,7 +2,7 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { API_URL } from "@/lib/api";
-import { api, Bar, Card, Empty, field, good, Kpi, Kpis, Label, Loading, money, num, Pill, primary, Problem, quiet, Ref, dates, short, Side, SubTabs, Table, td, tr, useData, useFocus, useGo, type Rec, type Tone } from "./kit";
+import { api, Bar, Card, Empty, field, good, Kpi, Kpis, Label, Loading, money, num, Pill, primary, Problem, quiet, Ref, dates, short, Side, SubTabs, Table, td, tr, useData, useFocus, useGo, type Rec, type Tone, NotYet } from "./kit";
 import { CARD, nodeFocus, NodePanel } from "./NodePanel";
 import { WbsDiagram, WbsReport, type WbsNode } from "./WbsDiagram";
 import { CpmNetwork, linkReasons } from "./CpmNetwork";
@@ -84,17 +84,17 @@ function Adder({ kind, data, act, onClose }: { kind: string; data: Rec; act: (fn
       <label className="block"><Label>Name</Label><input autoFocus value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} className={field} /></label>
       {kind === "package" && (
         <>
-          <label className="block"><Label>Subcontractor</Label><select value={f.sub} onChange={(e) => setF({ ...f, sub: e.target.value })} className={field}><option value="" className="bg-[#1c2127]">Own crew</option>{(data.subs as Rec[]).map((s) => <option key={s.id} value={s.id} className="bg-[#1c2127]">{s.name}</option>)}</select></label>
+          <label className="block"><Label>Subcontractor</Label><select value={f.sub} onChange={(e) => setF({ ...f, sub: e.target.value })} className={field}><option value="" className="bg-[#1c2733]">Own crew</option>{(data.subs as Rec[]).map((s) => <option key={s.id} value={s.id} className="bg-[#1c2733]">{s.name}</option>)}</select></label>
           <label className="block"><Label>Budget, Rp (BoQ lines add to it)</Label><input type="number" min={0} value={f.budget} onChange={(e) => setF({ ...f, budget: e.target.value })} className={field} /></label>
           <button disabled={!f.name.trim()} onClick={() => save(() => api("/api/project/packages", { name: f.name, sub: f.sub, budget: Number(f.budget) || 0 }))} className={`${primary} w-full`}>Add the control account</button>
         </>
       )}
       {kind === "activity" && (
         <>
-          <label className="block"><Label>Control account</Label><select value={f.package} onChange={(e) => setF({ ...f, package: e.target.value })} className={field}>{(data.packages as Rec[]).map((p) => <option key={p.id} value={p.id} className="bg-[#1c2127]">{p.name}</option>)}</select></label>
+          <label className="block"><Label>Control account</Label><select value={f.package} onChange={(e) => setF({ ...f, package: e.target.value })} className={field}>{(data.packages as Rec[]).map((p) => <option key={p.id} value={p.id} className="bg-[#1c2733]">{p.name}</option>)}</select></label>
           <div className="grid grid-cols-2 gap-2">
             <label><Label>Duration, days</Label><input type="number" min={1} value={f.duration} onChange={(e) => setF({ ...f, duration: e.target.value })} className={field} /></label>
-            <label><Label>By</Label><select value={f.by} onChange={(e) => setF({ ...f, by: e.target.value })} className={field}><option value="self" className="bg-[#1c2127]">Own crew</option>{(data.subs as Rec[]).map((s) => <option key={s.id} value={s.id} className="bg-[#1c2127]">{s.name}</option>)}</select></label>
+            <label><Label>By</Label><select value={f.by} onChange={(e) => setF({ ...f, by: e.target.value })} className={field}><option value="self" className="bg-[#1c2733]">Own crew</option>{(data.subs as Rec[]).map((s) => <option key={s.id} value={s.id} className="bg-[#1c2733]">{s.name}</option>)}</select></label>
           </div>
           <div><Label>Must finish first</Label><div className="mt-1 max-h-[170px] space-y-0.5 overflow-y-auto rounded border border-white/10 p-1.5">{(data.activities as Rec[]).map((a) => <label key={a.id} className="flex items-center gap-1.5 text-[11.5px] text-[#d3d8de]"><input type="checkbox" checked={(f.predecessors as string[]).includes(a.id)} onChange={(e) => setF({ ...f, predecessors: e.target.checked ? [...f.predecessors, a.id] : f.predecessors.filter((x: string) => x !== a.id) })} /><span className="text-[#8f99a8]">{a.id}</span><span className="truncate">{a.name}</span></label>)}{!(data.activities as Rec[]).length && <p className="text-[#8f99a8]">None yet.</p>}</div></div>
           <p className="text-[11px] text-[#abb3bf]">Code works out its dates and float from the links.</p>
@@ -103,7 +103,7 @@ function Adder({ kind, data, act, onClose }: { kind: string; data: Rec; act: (fn
       )}
       {kind === "milestone" && (
         <>
-          <label className="block"><Label>Reached when this finishes</Label><select value={f.activity} onChange={(e) => setF({ ...f, activity: e.target.value })} className={field}>{(data.activities as Rec[]).map((a) => <option key={a.id} value={a.id} className="bg-[#1c2127]">{a.id} {a.name}</option>)}</select></label>
+          <label className="block"><Label>Reached when this finishes</Label><select value={f.activity} onChange={(e) => setF({ ...f, activity: e.target.value })} className={field}>{(data.activities as Rec[]).map((a) => <option key={a.id} value={a.id} className="bg-[#1c2733]">{a.id} {a.name}</option>)}</select></label>
           <label className="block"><Label>Contract date</Label><input type="date" value={f.contract_date} onChange={(e) => setF({ ...f, contract_date: e.target.value })} className={field} /></label>
           <button disabled={!f.name.trim() || !f.activity || !f.contract_date} onClick={() => save(() => api("/api/project/milestones", { name: f.name, activity: f.activity, contract_date: f.contract_date }))} className={`${primary} w-full`}>Add the milestone</button>
         </>
@@ -118,7 +118,7 @@ function Tree({ target }: { target: string }) {
   const go = useGo();
   const [open, setOpen] = useState<Set<string> | null>(null);
   const [sel, setSel] = useState<string | null>(target || null);
-  const [view, setView] = useState("outline");
+  const [view, setView] = useState("tree");
   const [adding, setAdding] = useState("");
   useEffect(() => { if (target) { setSel(target); setAdding(""); setOpen((o) => new Set([...(o ?? []), ...ancestors(target)])); } }, [target]);
   const root = data?.root as Rec | undefined;
@@ -155,17 +155,17 @@ function Tree({ target }: { target: string }) {
         {data.plan?.status === "pending" && (
           <button onClick={() => go("wbs/plan")} className="flex shrink-0 items-center gap-2 border-b border-[#fab219]/30 bg-[#fab219]/[.07] px-4 py-1.5 text-left text-[#fbd38d] hover:bg-[#fab219]/[.12]"><Icon name="alert" className="h-3.5 w-3.5" />Work plan {data.plan.id} is waiting for you: its {r.proposed} tasks reach the board, the schedule and QA/QC when you approve it.<span className="ml-auto underline">Decide</span></button>
         )}
-                <div className="min-h-0 flex-1 overflow-auto bg-[#161a1f]">
+                <div className="min-h-0 flex-1 overflow-auto bg-[#111820]">
           {view === "outline" ? (
             <table className="w-full text-left text-[12px]">
-              <thead className="sticky top-0 z-[1] bg-[#1c2127] text-[10.5px] uppercase tracking-wide text-[#8f99a8]"><tr>{["WBS", "Work", "By", "Dates", "Progress", "Budget or plan", "Linked records"].map((h, i) => <th key={h} className={`whitespace-nowrap px-3 py-2 font-medium ${i === 5 || i === 6 ? "text-right" : ""}`}>{h}</th>)}</tr></thead>
+              <thead className="sticky top-0 z-[1] bg-[#1c2733] text-[10.5px] uppercase tracking-wide text-[#8f99a8]"><tr>{["WBS", "Work", "By", "Dates", "Progress", "Budget or plan", "Linked records"].map((h, i) => <th key={h} className={`whitespace-nowrap px-3 py-2 font-medium ${i === 5 || i === 6 ? "text-right" : ""}`}>{h}</th>)}</tr></thead>
               <tbody><Row n={shown} depth={0} open={new Set([...opened, shown.code])} toggle={toggle} sel={sel} onSel={pick} /></tbody>
             </table>
           ) : <WbsDiagram root={shown as WbsNode} hide={shown.type === "project" ? ["section", "task"] : shown.type === "package" ? ["task"] : []} sel={sel} onSelect={pick} />}
-          {!(root.children as Rec[]).length && <Empty>Nothing broken down yet. Upload the consultant&apos;s documents and let the agents plan it, or add a control account and its work packages by hand.</Empty>}
+          {!(root.children as Rec[]).length && <NotYet>Nothing broken down yet. You can also add a control account and its work packages by hand.</NotYet>}
         </div>
       </div>
-      {adding ? <Adder key={adding} kind={adding} data={data} act={act} onClose={() => setAdding("")} /> : sel ? <NodePanel key={sel} code={sel} onClose={() => { setSel(null); if (target) go("wbs/tree"); }} /> : null}
+      {adding ? <Adder key={adding} kind={adding} data={data} act={act} onClose={() => setAdding("")} /> : sel ? <NodePanel key={sel} code={sel} onClose={() => { setSel(null); if (target) go("wbs/tree"); }} onMoved={(code) => { setOpen(new Set([...opened, ...ancestors(code)])); if (target) go(`wbs/tree:${code}`); else setSel(code); }} /> : null}
     </div>
   );
 }
@@ -204,7 +204,7 @@ export function WorkPlan() {
   const plans = data.plans as Rec[];
   const live = plans.filter((p) => p.status !== "superseded");
   const rec = plans.find((p) => p.id === pid) ?? live[0] ?? plans[0];
-  if (!rec) return <div className="flex-1 bg-[#161a1f]"><Problem err={err || problem} /></div>;
+  if (!rec) return <div className="flex-1 bg-[#111820]"><Problem err={err || problem} /></div>;
   const plan = rec.plan as Rec, t = plan.totals as Rec, checks = plan.checks as Rec[], flags = plan.waste_flags as Rec[];
   const fromDocs = plan.kind === "package";
   const look = checks.filter((c) => !c.ok);
@@ -214,13 +214,13 @@ export function WorkPlan() {
     <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden text-[12px]">
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <Bar title={`Work plan: ${rec.title}`} note={<span className="inline-flex items-center gap-1.5"><Pill tone={STATUS[rec.status]}>{rec.status === "pending" ? "waiting for you" : rec.status}</Pill>{rec.mode === "mock" && <Pill tone="violet">offline mock: scripted answers</Pill>}{!fromDocs && <span>{(plan.activities as string[]).join(", ")}</span>}</span>}>
-          {plans.length > 1 && <select aria-label="Choose a plan" value={rec.id} onChange={(e) => { setPid(e.target.value); setSel(null); }} className="rounded border border-white/15 bg-black/20 px-1.5 py-0.5 text-[11px] text-white">{plans.map((p) => <option key={p.id} value={p.id} className="bg-[#1c2127]">{p.id} · {p.status}</option>)}</select>}
+          {plans.length > 1 && <select aria-label="Choose a plan" value={rec.id} onChange={(e) => { setPid(e.target.value); setSel(null); }} className="rounded border border-white/15 bg-black/20 px-1.5 py-0.5 text-[11px] text-white">{plans.map((p) => <option key={p.id} value={p.id} className="bg-[#1c2733]">{p.id} · {p.status}</option>)}</select>}
           <a href={`${API_URL}/api/project/plans/${rec.id}/procedure.md`} download={`${rec.id}-procedure.md`} className={quiet}>Procedure</a>
           <a href={`${API_URL}/api/project/plans/${rec.id}/table.csv`} download={`${rec.id}-tasks.csv`} className={quiet}>Spreadsheet</a>
           {!(fromDocs && rec.status === "approved") && <button onClick={() => setAgain(!again)} className={quiet}>Plan again</button>}
         </Bar>
         <Problem err={err || problem} />
-        {again && <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-white/5 bg-[#161a1f] px-4 py-2"><span className="text-[#d3d8de]">A new review reads the package and the records as they stand now, and replaces this plan if it is still waiting.</span><Start busy={busy} onStart={start} onClose={() => setAgain(false)} /></div>}
+        {again && <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-white/5 bg-[#111820] px-4 py-2"><span className="text-[#d3d8de]">A new review reads the package and the records as they stand now, and replaces this plan if it is still waiting{rec.status === "pending" && rec.edits ? `, with the ${rec.edits} change${rec.edits === 1 ? "" : "s"} you made to it` : ""}.</span><Start busy={busy} onStart={start} onClose={() => setAgain(false)} /></div>}
         {rec.status === "pending" && (
           <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[#fab219]/30 bg-[#fab219]/[.07] px-4 py-2">
             <span className="text-[#fbd38d]"><Icon name="alert" className="mr-1 inline h-3.5 w-3.5" />{fromDocs ? "Read the WBS, the procedures, the cost and the schedule in the tabs above: they are this proposal. Approving puts the tasks on the Kanban board and plans the inspections. Rejecting takes it all away, and the agents remember your reason." : "Nothing has changed yet. Approving puts the tasks on the Kanban board, plans the inspections in QA/QC and requests the material from Procurement."}{look.length ? ` Code has ${look.length} thing${look.length === 1 ? "" : "s"} for you to look at first.` : ""}</span>
@@ -252,10 +252,10 @@ export function WorkPlan() {
           <Kpi label="material waste" value={money(t.waste_cost)} tone="warn" hint={saving ? `${money(saving)} could come out` : ""} />
           <Kpi label={`planned cost, BoQ ${money(t.boq_value)}`} value={money(t.cost)} tone={t.margin < 0 ? "warn" : "ok"} />
         </Kpis>}
-        <div className="flex shrink-0 flex-wrap items-center gap-1 border-b border-white/5 bg-[#1c2127] px-3 pt-1.5">
-          {[["findings", "Findings"], ["tasks", "Tasks"], ["report", "Plan document"]].map(([k, label]) => <button key={k} onClick={() => setView(k)} className={`rounded-t px-2.5 py-1 text-[11.5px] ${view === k ? "bg-[#161a1f] font-medium text-white" : "text-[#abb3bf] hover:text-white"}`}>{label}{k === "findings" && look.length ? <span className="ml-1 rounded-full bg-[#fab219] px-1.5 text-[10px] font-semibold text-black">{look.length}</span> : null}</button>)}
+        <div className="flex shrink-0 flex-wrap items-center gap-1 border-b border-white/5 bg-[#1c2733] px-3 pt-1.5">
+          {[["findings", "Findings"], ["tasks", "Tasks"], ["report", "Plan document"]].map(([k, label]) => <button key={k} onClick={() => setView(k)} className={`rounded-t px-2.5 py-1 text-[11.5px] ${view === k ? "bg-[#111820] font-medium text-white" : "text-[#abb3bf] hover:text-white"}`}>{label}{k === "findings" && look.length ? <span className="ml-1 rounded-full bg-[#fab219] px-1.5 text-[10px] font-semibold text-black">{look.length}</span> : null}</button>)}
         </div>
-        <div className="min-h-0 flex-1 overflow-auto bg-[#161a1f]">
+        <div className="min-h-0 flex-1 overflow-auto bg-[#111820]">
           {view === "tasks" && (
             <Table heads={["WBS", "Task", "What", "By", "Crew", "Hours", "Man-hours", "Waits for", "Basis"]}>
               {steps.map((s) => (

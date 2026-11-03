@@ -6,10 +6,40 @@ body {
 }
 
 body {
-  background: #2f3c48;
+  background: #111820;
   color: #f6f7f9;
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-family: "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", sans-serif;
+  font-feature-settings: "tnum" 1, "cv05" 1;
+  -webkit-font-smoothing: antialiased;
 }
 
 /* the app is dark: scrollbars, date pickers and select lists follow */
 :root { color-scheme: dark; }
+
+::selection { background: #f5b82e; color: #171106; }
+
+/* slim steel scrollbars instead of the chunky OS default */
+* { scrollbar-width: thin; scrollbar-color: #46586a transparent; }
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-thumb { background: #46586a; border-radius: 8px; }
+*::-webkit-scrollbar-thumb:hover { background: #5b7187; }
+*::-webkit-scrollbar-track { background: transparent; }
+.no-scrollbar { scrollbar-width: none; }
+
+/* every interactive element answers the keyboard and the pointer */
+button, a, select, input, textarea { transition: background-color .15s ease, border-color .15s ease, color .15s ease, box-shadow .15s ease, transform .15s ease; }
+:focus-visible { outline: 2px solid #f5b82e; outline-offset: 1px; border-radius: 4px; }
+
+/* the dotted drafting grid behind diagrams and boards */
+.dotgrid {
+  background-color: #111820;
+  background-image: radial-gradient(circle, rgb(255 255 255 / .07) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+
+@keyframes rise { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.rise { animation: rise .25s ease both; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}

@@ -10,7 +10,7 @@ import { DailyReportsView } from "./RecordsViews";
 const COLUMNS: [string, string][] = [["proposed", "Proposed"], ["open", "To do"], ["doing", "In progress"], ["review", "In review"], ["done", "Done"]];
 const LEVEL: Record<string, Tone> = { high: "bad", medium: "warn", low: "none" };
 const KIND: Record<string, string> = { operation: "O", inspection: "I", handling: "H" };
-const DOT: Record<string, string> = { proposed: "#c084fc", open: "#8f99a8", doing: "#3987e5", review: "#fab219", done: "#29a383" };
+const DOT: Record<string, string> = { proposed: "#e879a8", open: "#8f99a8", doing: "#3987e5", review: "#fab219", done: "#29a383" };
 const CONTROL = "rounded border border-white/15 bg-black/20 px-2 py-1 text-[12.5px] text-white";
 const ACTION = "!px-2.5 !py-1 !text-[12.5px]";
 
@@ -26,12 +26,12 @@ function Card({ c, names, today, on, dim, onOpen, onDragStart }: { c: Rec; names
   const say = (b: Rec) => (b.kind === "activity" && names[b.ref] ? `Waits for ${names[b.ref]}` : b.text);  // the work's name: an id says nothing on a card
   return (
     <button draggable={!frozen} onDragStart={onDragStart} onClick={onOpen} title={frozen ? "A proposal: it opens when its plan is approved" : "Drag to another column, or open it"}
-      className={`block w-full rounded-md border bg-[#232a33] px-3 py-2.5 text-left transition-opacity ${on ? "border-white" : c.stopped ? "border-[#e5484d]/70" : c.overdue ? "border-[#fab219]/70" : "border-white/10 hover:border-white/30"} ${dim ? "opacity-30" : ""} ${frozen ? "cursor-default border-dashed" : "cursor-grab active:cursor-grabbing"}`}>
+      className={`rise block w-full rounded-lg border bg-[#1c2733] px-3 py-2.5 text-left shadow-[0_2px_8px_rgb(0_0_0/.25)] transition ${on ? "border-[#f5b82e] shadow-[0_0_0_1px_#f5b82e]" : c.stopped ? "border-[#e5484d]/70" : c.overdue ? "border-[#fab219]/70" : "border-white/10 hover:-translate-y-px hover:border-white/30 hover:shadow-[0_5px_14px_rgb(0_0_0/.35)]"} ${dim ? "opacity-30" : ""} ${frozen ? "cursor-default border-dashed" : "cursor-grab active:cursor-grabbing"}`}>
       <span className="flex items-center gap-1.5 text-[11.5px] text-[#8f99a8]">
         {KIND[c.kind] && <span className={`flex h-4 w-4 shrink-0 items-center justify-center text-[9.5px] font-bold text-[#d3d8de] ${c.kind === "inspection" ? `rounded-[2px] border ${c.hold_point ? "border-[#e5484d]" : "border-[#abb3bf]"}` : c.kind === "operation" ? "rounded-full border border-[#abb3bf]" : ""}`}>{KIND[c.kind]}</span>}
         <span className="truncate font-mono">{c.wbs || c.id}</span>
         {c.step && <span className="shrink-0">{c.step}</span>}
-        {c.critical && <span className="ml-auto shrink-0 rounded-full bg-[#fab219]/15 px-2 py-px text-[11px] text-[#fbd38d]">critical</span>}
+        {c.critical && c.cpm_rank ? <span className={`ml-auto shrink-0 rounded-full px-2 py-px text-[11px] font-medium ${c.cpm_rank === 1 ? "bg-[#e5484d]/25 text-[#ffb4b4]" : "bg-[#fab219]/15 text-[#fbd38d]"}`}>CPM #{c.cpm_rank}</span> : c.critical && <span className="ml-auto shrink-0 rounded-full bg-[#fab219]/15 px-2 py-px text-[11px] text-[#fbd38d]">critical</span>}
       </span>
       <span className="mt-1 block text-[14px] font-medium leading-snug text-white">{c.title}</span>
       {c.status === "doing" && c.progress > 0 && <span className="mt-2 flex items-center gap-2"><span className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-white/10"><span className="block h-full bg-[#29a383]" style={{ width: `${c.progress}%` }} /></span><span className="shrink-0 text-[12px] tabular-nums text-[#d3d8de]">{c.progress}%</span></span>}
@@ -66,7 +66,7 @@ function CardPanel({ c, owners, onMove, onDetail, act, onClose }: { c: Rec; owne
           {(c.blockers as Rec[]).map((b, i) => <button key={i} onClick={() => go(b.go)} className={`flex w-full items-start gap-1.5 rounded px-1.5 py-1 text-left hover:brightness-125 ${b.stop ? "bg-[#e5484d]/15 text-[#ffb4b4]" : "bg-[#fab219]/10 text-[#fbd38d]"}`}><Icon name={b.stop ? "lock" : "alert"} className="mt-0.5 h-3 w-3 shrink-0" /><span className="leading-snug">{b.text}</span></button>)}
         </div>
       )}
-      {frozen ? <p className="rounded bg-[#c084fc]/10 p-2 text-[#e9d5ff]">A proposal. It opens when the plan it belongs to is approved. <button onClick={() => go(c.decision?.startsWith("DEC") ? "tower/decisions" : "wbs/plan")} className="underline">Decide</button></p> : (
+      {frozen ? <p className="rounded bg-[#e879a8]/10 p-2 text-[#e9d5ff]">A proposal. It opens when the plan it belongs to is approved. <button onClick={() => go(c.decision?.startsWith("DEC") ? "tower/decisions" : "wbs/plan")} className="underline">Decide</button></p> : (
         <>
           <div><Label>Move it</Label><div className="mt-1 flex flex-wrap gap-1">{COLUMNS.filter(([k]) => k !== "proposed").map(([k, label]) => <button key={k} disabled={c.status === k} onClick={() => onMove(k)} className={c.status === k ? `${quiet} ${ACTION} !bg-white/15 !text-white` : `${quiet} ${ACTION}`}>{label}</button>)}</div></div>
           {c.kind === "inspection" && c.itp && <button onClick={() => go(`quality/inspections:${c.itp}`)} className={`${good} w-full`}>Record the result in QA/QC</button>}
@@ -118,7 +118,7 @@ function Progress({ k, cards, proposed, bottlenecks, today, activities }: { k: R
   ];
   const ring = 2 * Math.PI * 34;
   return (
-    <div className="shrink-0 border-b border-white/10 bg-[#1c2127] px-4 py-3">
+    <div className="shrink-0 border-b border-white/10 bg-[#1c2733] px-4 py-3">
       <div className="flex flex-wrap items-start gap-x-6 gap-y-3">
         <div className="flex items-center gap-3">
           <span className="relative block h-[84px] w-[84px] shrink-0">
@@ -198,7 +198,7 @@ function Summary({ k, only, setOnly, open, onToggle }: { k: Rec; only: string; s
   const live = k.open + k.doing + k.review + k.done;
   const flag = (key: string, n: number, label: string) => n > 0 && <button onClick={() => setOnly(only === key ? "" : key)} aria-pressed={only === key} className={`rounded-full px-2.5 py-0.5 text-[12.5px] font-medium ${only === key ? "bg-[#e5484d] text-white" : "bg-[#e5484d]/15 text-[#ffb4b4] hover:bg-[#e5484d]/25"}`}>{n} {label}</button>;
   return (
-    <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-white/5 bg-[#161a1f] px-4 py-2">
+    <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-white/5 bg-[#111820] px-4 py-2">
       <span className="shrink-0 text-[13px] text-[#d3d8de]"><b className="font-semibold tabular-nums text-white">{k.done} of {live}</b> done</span>
       <span className="flex h-2 min-w-[120px] flex-1 overflow-hidden rounded-full bg-white/10" role="img" aria-label={`${k.done} done, ${k.doing} in progress, ${k.review} in review, ${k.open} to do`}>
         {([["done", k.done], ["doing", k.doing], ["review", k.review]] as [string, number][]).map(([key, n]) => <span key={key} style={{ width: `${live ? (n / live) * 100 : 0}%`, background: DOT[key] }} />)}
@@ -231,7 +231,7 @@ function Board({ target }: { target: string }) {
   const scoped = all.filter((c) => inFocus(focus, { activity: c.activity, package: c.package }) && c.status !== "proposed");
   const k = { open: scoped.filter((c) => c.status === "open").length, doing: scoped.filter((c) => c.status === "doing").length, review: scoped.filter((c) => c.status === "review").length, done: scoped.filter((c) => c.status === "done").length, stopped: scoped.filter((c) => c.stopped).length, overdue: scoped.filter((c) => c.overdue).length };
   const order = (c: Rec) => `${c.start || c.due || "9"} ${String(c.wbs).split(".").map((n: string) => n.padStart(3, "0")).join(".")}`;
-  const cards = all.filter((c) => inFocus(focus, { activity: c.activity, package: c.package }) && (!owner || c.owner === owner) && (only !== "stopped" || c.stopped) && (only !== "critical" || c.critical) && (only !== "overdue" || c.overdue)).sort((a, b) => order(a).localeCompare(order(b)));
+  const cards = all.filter((c) => inFocus(focus, { activity: c.activity, package: c.package }) && (!owner || c.owner === owner) && (only !== "stopped" || c.stopped) && (only !== "critical" || c.critical) && (only !== "overdue" || c.overdue)).sort((a, b) => (a.cpm_rank ?? 1e9) - (b.cpm_rank ?? 1e9) || order(a).localeCompare(order(b)));
   const open = all.find((c) => c.id === sel);
   const move = (c: Rec, status: string) => { if (c.status !== status && c.status !== "proposed" && status !== "proposed") void act(() => c.type === "activity" ? api(`/api/project/board/activity/${c.id}`, { status }) : api(`/api/project/work-items/${c.id}`, { status })); };
   const causes = (data.bottlenecks as Rec[]).filter((b) => !focus || focus.type === "project" || (b.cards as string[]).some((id) => cards.some((c) => c.id === id)));
@@ -241,16 +241,23 @@ function Board({ target }: { target: string }) {
     <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden text-[12.5px]">
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <Bar title="Task board" note={data.plan ? `tasks of ${data.plan.id}, ${data.plan.title}, and the programme around it` : "the programme, until a work plan breaks it down"}>
-          <select aria-label="Show one person's cards" value={owner} onChange={(e) => setOwner(e.target.value)} className={`${CONTROL} max-w-[220px]`}><option value="" className="bg-[#1c2127]">Everyone</option>{(data.owners as string[]).map((o) => <option key={o} value={o} className="bg-[#1c2127]">{clean(o)}</option>)}</select>
-          <select aria-label="Show only" value={only} onChange={(e) => setOnly(e.target.value)} className={CONTROL}><option value="" className="bg-[#1c2127]">All cards</option><option value="stopped" className="bg-[#1c2127]">Stopped</option><option value="critical" className="bg-[#1c2127]">Critical</option><option value="overdue" className="bg-[#1c2127]">Overdue</option></select>
+          <select aria-label="Show one person's cards" value={owner} onChange={(e) => setOwner(e.target.value)} className={`${CONTROL} max-w-[220px]`}><option value="" className="bg-[#1c2733]">Everyone</option>{(data.owners as string[]).map((o) => <option key={o} value={o} className="bg-[#1c2733]">{clean(o)}</option>)}</select>
+          <select aria-label="Show only" value={only} onChange={(e) => setOnly(e.target.value)} className={CONTROL}><option value="" className="bg-[#1c2733]">All cards</option><option value="stopped" className="bg-[#1c2733]">Stopped</option><option value="critical" className="bg-[#1c2733]">Critical</option><option value="overdue" className="bg-[#1c2733]">Overdue</option></select>
           <button onClick={() => { setSel(null); setForm({ title: "", owner: "", due: "", activity: focus?.activities[0] ?? "" }); }} className={`${primary} ${ACTION}`}>Add a card</button>
         </Bar>
         <Problem err={err} />
         <Summary k={k} only={only} setOnly={setOnly} open={details} onToggle={() => setDetails(!details)} />
         {details && <div className="max-h-[45vh] shrink-0 overflow-y-auto"><Progress k={k} cards={scoped} proposed={all.filter((c) => c.status === "proposed" && inFocus(focus, { activity: c.activity, package: c.package })).length} bottlenecks={causes.length} today={data.today} activities={((sched.data?.activities ?? []) as Rec[]).filter((a) => inFocus(focus, { activity: a.id }))} /></div>}
         {data.waiting && <button onClick={() => go("wbs/plan")} className="flex shrink-0 items-center gap-2 border-b border-[#fab219]/30 bg-[#fab219]/[.07] px-4 py-1.5 text-left text-[#fbd38d] hover:bg-[#fab219]/[.12]"><Icon name="alert" className="h-3.5 w-3.5 shrink-0" /><span className="min-w-0 truncate">Work plan {data.waiting.id} is waiting: approve it to put its {data.waiting.tasks} tasks here.</span><span className="ml-auto shrink-0 underline">Decide</span></button>}
+        {data.priority && (
+          <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[#e5484d]/25 bg-[#e5484d]/[.06] px-4 py-1.5">
+            <span className="flex shrink-0 items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-[#ffb4b4]"><Icon name="alert" className="h-3.5 w-3.5" />Top priority · CPM #1</span>
+            <button onClick={() => { setForm(null); setSel(data.priority.id); }} className="min-w-0 flex-1 truncate text-left text-[12.5px] text-white hover:underline">{data.priority.title} <span className="text-[#abb3bf]">({data.priority.wbs || data.priority.activity})</span></button>
+            <span className="shrink-0 text-[11.5px] text-[#abb3bf]">earliest critical node{data.priority.start ? ` · starts ${when(data.priority.start, data.today)}` : ""}{data.priority.float_days != null ? ` · float ${data.priority.float_days}d` : ""} — columns are ordered by critical-path priority</span>
+          </div>
+        )}
         {causes.length > 0 && (
-          <div className="shrink-0 border-b border-white/5 bg-[#161a1f] px-4 py-1">
+          <div className="shrink-0 border-b border-white/5 bg-[#111820] px-4 py-1">
             {(causesOpen ? causes.slice(0, 8) : causes.slice(0, 1)).map((b) => (
               <div key={b.kind + b.ref} className={`flex items-center gap-2 rounded py-0.5 ${cause?.ref === b.ref ? "bg-white/10" : ""}`}>
                 <Pill tone={b.stop ? "bad" : LEVEL[b.level]}>{b.stop ? "stops work" : "bottleneck"}</Pill>
@@ -265,17 +272,17 @@ function Board({ target }: { target: string }) {
             </div>}
           </div>
         )}
-        <div className="flex min-h-0 flex-1 gap-3 overflow-x-auto bg-[#161a1f] p-3">
+        <div className="flex min-h-0 flex-1 gap-3 overflow-x-auto bg-[#111820] p-3">
           {COLUMNS.filter(([key]) => key !== "proposed" || cards.some((c) => c.status === "proposed")).map(([key, label]) => {
             const mine = cards.filter((c) => c.status === key);
             return (
               <div key={key} onDragOver={(e) => { if (key !== "proposed") { e.preventDefault(); setOver(key); } }} onDragLeave={() => setOver("")}
                 onDrop={(e) => { e.preventDefault(); setOver(""); const c = all.find((x) => x.id === drag); if (c) move(c, key); setDrag(null); }}
-                className={`flex min-h-0 min-w-[270px] flex-1 basis-0 flex-col rounded-lg border ${over === key ? "border-[#9d8cff] bg-[#9d8cff]/10" : "border-white/5 bg-[#1c2127]"}`}>
-                <p className="flex shrink-0 items-center gap-2 px-3 py-2.5 text-[13.5px] font-semibold text-white"><span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: DOT[key] }} />{label}<span className="ml-auto rounded-full bg-white/10 px-2 text-[12px] font-normal tabular-nums text-[#c5cbd3]">{mine.length}</span></p>
+                className={`flex min-h-0 min-w-[270px] flex-1 basis-0 flex-col rounded-xl border ${over === key ? "border-[#f5b82e] bg-[#f5b82e]/[.07] shadow-[inset_0_0_0_1px_#f5b82e]" : "border-white/[.07] bg-[#151e28]"}`}>
+                <p className="flex shrink-0 items-center gap-2 border-b border-white/[.05] px-3 py-2.5 text-[13px] font-bold tracking-tight text-white"><span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: DOT[key] }} />{label}<span className="ml-auto rounded-full bg-white/10 px-2 text-[12px] font-normal tabular-nums text-[#c5cbd3]">{mine.length}</span></p>
                 <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-2 pb-2">
                   {mine.map((c) => <Card key={c.id} c={c} names={names} today={data.today} on={sel === c.id} dim={!!lit && !lit.has(c.id)} onOpen={() => { setForm(null); setDetail(false); setSel(c.id); }} onDragStart={() => setDrag(c.id)} />)}
-                  {!mine.length && <p className="p-4 text-center text-[12.5px] text-[#6b7480]">Drop a card here</p>}
+                  {!mine.length && <p className="m-1 rounded-lg border border-dashed border-white/10 p-4 text-center text-[12px] text-[#6b7480]">Drop a card here</p>}
                 </div>
               </div>
             );
@@ -287,7 +294,7 @@ function Board({ target }: { target: string }) {
           <label className="block"><Label>What must be done</Label><input autoFocus value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className={field} /></label>
           <label className="block"><Label>Who</Label><input list="board-owners-new" value={form.owner} onChange={(e) => setForm({ ...form, owner: e.target.value })} className={field} /><datalist id="board-owners-new">{(data.owners as string[]).map((o) => <option key={o} value={o} />)}</datalist></label>
           <label className="block"><Label>Due</Label><input type="date" value={form.due} onChange={(e) => setForm({ ...form, due: e.target.value })} className={field} /></label>
-          <label className="block"><Label>On which work package</Label><select value={form.activity} onChange={(e) => setForm({ ...form, activity: e.target.value })} className={field}><option value="" className="bg-[#1c2127]">None: an action, not site work</option>{((activities.data?.activities ?? []) as Rec[]).map((a) => <option key={a.id} value={a.id} className="bg-[#1c2127]">{a.id} {a.name}</option>)}</select></label>
+          <label className="block"><Label>On which work package</Label><select value={form.activity} onChange={(e) => setForm({ ...form, activity: e.target.value })} className={field}><option value="" className="bg-[#1c2733]">None: an action, not site work</option>{((activities.data?.activities ?? []) as Rec[]).map((a) => <option key={a.id} value={a.id} className="bg-[#1c2733]">{a.id} {a.name}</option>)}</select></label>
           {form.activity && <p className="text-[11px] text-[#abb3bf]">It counts as site work on that work package, and its progress reaches the schedule.</p>}
           <button disabled={!form.title.trim() || !form.owner.trim()} onClick={async () => { if (await act(() => api("/api/project/work-items", { ...form, physical: !!form.activity }))) setForm(null); }} className={`${primary} w-full`}>Add it to the board</button>
         </Side>

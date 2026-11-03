@@ -14,8 +14,8 @@ It runs on Muse Spark and Muse Wonder through the Meta Model API, using [CAMEL-A
 
 | | Tab | What it gives you |
 |---|---|---|
-| Set up | **Planning** | A new project starts here: its name and the consultant's package on one page, and one button that uploads it and starts the agents. Then the analysis workspace: the documents by category on the left, and in the middle what was taken from them, as scope, WBS and activities, schedule, dependencies, BOQ and costs, engineering requirements, procedures, and risks and constraints. Each item opens its source beside it, at the page it cites |
-| Set up | **Review** | What a project manager has to decide: the extracted work packages, what is missing, where the documents conflict, unresolved dependencies, unverified assumptions, and what needs their input. Accept or reject one item or a whole section, correct who answers for a work package or the wording of a question, then approve or reject the plan. Each section says what a decision there changes |
+| Start | **Home** | Every project, and how far each has got. A new project is empty until you tell the agents what you are planning, in words, documents or both, in one box with one button. The other tabs fill in when they finish. Under their reply are the executive summary, the scope and the BOQ and costs, each a click away, and beside the conversation the documents by category, where a file can be put in another category or left out. Each item opens its source beside it, at the page it cites. You can tell the agents what to change until the plan is approved, and after that add documents beside it |
+| Set up | **Review** | What a project manager has to decide: the extracted work packages, what is missing, where the documents conflict, unresolved dependencies, unverified assumptions, and what needs their input. Accept or reject one item or a whole section, correct who answers for a work package or the wording of a question, then approve or reject the plan. Each section says what a decision there changes. Below them, the contract checklist: what the contractor must hand over, hold or arrange, from signing to handover, such as the Surat Dukungan, the bonds, the SPMK, the insurance and the as-built drawings, each quoted from the documents with its page, for a person to mark done or not needed |
 | Workspace | **List** | The work packages as a table: dates, float, worth, tasks and man-hours |
 | Workspace | **WBS** | The breakdown as an outline or a tree, the control accounts, and the WBS dictionary |
 | Workspace | **Timeline** | The schedule, with its baseline and tasks |
@@ -33,14 +33,14 @@ Procurement, QA/QC, the document register, RFIs, the control tower and risks are
 
 | Step | Who | What |
 |---|---|---|
-| **Sort** | Code | Decides what each file is from its name and what it holds. Bid and award records, instructions to bidders and empty notes are set aside and never reach a model. A person can overrule it, file by file |
+| **Sort** | Code | Decides what each file is from its name and what it holds. Bid and award records, instructions to bidders and empty notes are set aside and never reach a model. A person can overrule it, file by file. What a person types on Home is kept as a document of theirs, and every agent is also told it as their instruction, which nothing in a file ever is |
 | **Read the tables** | Code | Reads the master schedule by where its cells sit, and the priced recap, and checks both against the totals they print. The schedule's groups become control accounts and its rows work packages, and the recap's values are spread by the schedule's weights. It also reads each line of a BoQ that has them, with its page |
 | **Check the rules** | Code | Applies Indonesian construction regulations, with no model: flags a regulation the documents cite that has since been revoked, works out the safety risk level the package's own facts point to and drafts the question to the owner, and finds what the contract requires before work starts, while it runs and at handover, in the package's own words, with the regulation behind each |
 | **Find the pages** | Document controller | Says which pages of the specification bear on each work package. Where one schedule row lumps several crews together, as one row for all the electrical work does, it splits the row along the specification's sections. Code keeps the parts inside the row's weeks and makes them add up to what it is worth |
 | **Write the procedures** | One planner per work package | Reads those pages and writes the tasks and procedures, in the language of the documents |
 | **Write the WBS** | Planning engineer | Writes the breakdown from the documents. With no schedule code can read, that breakdown is the plan's, and a check says so. With one, the schedule's rows, weeks and weights stand, and code flags a row the engineer left out, or work the documents require that no row covers |
 | **Link** | Planning engineer | Says what must come before what. Code works out the float, keeps the master schedule's dates, and draws the WBS tree and the critical path network |
-| **Review** | QA reviewer, on the other model | Looks for where the documents disagree and what must be settled before work starts |
+| **Review** | QA reviewer | Looks for where the documents disagree and what must be settled before work starts |
 | **Plan** | Code | Puts it together. Nothing reaches the board until a person approves |
 
 ### What code checks
@@ -113,7 +113,7 @@ Without memory, an agent starts from nothing every time and asks again about wha
 - **What goes in is what people do:** a recommendation dismissed or accepted, a failed inspection, what closed an NCR, an RFI's answer, a plan rejected with a reason, work that ran over its plan, and notes you write. Nothing a model said goes in, so a model's mistake cannot come back later as something it remembers.
 - **A decision stays decided** until the figures behind it change or you bring it back, and the next recommendation in line moves up.
 - **A lesson goes where it bears on something.** It shows on the recommendation, and on Muse the module's agent and the swarm read it too. It is context, not evidence: code checks every recommendation against the live records alone, so a figure only memory holds is dropped.
-- **You can read and correct it** on the Planning tab, under What the agents should know. Forgetting takes something out of what the agents read, off the cards that quote it, and off the disk. The audit trail says it was forgotten, and not what it said.
+- **You can read and correct it** on Home, under What the agents should know, beside the documents. Forgetting takes something out of what the agents read, off the cards that quote it, and off the disk. The audit trail says it was forgotten, and not what it said.
 - **Each project has its own,** beside its records, and resetting the scenario clears the scenario's.
 
 Keeping a memory sends nothing anywhere. Left alone, mem0 reports usage to PostHog and fetches notices from GitHub: both are switched off, and a test runs it with every connection refused. When an agent is asked on Muse, what it remembers does go to Meta with its records, as part of its instructions.
@@ -163,11 +163,11 @@ uv pip install --python .venv/Scripts/python.exe -r requirements.txt
 start.bat
 ```
 
-`start.bat` builds the screens the first time, starts the API on port 8300 and the screens on port 8310, and opens http://127.0.0.1:8310. After changing the screens, run `npm run build` in `ui/` before starting again. On another system, run `python -m swarm.firm_api`, then `npm install && npm run build && npx next start -p 8310` in `ui/`.
+`start.bat` builds the screens the first time, starts the API on port 8300 and the screens on port 8310, and opens http://127.0.0.1:8310. After changing the screens, run `restart-screens.bat`: it rebuilds them and restarts their server, because a build alone leaves the running server pointing at files that are gone, and its pages break. After changing `swarm/`, run `restart-api.bat`. On another system, run `python -m swarm.firm_api`, then `npm install && npm run build && npx next start -p 8310` in `ui/`.
 
 To plan from your own documents, press the **+** beside the project name, name the project, drop in the whole package, and press **Upload and analyze**, which starts the agents straight away. It needs a key: copy `.env.example` to `.env.local` and add `META_API_KEY`. It uses API credit, and a run stops when its estimated spend passes `SWARM_MAX_USD` (default $150, the event's API credit). The estimate uses listed prices, so check your real usage with Meta.
 
-A project of your own has its own records in its own file, separate from the sample. What you enter there is yours, not synthetic. A document goes to a real model only when you press the button, and then only the pages the agents need, from the documents not set aside. Photos go only if you ask an agent to read one.
+A project of your own has its own records in its own file, separate from the sample. What you enter there is yours, not synthetic. A document goes to a real model only when you press Send to the agents on Home, and then only what you typed and the pages the agents need, from the documents not set aside. Photos go only if you ask an agent to read one.
 
 There is an offline mock for development, through the API and in the tests, where the agents, tools and checks run for real but the models' answers are scripted. No screen offers it. **A mock run proves the wiring and the arithmetic. It says nothing about how well a model plans.** Without a key, the agents on the off-menu screens still work offline, by rule.
 
@@ -198,6 +198,7 @@ Written for this project: reading a real package, the planning swarms and WBS ca
 | [swarm/package.py](swarm/package.py) | A real package, read by code: sorting it, the master schedule, the priced recap, and what is missing |
 | [swarm/package_firm.py](swarm/package_firm.py) | The swarm on a real package, from the documents to procedures, and what code checks in what the agents write |
 | [swarm/regulations.py](swarm/regulations.py) | Indonesian construction regulations: the register, and the rules code applies |
+| [swarm/contract_admin.py](swarm/contract_admin.py) | The contract checklist: legal and administration items read by code from the documents, and a person's mark on each |
 | [swarm/model3d.py](swarm/model3d.py) | The 3D timeline's model: the floors, what each work package builds and when, and the size from the drawings |
 | [swarm/modules.py](swarm/modules.py) | The screens as one system: the WBS tree, work packages, procedures, the critical path, the cost estimate, the board, readiness, delays, the tower |
 | [swarm/project.py](swarm/project.py) | The records, the rules that flag problems, the decision loops, and projects |
@@ -227,21 +228,24 @@ Offline and free. [tests/test_package.py](tests/test_package.py) follows the rea
 
 ## What has been tried on real Muse
 
-Two full runs on 2026-11-03, one on each package. Costs are at listed prices.
+Full runs on 2026-11-03, the latest on each package. Costs are at listed prices.
 
 | | UGM package | Unair package |
 |---|---|---|
-| Cost and time | $1.56, about 6 minutes | $1.06, about 7 minutes |
+| Cost and time | $1.56, about 6 minutes | $0.80, about 7 minutes |
 | Documents read | 8 of 19 | 5 of 14. A person left out the brief for another building |
-| Breakdown | Code read 31 rows of the schedule, and an agent split two of them: 35 work packages | No schedule code could read, so the planning engineer wrote 42 work packages under 12 control accounts and estimated every date. An agent split one: 44 work packages |
-| Tasks written | 319, none lost | 268, none lost |
-| Quotations checked | 1,194, 15 dropped | 471, none dropped |
-| Tasks citing nothing · stating figures their pages do not | 1 · 21 | 25 · 4 |
-| Where the documents disagree | 9 | 6 |
-| Questions drafted | 105 | 136 |
-| BoQ lines read by code | None: the package has only a recap | 445, all with descriptions, none priced |
+| Breakdown | Code read 31 rows of the schedule, and an agent split two of them: 35 work packages | No schedule code could read, so the planning engineer wrote 32 work packages under 14 control accounts and estimated every date. An agent split one: 34 work packages |
+| Tasks written | 319, none lost | 179. No page describes the 4 packages for sanitary and services, so they have no procedures, and the consultant is asked for them |
+| Quotations checked | 1,194, 15 dropped | 367, none dropped |
+| Tasks citing nothing · stating figures their pages do not | 1 · 21 | 30 · 21 |
+| Where the documents disagree | 9 | 9 |
+| Questions drafted | 105 | 92 |
+| BoQ lines read by code | None: the package has only a recap | 366, none priced. Another 79 in the same file belong to another building, and were left out |
+| 3D timeline at its last day | Finished, with its roof and landscaping | All 34 work packages placed, with no façade |
 
-The UGM run came before the planning engineer wrote a WBS beside a readable schedule, so that step has not run on real Muse. The Unair run went through the first screen as a person would, and one question to the AI Copilot on its plan cost $0.03. Code made the Copilot correct a figure in that answer.
+Getting the Unair plan there took three runs, which is worth knowing. The first gave the planning engineer only the first 40,000 characters of the BoQ, so the roof steel was cut off and the building had a flat top ($1.06). Given every BoQ group, it made 114 work packages, one per type of column, and was stopped at $0.04. Told to cover every BoQ section, it dropped the architecture and services the KAK lists, because the BoQ has no rows for them ($0.74). Its instructions now say all of that.
+
+With a readable schedule, the planning engineer's WBS was tried once on the UGM package, stopped after that step at $0.02: it placed all 31 rows, and found no work the schedule lacks. So on that package the step adds a check, not a change. One question to the AI Copilot on the first Unair plan cost $0.03, and code made it correct a figure in its answer.
 
 Before those runs, trials on throwaway storage cost about $1.70. Planners ran on samples of the work packages:
 
@@ -257,7 +261,7 @@ What those runs showed:
 - **Quotations:** code checked 479 against their pages and dropped 2. All 155 tasks written cited at least one page. A quotation being on the page shows the words are there, not that the procedure follows from them.
 - **Findings:** on Unair, the reviewer raised three things already noted by hand in [docs/README.md](docs/README.md), which its prompt does not mention: the unanswered question of which document governs, the BoQ stated as not binding, and a promised addendum. On UGM it raised, among others, the pile test differing between the BoQ and the RKS, and soil data given only to the winning bidder. Nobody who knows these projects has checked these findings.
 - **Damaged answers:** in one trial, 3 of 5 planner answers had miscounted brackets, and one work package lost its procedures. Code now reads such answers piece by piece. All three saved answers replay in full, and in the last trial the same work package came back damaged again and all 9 of its tasks were read, with no retry.
-- **Work permits:** told what Permen PUPR 10/2021 Pasal 26 and 27 require, the planners on two UGM work packages made getting the permit the first step of 7 of their 18 tasks. Code flagged those 7 and 3 more: rebar fixed from a scaffold, grinding, and an inspection done in a harness.
+- **Work permits:** told what Permen PUPR 10/2021 Pasal 26 and 27 require, the planners on two UGM work packages made getting the permit the first step of 7 of their 18 tasks. Code flagged those 7 and 3 more: rebar fixed from a scaffold, grinding, and an inspection done in a harness. Code no longer flags an inspection for the work it looks at.
 - **Cost and time:** the trials pointed to about $0.05 per planner and $2 to $3 for a full run. Both full runs came in under that, at about $0.02 to $0.04 per work package. Two runs are not a basis for a promise.
 
 Nobody in construction has reviewed these procedures. Read them as a first draft for a site engineer.
@@ -274,6 +278,7 @@ Nobody in construction has reviewed these procedures. Read them as a first draft
   - **Technical specifications as records of their own.** What the planners took from them appears as each task's acceptance criteria and quoted sources.
   - **Document versions.** Identical files are noticed, but a new revision is not linked to the one it replaces.
   - **A source for every date.** A date read from the schedule leads back to the schedule as a whole, not to its row.
+- **The contract checklist is found by words.** Code takes the sentence each document gives an item, and prefers one that says what must be done, so a quotation can be about something nearby: read each against its page. An item no document mentions is shown as not found, not as required. It reads the instructions to bidders too, but never the award records.
 - **Review has limits.** A rejected work package stays in the consultant's schedule and gets no tasks. Rejecting a missing item, a conflict or an assumption is recorded and changes nothing else. Only who answers for a work package and the wording of a question can be edited there. Dates and links are changed on the Timeline tab.
 - **Tried on two real packages, not proven on them.** See [What has been tried on real Muse](#what-has-been-tried-on-real-muse). The procedures are a first draft for a site engineer to check. A quotation that passes shows the words are in the document, not that the procedure follows from them.
 - **Drawings are read as text only.** A drawing set that is only pictures reaches no agent, and the screen says so. Muse can read images, but this does not use that yet.
@@ -282,7 +287,7 @@ Nobody in construction has reviewed these procedures. Read them as a first draft
 - **A split row's weeks and shares are the agent's estimates,** and a check says so.
 - **The critical path is only as good as the links,** which are the planning engineer's judgement. Work that overlaps by more than half of what comes first is treated as running side by side. That threshold is a choice, not a measurement.
 - **The regulation register is small, and checked by hand as of 2026-11-03.** It holds what a contractor's plan meets most, not all of Indonesian construction law, and a regulation it does not know of is not flagged. Two points could not be confirmed from the scanned official texts: the number of the standard contract's penalty clause, and the article of UU 6/2023 that revokes UU 11/2020. For the latter it relies on the official register's listing.
-- **Special work is found by a task's own words,** in Indonesian and English. A task described in other words is missed, and a word such as "galian" in a task that only carries spoil away flags it all the same.
+- **Special work is found by what a task does,** in Indonesian and English: its name, steps and equipment. Its safety notes count only where they show the work itself, such as a fall from the slab edge on a task that builds it, because a note often warns of a hazard nearby. A task described in other words is missed, and work done in a pit it did not dig, such as compacting sand under a pile cap, is not flagged as excavation: whether Pasal 26's "pekerjaan kedalaman" covers it is for the safety officer. On the real plans this flags 84 of Unair's 268 tasks and 129 of UGM's 319. A first version flagged 136 and 178, counting "angkat berdua" as lifting and "pastikan tidak bertegangan" as live work. Nobody on a site has checked either list.
 - **The 3D timeline is schematic.** The building is a box on the drawings' grid, with the same columns, walls and windows on every floor. It shows the order of the work, not the design: the package's drawings are 6 of 189 architectural sheets, and none is structural.
 - **The owner sets the safety risk level.** Code says what the package's value and lifting equipment point to. A package does not state the number of workers or the level of technology, so those are not judged.
 - **A disruption review reads the scenario only.** A project of your own has no progress claims yet.

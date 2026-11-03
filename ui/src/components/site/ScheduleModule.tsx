@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { Icon } from "@/components/Icon";
-import { api, Bar, Card, clean, Empty, field, inFocus, Kpi, Kpis, Label, Loading, num, Pill, primary, Problem, quiet, Ref, short, Side, Table, td, tr, useData, useFocus, useGo, type Rec } from "./kit";
+import { api, Bar, Card, clean, Empty, field, inFocus, Kpi, Kpis, Label, Loading, num, Pill, primary, Problem, quiet, Ref, short, Side, Table, td, tr, useData, useFocus, useGo, type Rec, NotYet } from "./kit";
 import { NetworkSheet } from "./NetworkSheet";
 import { NodePanel } from "./NodePanel";
 
@@ -17,15 +17,16 @@ function Gantt({ target }: { target: string }) {
   const [sel, setSel] = useState<string | null>(target || null);
   const [task, setTask] = useState<string | null>(null);
   const [open, setOpen] = useState<Set<string>>(new Set());
-  const [form, setForm] = useState({ progress: "", duration: "" });
+  const [form, setForm] = useState<{ progress: string; duration: string; earliest: string; lags: Record<string, string> }>({ progress: "", duration: "", earliest: "", lags: {} });
   const [showDelays, setShowDelays] = useState(true);
   useEffect(() => { if (target) { setSel(target); setTask(null); } }, [target]);
   const acts = (data?.activities ?? []) as Rec[];
   const current = acts.find((a) => a.id === sel);
+  const lagsNow = JSON.stringify(current?.lags ?? {});
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- the form follows the activity picked
-    if (current) setForm({ progress: String(current.progress), duration: String(current.duration) });
-  }, [sel, current?.progress, current?.duration]); // eslint-disable-line react-hooks/exhaustive-deps -- only when another activity is picked or its figures move
+    if (current) setForm({ progress: String(current.progress), duration: String(current.duration), earliest: current.earliest, lags: Object.fromEntries(Object.entries(current.lags as Record<string, number>).map(([p, n]) => [p, String(n)])) });
+  }, [sel, current?.progress, current?.duration, current?.earliest, lagsNow]); // eslint-disable-line react-hooks/exhaustive-deps -- only when another activity is picked or its figures move
   if (!data) return <div className="flex-1"><Problem err={err} />{!err && <Loading />}</div>;
   const milestones = data.milestones as Rec[];
   const shown = acts.filter((a) => inFocus(focus, { activity: a.id }));
@@ -41,7 +42,7 @@ function Gantt({ target }: { target: string }) {
   const toggle = (id: string) => { const next = new Set(open); if (next.has(id)) next.delete(id); else next.add(id); setOpen(next); };
   const lines = (
     <>
-      {days.map((d, i) => d === data.today ? <span key={d} className="absolute inset-y-0 w-px bg-[#9d8cff]/60" style={{ left: `${(i / span) * 100}%` }} /> : null)}
+      {days.map((d, i) => d === data.today ? <span key={d} className="absolute inset-y-0 w-px bg-[#f5b82e]/60" style={{ left: `${(i / span) * 100}%` }} /> : null)}
       {milestones.map((x) => <span key={x.id} className="absolute inset-y-0 w-px bg-[#fab219]/50" style={{ left: `${left(x.contract_date) + 100 / span}%` }} title={`Milestone ${x.id} due`} />)}
     </>
   );
@@ -59,15 +60,15 @@ function Gantt({ target }: { target: string }) {
           {data.plan && <Kpi label={`tasks from ${data.plan.id}, ${data.plan.status}`} value={acts.reduce((n, a) => n + (a.tasks as Rec[]).length, 0)} />}
         </Kpis>
         {delays.length > 0 && (
-          <div className="shrink-0 border-b border-white/5 bg-[#161a1f] px-3 py-1.5">
+          <div className="shrink-0 border-b border-white/5 bg-[#111820] px-3 py-1.5">
             <button onClick={() => setShowDelays(!showDelays)} aria-expanded={showDelays} className="flex items-center gap-1 text-[10.5px] uppercase tracking-wide text-[#8f99a8] hover:text-white"><Icon name={showDelays ? "down" : "right"} className="h-3 w-3" />Delays and threats, found by code ({delays.length})</button>
             {showDelays && <div className="mt-1 max-h-[110px] space-y-0.5 overflow-y-auto">{delays.map((d, i) => <button key={i} onClick={() => { setSel(d.activity); setTask(null); }} className="flex w-full items-center gap-2 rounded px-1 text-left hover:bg-white/5"><Pill tone={LEVEL[d.level]}>{d.kind}</Pill><span className="min-w-0 flex-1 truncate text-[#d3d8de]">{d.text}</span></button>)}</div>}
           </div>
         )}
-        <div className="min-h-0 flex-1 overflow-auto bg-[#161a1f]">
-          {!shown.length ? <Empty>No work packages yet. They come from the AI analysis of the documents.</Empty> : (
+        <div className="min-h-0 flex-1 overflow-auto bg-[#111820]">
+          {!shown.length ? <NotYet>No work packages yet.</NotYet> : (
             <div className="min-w-[980px]">
-              <div className="sticky top-0 z-[2] flex border-b border-white/10 bg-[#1c2127]">
+              <div className="sticky top-0 z-[2] flex border-b border-white/10 bg-[#1c2733]">
                 <div className="w-[320px] shrink-0 px-3 py-1.5 text-[10.5px] font-medium uppercase tracking-wide text-[#8f99a8]">Work package</div>
                 <div className="relative h-7 flex-1">
                   {span > 62
@@ -101,7 +102,7 @@ function Gantt({ target }: { target: string }) {
                         <div className="w-[320px] shrink-0 truncate py-0.5 pl-8 pr-3 text-[11px] text-[#d3d8de]"><span className="mr-1.5 text-[10px] tabular-nums text-[#8f99a8]">{t.id}</span>{t.name}{t.hold_point && <span className="ml-1 text-[10px] text-[#ffb4b4]">hold</span>}</div>
                         <div className="relative h-[22px] flex-1">
                           {lines}
-                          <span className={`absolute top-[6px] h-[10px] overflow-hidden rounded-sm ${t.status === "proposed" ? "border border-dashed border-[#c084fc]/70" : t.stopped ? "bg-[#e5484d]/60" : t.critical ? "bg-[#fab219]/70" : "bg-[#3987e5]/50"}`} style={{ left: `${left(t.start)}%`, width: `${width(t.start, t.finish)}%` }} title={`${t.start} to ${t.finish}. Waits for: ${(t.after as string[]).join(", ") || "nothing"}`}><span className="block h-full bg-[#29a383]" style={{ width: `${t.status === "done" ? 100 : t.progress}%` }} /></span>
+                          <span className={`absolute top-[6px] h-[10px] overflow-hidden rounded-sm ${t.status === "proposed" ? "border border-dashed border-[#e879a8]/70" : t.stopped ? "bg-[#e5484d]/60" : t.critical ? "bg-[#fab219]/70" : "bg-[#3987e5]/50"}`} style={{ left: `${left(t.start)}%`, width: `${width(t.start, t.finish)}%` }} title={`${t.start} to ${t.finish}. Waits for: ${(t.after as string[]).join(", ") || "nothing"}`}><span className="block h-full bg-[#29a383]" style={{ width: `${t.status === "done" ? 100 : t.progress}%` }} /></span>
                         </div>
                       </div>
                     ))}
@@ -113,8 +114,8 @@ function Gantt({ target }: { target: string }) {
                 <span className="flex items-center gap-1"><i className="h-2 w-4 rounded-sm bg-[#3987e5]/70" />has float</span>
                 <span className="flex items-center gap-1"><i className="h-2 w-4 rounded-sm bg-[#29a383]" />progress</span>
                 <span className="flex items-center gap-1"><i className="h-[3px] w-4 rounded-full bg-[#738091]" />baseline</span>
-                <span className="flex items-center gap-1"><i className="h-2 w-4 rounded-sm border border-dashed border-[#c084fc]/70" />proposed task</span>
-                <span className="flex items-center gap-1"><i className="h-3 w-px bg-[#9d8cff]" />today</span>
+                <span className="flex items-center gap-1"><i className="h-2 w-4 rounded-sm border border-dashed border-[#e879a8]/70" />proposed task</span>
+                <span className="flex items-center gap-1"><i className="h-3 w-px bg-[#f5b82e]" />today</span>
                 <span className="flex items-center gap-1 text-[#fab219]">◆<span className="text-[#8f99a8]">milestone</span></span>
               </div>
             </div>
@@ -128,16 +129,25 @@ function Gantt({ target }: { target: string }) {
           <div className="flex flex-wrap gap-1">{current.critical ? <Pill tone="bad">critical</Pill> : current.float_days ? <Pill tone="info">float {current.float_days} days</Pill> : null}<Pill>{clean(current.by_name)}</Pill>{current.package && <Pill>{current.package}</Pill>}</div>
           <button onClick={() => go(`wbs/tree:${current.code}`)} className={`${quiet} w-full`}>See everything on it in the WBS</button>
           <div className="space-y-1">
-            <Label>Must finish first</Label>
-            <div className="flex flex-wrap gap-1">
-              {(current.predecessors as string[]).map((p) => <button key={p} onClick={() => change({ predecessors: (current.predecessors as string[]).filter((x) => x !== p) })} title={`Remove the link to ${p}`} className="flex items-center gap-1 rounded-full bg-white/10 px-2 py-0.5 text-[10.5px] text-[#d3d8de] hover:bg-[#e5484d]/30">{p}<Icon name="x" className="h-2.5 w-2.5" /></button>)}
+            <div className="flex items-center"><Label>Must finish first</Label>{(current.predecessors as string[]).length > 0 && <span className="ml-auto mr-6 text-[10px] uppercase tracking-wide text-[#8f99a8]">days after</span>}</div>
+            <div className="space-y-0.5">
+              {(current.predecessors as string[]).map((p) => {
+                const other = acts.find((a) => a.id === p);
+                return (
+                  <div key={p} className="flex items-center gap-1.5">
+                    <span className="min-w-0 flex-1 truncate text-[#d3d8de]" title={other?.name}><span className="text-[#8f99a8]">{p}</span> {other?.name}</span>
+                    <input type="number" aria-label={`Days after ${p} finishes`} placeholder={(current.alongside as string[]).includes(p) ? "beside" : "0"} value={form.lags[p] ?? ""} onChange={(e) => setForm({ ...form, lags: { ...form.lags, [p]: e.target.value } })} className={`${field} !w-[64px]`} />
+                    <button onClick={() => change({ predecessors: (current.predecessors as string[]).filter((x) => x !== p) })} title={`Remove the link to ${p}`} aria-label={`Remove the link to ${p}`} className="rounded p-0.5 text-[#8f99a8] hover:bg-[#e5484d]/30 hover:text-white"><Icon name="x" className="h-3 w-3" /></button>
+                  </div>
+                );
+              })}
               {!(current.predecessors as string[]).length && <span className="text-[#8f99a8]">Nothing</span>}
             </div>
             <select aria-label="Add a dependency" value="" onChange={(e) => e.target.value && change({ predecessors: [...(current.predecessors as string[]), e.target.value] })} className={field}>
-              <option value="" className="bg-[#1c2127]">Add a dependency…</option>
-              {acts.filter((a) => a.id !== current.id && !(current.predecessors as string[]).includes(a.id)).map((a) => <option key={a.id} value={a.id} className="bg-[#1c2127]">{a.id} {a.name}</option>)}
+              <option value="" className="bg-[#1c2733]">Add a dependency…</option>
+              {acts.filter((a) => a.id !== current.id && !(current.predecessors as string[]).includes(a.id)).map((a) => <option key={a.id} value={a.id} className="bg-[#1c2733]">{a.id} {a.name}</option>)}
             </select>
-            <p className="text-[10.5px] text-[#8f99a8]">Code works the dates and float out again, and refuses a loop.</p>
+            <p className="text-[10.5px] text-[#8f99a8]">Days after: how long after the other finishes it can start. Below zero, it starts that many days before. Code works the dates and float out again, and refuses a loop.</p>
           </div>
           {(current.rfis.length + current.ncrs.length + current.pos.length > 0) && (
             <div className="space-y-1">
@@ -154,7 +164,13 @@ function Gantt({ target }: { target: string }) {
             <label><Label>Duration, days</Label><input type="number" min={1} value={form.duration} onChange={(e) => setForm({ ...form, duration: e.target.value })} className={field} /></label>
           </div>
           {current.progress_from === "tasks" && <p className="text-[11px] text-[#abb3bf]">Its progress comes from its tasks on the Kanban board.</p>}
-          <button onClick={() => change({ ...(current.progress_from === "tasks" ? {} : { progress: Number(form.progress) }), duration: Number(form.duration) })} className={`${primary} w-full`}>Update, and work out the dates again</button>
+          {current.start_fixed
+            ? <p className="text-[11px] text-[#abb3bf]">It starts no earlier than {current.earliest}, as the consultant&apos;s master schedule has it.</p>
+            : <label className="block"><Label>Earliest start</Label><input type="date" value={form.earliest} onChange={(e) => setForm({ ...form, earliest: e.target.value })} className={field} /><span className="text-[10.5px] text-[#8f99a8]">Empty: as soon as the work before it allows.</span></label>}
+          <button onClick={() => {
+            const lags = Object.fromEntries(Object.entries(form.lags).filter(([p, v]) => v !== "" && Number(v) !== (current.lags as Record<string, number>)[p]).map(([p, v]) => [p, Number(v)]));
+            change({ ...(current.progress_from === "tasks" ? {} : { progress: Number(form.progress) }), duration: Number(form.duration), ...(!current.start_fixed && form.earliest !== current.earliest ? { earliest: form.earliest } : {}), ...(Object.keys(lags).length ? { lags } : {}) });
+          }} className={`${primary} w-full`}>Update, and work out the dates again</button>
         </Side>
       )}
     </div>
@@ -176,7 +192,7 @@ function CrewChart({ days, limit, who }: { days: Rec[]; limit: number | null; wh
           <div key={d.day} tabIndex={0} aria-label={`Day ${d.day}: ${d.total} people at the peak`} className="relative flex h-full flex-1 cursor-default flex-col justify-end outline-none hover:bg-white/[.03] focus:bg-white/[.03]" onMouseEnter={() => setHover(d.day)} onFocus={() => setHover(d.day)}>
             <div className="relative mx-auto w-full max-w-[64px] rounded-t bg-[#8083e8]" style={{ height: `${(d.total / top) * 100}%` }}>{d.total === peak && <span className="absolute inset-x-0 -top-[17px] text-center text-[11px] font-medium tabular-nums text-white">{d.total}</span>}</div>
             {hover === d.day && (
-              <div className="absolute left-1/2 top-1 z-10 w-[170px] -translate-x-1/2 rounded border border-white/15 bg-[#111418] p-2 text-[11px] text-[#d3d8de] shadow-lg">
+              <div className="absolute left-1/2 top-1 z-10 w-[170px] -translate-x-1/2 rounded border border-white/15 bg-[#151e28] p-2 text-[11px] text-[#d3d8de] shadow-lg">
                 <p className="font-semibold text-white">Day {d.day}: {d.total} at the peak</p>
                 {Object.entries(d.crew as Record<string, number>).filter(([k]) => who[k]).map(([k, n]) => <p key={k} className="flex justify-between gap-2"><span className="truncate">{who[k]}</span><span className="tabular-nums">{n}</span></p>)}
               </div>
@@ -196,10 +212,10 @@ function Resources() {
   const go = useGo();
   if (!data) return <div className="flex-1"><Problem err={err} />{!err && <Loading />}</div>;
   const r = data.resources as Rec | null, who = data.who as Record<string, string>;
-  if (!r) return <div className="flex-1 bg-[#161a1f]"><Empty>Resources come from the AI analysis. <button onClick={() => go("analysis")} className="underline">Open it</button>.</Empty></div>;
+  if (!r) return <div className="flex-1 bg-[#111820]"><Empty>Resources come from the AI analysis. <button onClick={() => go("analysis")} className="underline">Open it</button>.</Empty></div>;
   const t = r.totals as Rec;
   return (
-    <div className="min-h-0 flex-1 space-y-3 overflow-auto bg-[#161a1f] p-3 text-[12px]">
+    <div className="min-h-0 flex-1 space-y-3 overflow-auto bg-[#111820] p-3 text-[12px]">
       <Card title="People on site at the peak of each day" right={<span className="text-[10.5px] font-normal text-[#8f99a8]">{t.hours_per_oh} working hours a day</span>}><CrewChart days={r.crew_by_day} limit={t.programme_crew} who={who} /></Card>
       <Card title="Workforce by trade" right={<span className="text-[10.5px] font-normal text-[#8f99a8]">OH: one person for one day. From SNI 7394:2008, plus the agents&apos; estimates for handling and inspection</span>}>
         <Table heads={["Trade", "OH", "Man-hours", "Cost (Rp)"]}>{(r.workforce as Rec[]).map((w) => <tr key={w.role} className={tr}><td className={`${td} text-white`}>{w.role}{w.supervises ? <span className="text-[#8f99a8]"> (shared across tasks)</span> : null}</td><td className={td}>{num(w.oh)}</td><td className={td}>{num(w.man_hours)}</td><td className={td}>{w.cost.toLocaleString("en-US")}</td></tr>)}</Table>
@@ -216,7 +232,7 @@ function Network() {
   const go = useGo();
   if (!data) return <div className="flex-1"><Problem err={err} />{!err && <Loading />}</div>;
   return (
-    <div className="min-h-0 flex-1 overflow-auto bg-[#161a1f] p-3 text-[12px]">
+    <div className="min-h-0 flex-1 overflow-auto bg-[#111820] p-3 text-[12px]">
       {data.network ? <><p className="mb-2 text-[#abb3bf]">The dependencies between the tasks of {data.network.title}: what the critical path is worked out from.</p><NetworkSheet plan={data.network} /></> : <Empty>The network comes from the AI analysis. <button onClick={() => go("analysis")} className="underline">Open it</button>.</Empty>}
     </div>
   );

@@ -5,7 +5,7 @@ import { num, type Rec } from "./kit";
 /* The tasks' dependency network, the logic the critical path is worked out from: each section a line running down from the top, the assembly section on the right, and each other section joining it just above the task that needs it. It adds no facts: every task and link is the plan's. */
 
 const R = 17, ROW = 58, COL = 196, LABEL = 132, LANE = 10, JOIN = 12, TOP = 56, SIDE = 160, BOW = R + 10;
-const LINE = "#8f99a8", SYMBOL = "#abb3bf", CRITICAL = "#fab219", HOLD = "#e5484d", SHEET = "#161a1f";
+const LINE = "#8f99a8", SYMBOL = "#abb3bf", CRITICAL = "#fab219", HOLD = "#e5484d", SHEET = "#111820";
 const HALO = { stroke: SHEET, strokeWidth: 3, strokeLinejoin: "round" as const, style: { paintOrder: "stroke" as const } };  // keeps text readable where a line passes behind it
 
 function drawing(plan: Rec) {
@@ -103,7 +103,7 @@ function Tip({ s, x, y, width, height }: { s: Rec; x: number; y: number; width: 
   const crew = (s.crew as Rec[]).map((c) => `${c.count} ${c.role}`).join(", ");
   const place = y > height - 150 ? { bottom: height - y - R } : { top: y - R };
   return (
-    <div role="tooltip" className="pointer-events-none absolute z-10 w-[240px] rounded border border-white/15 bg-[#111418] p-2 text-[11px] leading-snug text-[#d3d8de] shadow-lg" style={{ left: x + R + 262 > width ? x - R - 252 : x + R + 12, ...place }}>
+    <div role="tooltip" className="pointer-events-none absolute z-10 w-[240px] rounded border border-white/15 bg-[#151e28] p-2 text-[11px] leading-snug text-[#d3d8de] shadow-lg" style={{ left: x + R + 262 > width ? x - R - 252 : x + R + 12, ...place }}>
       <p className="font-semibold text-white">{s.id} · {s.name}</p>
       {s.hold_point && <p className="font-medium text-[#ffb4b4]">Hold point{s.itp ? ` ${s.itp}` : ""}: work stops until signed</p>}
       {crew && <p className="mt-1">{crew}</p>}
@@ -123,7 +123,7 @@ export function NetworkSheet({ plan }: { plan: Rec }) {
   const shown = steps.find((s) => s.id === hover);
   const count = (kind: string, hold = false) => steps.filter((s) => s.kind === kind && Boolean(s.hold_point) === hold).length;
   return (
-    <div className="my-2 rounded border border-white/10 bg-[#161a1f]">
+    <div className="my-2 rounded border border-white/10 bg-[#111820]">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-white/5 px-3 py-2 text-[10.5px] text-[#abb3bf]">
         <Key kind="operation">Operation ({count("operation")})</Key>
         <Key kind="inspection">Inspection ({count("inspection")})</Key>

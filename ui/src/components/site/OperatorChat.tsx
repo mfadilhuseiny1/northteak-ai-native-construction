@@ -11,12 +11,12 @@ import { api, quiet, useGo, type Rec } from "./kit";
    the thread of the run it follows. Replicated from the ai-jkn-audit AIP Operator, with Muse for DeepSeek. */
 
 const APPS: Record<string, { label: string; icon: IconName; tab: string }> = {
-  planning: { label: "Planning", icon: "upload", tab: "planning" }, wbs: { label: "Project & WBS", icon: "pipeline", tab: "wbs" },
+  planning: { label: "Home", icon: "home", tab: "home" }, wbs: { label: "Project & WBS", icon: "pipeline", tab: "wbs" },
   schedule: { label: "AI Scheduling", icon: "clock", tab: "schedule" }, cost: { label: "BOQ & Cost", icon: "gauge", tab: "cost" },
   kanban: { label: "Kanban", icon: "grid", tab: "kanban" }, documents: { label: "Documents & RFI", icon: "doc", tab: "documents" },
   procurement: { label: "Procurement & Subs", icon: "project", tab: "procurement" }, quality: { label: "QA/QC", icon: "check", tab: "quality" },
   tower: { label: "Control Tower", icon: "graph", tab: "tower" }, risks: { label: "Risk Register", icon: "alert", tab: "risks" },
-  analysis: { label: "AI Analysis", icon: "sparkle", tab: "planning" },
+  analysis: { label: "AI Analysis", icon: "sparkle", tab: "home" },
 };
 const TOOLS: Record<string, string> = {
   ringkasan_proyek: "Project overview", catatan_modul: "Module records", jadwal: "Programme and delays", anggaran: "Budget and earned value",
@@ -54,7 +54,7 @@ function TurnView({ turn, busy, go }: { turn: Turn; busy: boolean; go: (to: stri
     <section className="space-y-2.5">
       <div className="flex justify-end"><p className="max-w-[85%] whitespace-pre-wrap rounded-lg rounded-br-sm border border-white/10 bg-white/[.07] px-3 py-2 leading-relaxed text-white">{turn.q}</p></div>
       <div className="flex gap-2.5">
-        <span className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[#5b5fd6] ${running ? "animate-pulse" : ""}`}><Icon name="sparkle" className="h-3.5 w-3.5 text-white" /></span>
+        <span className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[#d99a16] ${running ? "animate-pulse" : ""}`}><Icon name="sparkle" className="h-3.5 w-3.5 text-white" /></span>
         <div className="min-w-0 flex-1 space-y-2">
           {(steps.length > 0 || running) && (
             <div>
@@ -70,7 +70,7 @@ function TurnView({ turn, busy, go }: { turn: Turn; busy: boolean; go: (to: stri
                     return (
                       <div key={i} className="flex items-center gap-2 rounded border border-white/[.07] bg-black/20 px-2 py-1 text-[11.5px]">
                         <span className="shrink-0 text-[#8f99a8]">{i + 1}</span>
-                        {app && <Icon name={app.icon} className="h-3.5 w-3.5 shrink-0 text-[#9d8cff]" />}
+                        {app && <Icon name={app.icon} className="h-3.5 w-3.5 shrink-0 text-[#2dd4ee]" />}
                         <span className="min-w-0 flex-1 truncate text-[#d3d8de]">{TOOLS[String(e.tool)] ?? String(e.tool)}{r?.title ? <span className="text-[#8f99a8]"> · {String(r.title)}</span> : ""}</span>
                         {app && <button onClick={() => go(app.tab)} className="shrink-0 text-[10.5px] text-[#9cc7f5] hover:underline">Open {app.label}</button>}
                       </div>
@@ -81,7 +81,7 @@ function TurnView({ turn, busy, go }: { turn: Turn; busy: boolean; go: (to: stri
             </div>
           )}
           {shown ? <div className="max-w-none leading-relaxed text-[#e5e8eb] [&_p]:my-1.5"><Markdown text={shown} /></div>
-            : running ? <p className="flex items-center gap-2 text-[12px] text-[#8f99a8]"><span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[#9d8cff]/30 border-t-[#9d8cff]" />Working…</p>
+            : running ? <p className="flex items-center gap-2 text-[12px] text-[#8f99a8]"><span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[#2dd4ee]/30 border-t-[#2dd4ee]" />Working…</p>
             : <p className="text-[12px] text-[#ffb4b4]">The run ended without an answer. Ask again.</p>}
           {check && <p className={`text-[10.5px] ${check.ok ? "text-[#7ee2c0]" : "text-[#fbd38d]"}`}>{check.ok ? "Every figure in this answer was checked by code against the tool results." : `Code made the agent correct figures no tool returned: ${(check.foreign as string[]).join(", ")}`}</p>}
           {!running && (model || turn.spent != null) && <p className="text-[10.5px] text-[#8f99a8]">{model ? modelName(String(model)) : "Muse"}{turn.spent != null ? ` · ${usd(turn.spent)}` : ""}</p>}
@@ -159,13 +159,13 @@ export function OperatorChat({ compact = false, tab = "analysis", starters = STA
   const last = turns.at(-1);
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden text-[12px]">
-      <div className="flex shrink-0 items-center gap-2 border-b border-white/10 bg-[#1c2127] px-3 py-1.5">
-        <span className="flex items-center gap-1.5 text-[12px] font-medium text-white"><Icon name="sparkle" className="h-3.5 w-3.5 text-[#9d8cff]" />{compact ? "AI Copilot" : "Ask anything"}</span>
+      <div className="flex shrink-0 items-center gap-2 border-b border-white/10 bg-[#1c2733] px-3 py-1.5">
+        <span className="flex items-center gap-1.5 text-[12px] font-medium text-white"><Icon name="sparkle" className="h-3.5 w-3.5 text-[#2dd4ee]" />{compact ? "AI Copilot" : "Ask anything"}</span>
         {!compact && <span className="text-[11px] text-[#8f99a8]">one Muse agent reads the whole project through its tools</span>}
         <button onClick={clear} disabled={!turns.length && !busy} className={`${quiet} ml-auto`}>{compact ? "New" : "New conversation"}</button>
         {onClose && <button onClick={onClose} aria-label="Close the copilot" className="rounded p-1 text-[#8f99a8] hover:bg-white/10 hover:text-white"><Icon name="x" className="h-3.5 w-3.5" /></button>}
       </div>
-      <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto bg-[#161a1f]">
+      <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto bg-[#111820]">
         <div className={`mx-auto w-full space-y-6 ${compact ? "px-3 py-3" : "max-w-[820px] px-4 py-5"}`}>
           {!turns.length && (
             <div className={`space-y-3 ${compact ? "" : "pt-6"}`}>
@@ -180,7 +180,7 @@ export function OperatorChat({ compact = false, tab = "analysis", starters = STA
           {err && <p className="rounded border border-red-400/30 bg-red-500/10 px-3 py-2 text-[#ffb4b4]">{err}</p>}
         </div>
       </div>
-      <div className="shrink-0 border-t border-white/10 bg-[#1c2127] px-3 py-2.5">
+      <div className="shrink-0 border-t border-white/10 bg-[#1c2733] px-3 py-2.5">
         <div className={`mx-auto flex items-end gap-2 ${compact ? "" : "max-w-[820px]"}`}>
           <textarea value={q} onChange={(e) => setQ(e.target.value)} rows={2} aria-label="Ask anything"
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void ask(q); } }}
@@ -189,7 +189,7 @@ export function OperatorChat({ compact = false, tab = "analysis", starters = STA
           {busy && last ? (
             <button onClick={() => aip.cancel(last.id).catch(() => {})} className="flex h-9 shrink-0 items-center gap-1.5 rounded bg-white/10 px-3 text-[12px] text-white hover:bg-white/20"><span className="h-2.5 w-2.5 rounded-[2px] bg-white" />Stop</button>
           ) : (
-            <button onClick={() => void ask(q)} disabled={busy || !q.trim()} className="flex h-9 shrink-0 items-center gap-1.5 rounded bg-[#5b5fd6] px-3.5 text-[12px] font-medium text-white hover:bg-[#6a6ee0] disabled:bg-white/10 disabled:text-[#8f99a8]"><Icon name="right" className="h-3.5 w-3.5 -rotate-90" />Ask</button>
+            <button onClick={() => void ask(q)} disabled={busy || !q.trim()} className="flex h-9 shrink-0 items-center gap-1.5 rounded bg-[#d99a16] px-3.5 text-[12px] font-medium text-white hover:bg-[#6a6ee0] disabled:bg-white/10 disabled:text-[#8f99a8]"><Icon name="right" className="h-3.5 w-3.5 -rotate-90" />Ask</button>
           )}
         </div>
         <p className={`mx-auto mt-1 text-[10px] text-[#8f99a8] ${compact ? "" : "max-w-[820px]"}`}>Enter sends · Shift+Enter for a new line · it only reads; people decide and act</p>

@@ -149,7 +149,7 @@ export function RunAnatomy({ run, events, roster, inReport = false }: { run: Run
   );
   const sub = (s: string) => <p className="mb-1 mt-3 text-[10px] uppercase tracking-[.1em] text-[#8f99a8]">{s}</p>;
   return (
-    <section id="review-cost" className={inReport ? "mt-5 border-t border-white/10 pt-4" : "rounded border border-white/10 bg-[#1c2127] p-4"}>
+    <section id="review-cost" className={inReport ? "mt-5 border-t border-white/10 pt-4" : "rounded border border-white/10 bg-[#1c2733] p-4"}>
       <div className="mb-3 flex flex-wrap items-baseline gap-x-3">
         <p className={inReport ? "text-[12.5px] font-semibold text-white" : "text-[13px] font-semibold text-white"}>{inReport ? "Review cost and resources" : "Review anatomy"}</p>
         <p className="text-[11px] text-[#8f99a8]">{money(total.usd)} · {tok(total.tokens)} tokens · {total.calls.toLocaleString("en-US")} model calls · {a.agents} agents · {mins(dur)} — from the gateway cost ledger per agent</p>

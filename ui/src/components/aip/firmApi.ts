@@ -36,7 +36,7 @@ export type OrchestrationVersion = { nama: string; ringkas: string; tambahan: st
 export const REVIEWED: string[] = [];
 /** Each orchestration's badge before a review's name: its title and its colours. */
 export const VERSI_BADGE: Record<string, [string, string]> = {
-  muse: ["Muse", "bg-[#9d8cff]/20 text-[#c9c0ff]"],
+  muse: ["Muse", "bg-[#f5b82e]/20 text-[#c9c0ff]"],
   mock: ["Offline mock", "bg-white/10 text-[#abb3bf]"],
 };
 /** The pre-agent review before it runs: the set, what is kept, the last calibration. */

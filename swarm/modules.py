@@ -242,10 +242,23 @@ def board() -> dict:
     tasked = {c["activity"] for c in cards if c.get("physical") and c["status"] != "proposed"}
     cards += [_activity_card(a, ctx) for a in ctx["sched"]["activities"] if a["id"] not in tasked]
     waiting = pending_plan()
+    acts = ctx["acts"]
+
+    def cpm_key(c: dict) -> tuple:
+        a = acts.get(c.get("activity") or {}) or {}
+        return (not c["critical"], c.get("start") or a.get("start") or "9999-99-99", a.get("float_days", 9999), c.get("wbs") or c["id"])
+
+    queue = sorted((c for c in cards if c["status"] in ("open", "doing", "review")), key=cpm_key)
+    for n, c in enumerate(queue, 1):
+        c["cpm_rank"] = n
+        a = acts.get(c.get("activity") or {}) or {}
+        c["float_days"] = a.get("float_days")
+    top = next((c for c in queue if c["critical"]), None)
     owners = sorted({c["owner"] for c in cards if c.get("owner")})
     live = [c for c in cards if c["status"] in P.TASK_STATUS]
     return {"today": P.TODAY, "cards": cards, "bottlenecks": _bottlenecks([c for c in cards if c["status"] != "proposed"], ctx), "owners": owners, "subs": [{"id": s["id"], "name": s["name"].replace(" (fictional)", "")} for s in ctx["subs"].values()],
             "plan": {k: ctx["rec"][k] for k in ("id", "title", "status")} if ctx["rec"] else None, "waiting": {"id": waiting["id"], "title": waiting["title"], "tasks": len(waiting["plan"]["steps"])} if waiting else None,
+            "priority": {"id": top["id"], "title": top["title"], "wbs": top["wbs"], "activity": top["activity"], "start": top.get("start") or "", "float_days": top.get("float_days"), "rank": top["cpm_rank"]} if top else None,
             "counts": {"open": sum(1 for c in live if c["status"] == "open"), "doing": sum(1 for c in live if c["status"] == "doing"), "review": sum(1 for c in live if c["status"] == "review"), "done": sum(1 for c in live if c["status"] == "done"), "stopped": sum(1 for c in live if c["stopped"]), "overdue": sum(1 for c in live if c["overdue"]), "proposed": sum(1 for c in cards if c["status"] == "proposed")}}
 
 
@@ -257,6 +270,10 @@ def move_activity_card(aid: str, status: str, who: str = P.PM) -> dict:
         stops = _activity_stops(aid, ctx)
         if stops:
             raise ValueError(stops[0]["text"])
+        waiting = [p for p in ctx["acts"][aid]["predecessors"] if (ctx["acts"].get(p) or {}).get("progress", 100) < 100]
+        if waiting:
+            before = ctx["acts"][waiting[0]]
+            raise ValueError(f"cannot start: {waiting[0]} must finish first: {before['name']}, forecast {before['finish']}")
     current = ctx["acts"][aid]["progress"]
     value = {"open": 0, "doing": current if 0 < current < 90 else 10, "review": 95, "done": 100}.get(status)
     if value is None:
@@ -344,6 +361,38 @@ def _find(node: dict, code: str) -> dict | None:
     return None
 
 
+def _by_ref(node: dict, ref: str, kind: str = "") -> dict | None:
+    if node.get("ref") == ref and (not kind or node["type"] == kind):
+        return node
+    for child in node.get("children") or []:
+        hit = _by_ref(child, ref, kind)
+        if hit:
+            return hit
+    return None
+
+
+def _resolve_foreign(root: dict, code: str) -> dict | None:
+    """A code that is not in the live tree, made sense of: a record id (AC-031, WP-013), or a code from a plan document's own numbering (its branches, sections and steps, from any plan on the project, not only the live one). It resolves to the live node for the same work, so a click in an older plan still lands somewhere true."""
+    codes = P.wbs_codes()
+    if code in codes:
+        return _find(root, codes[code])
+    hit = _by_ref(root, code)
+    if hit:
+        return hit
+    for rec in P.all_of("plan"):
+        plan = (P.plan_view(rec).get("plan") or {}) if rec.get("plan") else {}  # the codes live in the view: the record stores steps unnumbered
+        for branch in plan.get("tree") or []:
+            if branch.get("code") == code and branch.get("activity"):
+                return _by_ref(root, branch["activity"], "activity")
+            for sec in branch.get("sections") or []:
+                if sec.get("code") == code:
+                    return _by_ref(root, sec.get("id") or "", "section") or _by_ref(root, branch.get("activity") or "", "activity")
+        for step in plan.get("steps") or []:
+            if step.get("code") == code:
+                return _by_ref(root, step["id"], "task") or _by_ref(root, step.get("activity") or "", "activity")
+    return None
+
+
 def _refs(node: dict, kind: str) -> list[str]:
     out = [node["ref"]] if node["type"] == kind else []
     for child in node.get("children") or []:
@@ -354,7 +403,7 @@ def _refs(node: dict, kind: str) -> list[str]:
 def node_detail(code: str) -> dict:
     """One node of the WBS with everything every module holds on it."""
     whole = tree()
-    node = _find(whole["root"], code)
+    node = _find(whole["root"], code) or _resolve_foreign(whole["root"], code)
     if not node:
         raise KeyError(code)
     activities = set(_refs(node, "activity")) or ({node["activity"]} if node.get("activity") else set())
@@ -371,6 +420,8 @@ def node_detail(code: str) -> dict:
            "rfis": [r for r in P.all_of("rfi") if keep(r)], "ncrs": [n for n in P.all_of("ncr") if keep(n)], "inspections": [i for i in P.all_of("inspection") if keep(i) and (wide or i.get("step") in steps or node["type"] == "section" and i.get("step") in steps)], "orders": [o for o in P.all_of("po") if (keep(o) or (wide and package and o.get("package") == package)) and o["status"] != "cancelled"],
            "documents": [{k: d[k] for k in ("id", "title", "kind", "status")} for d in documents()["documents"] if node["type"] == "project" or set(d["activities"]) & activities], "reports": [r for r in P.daily_reports() if r.get("activity") in activities or (wide and package and r.get("package") == package)][:12]}
     plan = live_plan()
+    if node["type"] in ("package", "activity"):
+        out["change"] = P.changes_allowed(node["type"], node["ref"])
     if node["type"] == "task":
         held = {b["ref"] for c in cards for b in c["blockers"]}
         out["rfis"] = [r for r in out["rfis"] if r["id"] in held]
@@ -625,7 +676,7 @@ def procedures(rec: dict | None = None) -> dict:
                 holds = [{"text": b["text"], "go": b["go"], "stop": b["stop"]} for b in (c or {}).get("blockers", [])] + [{"text": r["text"], "go": r["go"], "stop": False} for r in ready["reasons"]]
                 if not approved:
                     holds.insert(0, {"text": "The plan is waiting for your approval", "go": "analysis", "stop": False})
-                tasks.append({"id": sid, "code": s["code"], "name": s["name"], "kind": s["kind"], "critical": s["critical"], "hold_point": s["hold_point"], "start": start, "finish": finish, "crew": s["crew"], "crew_size": s["crew_size"], "hours": s["hours"], "man_hours": s["man_hours"], "basis": s["basis"], "after": s["after"], "next": following.get(sid, []), "steps": s.get("steps") or [x for x in re.split(r"(?<=[.!?])\s+", s["procedure"]) if x], "criteria": s["criteria"], "needs": s.get("needs") or [f"{m['name']}: {m['gross']:,.1f} {m['unit']}" for m in s["materials"]], "equipment": s.get("equipment") or [], "safety": s.get("safety") or "", "unsourced": s.get("unsourced") or [], "permit": REG.special(s["name"], s["procedure"], " ".join(s.get("equipment") or []), s.get("safety") or ""), "sources": s.get("sources") or [{"doc": e, "title": docs.get(e, e), "page": None, "quote": ""} for e in s["evidence"]], "status": (c or {}).get("status", "proposed"), "card": (c or {}).get("id"), "ready": not holds, "holds": holds})
+                tasks.append({"id": sid, "code": s["code"], "name": s["name"], "kind": s["kind"], "critical": s["critical"], "hold_point": s["hold_point"], "start": start, "finish": finish, "crew": s["crew"], "crew_size": s["crew_size"], "hours": s["hours"], "man_hours": s["man_hours"], "basis": s["basis"], "after": s["after"], "next": following.get(sid, []), "steps": s.get("steps") or [x for x in re.split(r"(?<=[.!?])\s+", s["procedure"]) if x], "criteria": s["criteria"], "needs": s.get("needs") or [f"{m['name']}: {m['gross']:,.1f} {m['unit']}" for m in s["materials"]], "equipment": s.get("equipment") or [], "safety": s.get("safety") or "", "unsourced": s.get("unsourced") or [], "permit": REG.permit_for(s.get("kind") or "", s["name"], s["procedure"], " ".join(s.get("equipment") or []), s.get("safety") or ""), "sources": s.get("sources") or [{"doc": e, "title": docs.get(e, e), "page": None, "quote": ""} for e in s["evidence"]], "status": (c or {}).get("status", "proposed"), "card": (c or {}).get("id"), "ready": not holds, "holds": holds})
             sections.append({"code": sec["code"], "name": sec["name"], "tasks": tasks})
         groups.append({"code": branch["code"], "id": branch["activity"], "name": branch["name"], "sections": sections})
     every = [t for g in groups for sec in g["sections"] for t in sec["tasks"]]
@@ -733,6 +784,17 @@ def critical_path() -> dict:
     return {"activities": sorted(rows, key=lambda r: (r["es"], r["code"])), "path": [{"id": i, "code": by_id[i]["code"], "name": by_id[i]["name"], "duration": by_id[i]["duration"], "start": by_id[i]["start"], "finish": by_id[i]["finish"], "float_days": by_id[i]["float_days"]} for i in path], "start": begin, "finish": finish, "days": P.days_between(begin, finish) + 1 if begin else 0, "links": sum(len(a["predecessors"]) for a in acts), "milestones": sched["milestones"], "today": P.TODAY, "network": {"sections": plan["plan"]["sections"], "steps": plan["plan"]["steps"], "title": plan["title"]} if plan and plan["plan"].get("kind") != "package" else None}
 
 
+def executive() -> dict:
+    """The project on one page: what the project director wrote about it, and beside that the figures as they stand now, worked out by code, so a change to the schedule shows here too."""
+    rec = live_plan()
+    if not rec:
+        return {"plan": None}
+    plan, cp = rec["plan"], critical_path()
+    return {"plan": {k: rec[k] for k in ("id", "status", "summary", "created")}, "written": plan.get("executive"), "total": plan.get("total"), "owner_total": plan.get("owner_total"), "contract_days": plan.get("contract_days"),
+            "start": cp["start"], "finish": cp["finish"], "days": cp["days"], "links": cp["links"], "accounts": len(plan.get("accounts") or []), "work_packages": len(cp["activities"]), "tasks": plan["totals"]["steps"],
+            "critical": sum(1 for a in cp["activities"] if a["critical"]), "path": cp["path"], "conflicts": len(rec.get("findings") or []), "questions": len(rec.get("rfi_drafts") or []), "flags": sum(1 for c in plan.get("checks") or [] if not c["ok"]), "safety_risk": (plan.get("safety_risk") or {}).get("level")}
+
+
 def cost_estimate() -> dict:
     """What the work is worth: by control account and work package, from the priced BoQ, and the plan's own worked-out costs where it has quantities. Says which of the two it is."""
     plan = live_plan()
@@ -807,7 +869,7 @@ def assignments() -> dict:
             peak = plan["plan"]["totals"]["peak_by"].get(by) if plan and needed else None
             gap = bool(needed) and by != a["by"] and f"{a['id']}:{by}" not in confirmed
             rows.append({"id": f"{a['id']}:{by}", "activity": a["id"], "code": a["code"], "name": a["name"], "start": a["start"], "finish": a["finish"], "critical": a["critical"], "programmed": a["by"], "programmed_name": name(a["by"]), "by": by, "by_name": name(by), "sections": sections, "peak": peak, "crew": sub["crew"] if sub else None, "over": bool(sub and peak and peak > sub["crew"]), "gap": gap, "confirmed": f"{a['id']}:{by}" in confirmed, "rating": sub["rating"] if sub else "", "expired": sub["expired"] if sub else [], "open_ncrs": sub["open_ncrs"] if sub else []})
-    return {"rows": rows, "gaps": sum(1 for r in rows if r["gap"]), "subs": [{"id": s["id"], "name": s["name"].replace(" (fictional)", "")} for s in subs.values()], "today": P.TODAY}
+    return {"rows": rows, "gaps": sum(1 for r in rows if r["gap"]), "subs": [{"id": s["id"], "name": s["name"].replace(" (fictional)", ""), "trade": s.get("trade", ""), "crew": s.get("crew", 0), "status": s.get("status", ""), "rating": s.get("rating", "")} for s in sorted(subs.values(), key=lambda s: (s.get("status") != "active", s["name"]))], "today": P.TODAY}
 
 
 def confirm_assignment(activity: str, by: str, who: str = P.PM) -> dict:

@@ -11,8 +11,8 @@ import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js
 
 export type El = { id: string; code: string; name: string; account: string; kind: string; level: number | null; start: number; end: number; start_date: string; finish_date: string; critical: boolean };
 export type Floor = { index: number; name: string; elevation: number; height: number; planned: boolean };
-export type Model = { plan?: { title?: string } | null; pile?: string; start: string; days: number; width: number; depth: number; bay: number; basement_depth: number; storeys: Floor[]; top: number; roof: string; crane: boolean; elements: El[]; read: Record<string, any>[]; assumed: string[] };
-export type Scene = { update: (day: number, ghost: boolean) => Record<string, string>; focus: (ids: string[]) => void; overview: () => void; dispose: () => void };
+export type Model = { plan?: { title?: string } | null; pile?: string; start: string; days: number; width: number; depth: number; bay: number; basement_depth: number; storeys: Floor[]; top: number; roof: string; roof_covered?: boolean; crane: string; lift?: boolean; elements: El[]; read: Record<string, any>[]; assumed: string[]; absent?: string[] };
+export type Scene = { update: (day: number, ghost: boolean) => Record<string, string>; focus: (ids: string[]) => void; overview: () => void; dispose: () => void; setFirstPerson: (on: boolean) => void };
 
 export const LOOK = { formwork: "#c9a46b", rebar: "#9a5531", fresh: "#878d93", concrete: "#d4d6d8", brick: "#b0603a", plaster: "#efe8da" };
 export const PIN = "#f59e0b";
@@ -170,9 +170,9 @@ function signBoard(title: string) {
 
 type Load = "rebar" | "forms" | "bucket" | "bricks" | "truss";
 type Note = { ids: string[]; text: string; tag: string; at: THREE.Vector3; pin: boolean };
-type Panel = { at: THREE.Matrix4; w: number; h: number; hole: { x: number; y: number; w: number; h: number } | null };
+type Panel = { at: THREE.Matrix4; w: number; h: number; hole: { x: number; y: number; w: number; h: number } | null; open?: boolean };
 
-export function buildScene(model: Model, holder: HTMLDivElement, onPick: (ids: string[] | null) => void): Scene {
+export function buildScene(model: Model, holder: HTMLDivElement, onPick: (ids: string[] | null) => void, onFirstPerson?: (on: boolean) => void): Scene {
   const W = model.width, D = model.depth, bay = model.bay, top = model.top, pit = model.basement_depth || 0;
   const nx = Math.max(1, Math.round(W / bay)), nz = Math.max(1, Math.round(D / bay)), bayW = W / nx;
   const xs = Array.from({ length: nx + 1 }, (_, i) => -W / 2 + (i * W) / nx);
@@ -182,7 +182,7 @@ export function buildScene(model: Model, holder: HTMLDivElement, onPick: (ids: s
   const of = (kind: string) => els.filter((e) => e.kind === kind);
   const idsOf = (list: El[]) => list.map((e) => e.id);
   const span = Math.max(W, D, top + pit), pitched = model.roof === "pitched", rise = pitched ? Math.min(4.5, D * 0.22) : 0;
-  const lowest = floors.length ? floors[0].elevation : 0, footing = pit ? lowest - 1.3 : 0, deep = -footing;  // the bottom of the dig: deep enough for the pile caps to stand under the lowest slab
+  const lowestIndex = floors.length ? floors[0].index : 0, lowest = floors.length ? floors[0].elevation : 0, footing = pit ? lowest - 1.3 : 0, deep = -footing;  // the bottom of the dig: deep enough for the pile caps to stand under the lowest slab
   const gridX = (i: number) => "ABCDEFGHJKLMNPQRSTUVWXYZ"[i] ?? String(i + 1), bayName = (k: number) => `grids ${gridX(k)}–${gridX(k + 1)}`;
   const floorAt = (y: number) => [...floors].reverse().find((f) => f.elevation <= y + 0.01)?.name ?? "the lowest floor";
 
@@ -219,6 +219,18 @@ export function buildScene(model: Model, holder: HTMLDivElement, onPick: (ids: s
   controls.maxPolarAngle = Math.PI * 0.49;
   controls.minDistance = 6;
   controls.maxDistance = span * 8;
+  // first person: on foot at eye height, WASD and Space on the keyboard, drag to look. The orbit view is kept and restored on the way out
+  const fp = { on: false, yaw: 0, pitch: 0, keys: new Set<string>(), savedPos: camera.position.clone(), savedTarget: wholeSite.target.clone(), drag: null as [number, number] | null, last: 0, vy: 0, air: false, jumpBase: 1.62, locked: false, hadLock: false, bob: 0 };
+  const fpKeyDown = (ev: KeyboardEvent) => {
+    if (!fp.on || !["KeyW", "KeyA", "KeyS", "KeyD", "Space", "KeyE", "KeyQ"].includes(ev.code)) return;
+    if ((ev.target as HTMLElement | null)?.closest?.("input, textarea, select, [contenteditable]")) return;
+    if (ev.code === "Space") ev.preventDefault();
+    fp.keys.add(ev.code);
+  };
+  const fpKeyUp = (ev: KeyboardEvent) => { fp.keys.delete(ev.code); };
+  // the mouse stays free in first person: drag on the model to look, click a part (or any button) to use it
+  window.addEventListener("keydown", fpKeyDown);
+  window.addEventListener("keyup", fpKeyUp);
   controls.update();
 
   scene.add(new THREE.HemisphereLight("#e6eef6", "#6e5d48", 0.95));
@@ -317,7 +329,8 @@ export function buildScene(model: Model, holder: HTMLDivElement, onPick: (ids: s
   const cageMat = mat("#ffffff", { map: tex.cage, alphaTest: 0.4, side: THREE.DoubleSide, roughness: 0.6, metalness: 0.3 });
   const brickLook = mat("#ffffff", { map: tex.brick }), rustMat = mat(LOOK.rebar, { map: grain, metalness: 0.4 }), steelMat = mat("#b6bdc4", { metalness: 0.65, roughness: 0.42 });
   const yellow = mat("#e4a31b", { roughness: 0.5, metalness: 0.15 }), dark = mat("#26292d", { roughness: 0.75 }), white = mat("#e2e5e8", { roughness: 0.5 }), cabGlass = mat("#22303b", { metalness: 0.7, roughness: 0.15 });
-  const glassMat = mat("#a9cce0", { transparent: true, opacity: 0.55, roughness: 0.04, metalness: 0.25 });
+  const stairRail = mat("#2a2e33", { metalness: 0.6, roughness: 0.4 });
+  const glassMat = mat("#a9cce0", { transparent: true, opacity: 0.4, roughness: 0.04, metalness: 0.25 });
 
   // ---------------------------------------------------------------------------------------------- the ground: grass, then soil once work starts, then planted as the external works finish
   const rect = (w: number, d: number) => [v2(-w / 2, -d / 2), v2(w / 2, -d / 2), v2(w / 2, d / 2), v2(-w / 2, d / 2)];
@@ -386,9 +399,9 @@ export function buildScene(model: Model, holder: HTMLDivElement, onPick: (ids: s
       yard.visible = on && mob >= 1;
       if (!on) return;
       if (mob < 1) {
-        say(setup, "Mobilising: fencing the site, then the site offices, the project board and the material yard", "Fencing and site offices", officeX, 6.5, officeZ);
+        say(setup, setup.length > 1 ? "" : "Mobilising: fencing the site, then the site offices, the project board and the material yard", setup.length > 1 ? "Site set-up" : "Fencing and site offices", officeX, 6.5, officeZ);
         crew(4, officeX + 6, 0, officeZ - 2, 12, 5);
-      } else say(setup, "Site running: fence, offices, the material yard and site safety (SMKK) are in place", "", officeX, 6.5, officeZ, false);
+      } else if (setup.length === 1) say(setup, "Site running: fence, offices, the material yard and site safety (SMKK) are in place", "", officeX, 6.5, officeZ, false);
     });
   }
 
@@ -482,27 +495,73 @@ export function buildScene(model: Model, holder: HTMLDivElement, onPick: (ids: s
         const x = (W + 3) * (progressOf(dig, day) - 0.5);
         digger.g.position.set(x, 0, 0);
         dumper.position.set(x, 0, hd + 3.3);
-        say([dig], "Stripping and levelling the ground under the building", "Levelling the ground", x, 4, 0);
+        say([dig], digs.length > 1 ? "" : "Stripping and levelling the ground under the building", digs.length > 1 ? brief(dig.name) : "Levelling the ground", x, 4, 0);
       }
     });
   }
+
+  // ---------------------------------------------------------------------------------------------- where the stairs and the lift stand: two stairs, one at each end by the long sides, and the lift beside the first.
+  // Each runs in a dog-leg: a flight from the floor to a half landing by the outside wall, and a flight back up to the next floor. Assumed: the drawings read do not show where they are
+  const STAIR_W = 2.8, RUN = 3.2, LANDING = 1.4, ARRIVE = 1.2, zF = D / 2 - 0.35, lastFloor = floors.length ? floors[floors.length - 1].index : 0;
+  const stairs = floors.length > 1 ? [{ x: W / 2 - 0.3 - STAIR_W, z: zF, turn: 0 }, { x: -W / 2 + 0.3 + STAIR_W, z: -zF, turn: Math.PI }] : [];
+  const stairVoids = [[W / 2 - 0.3 - STAIR_W, zF - LANDING - RUN, W / 2 - 0.3, zF], [-W / 2 + 0.3, -zF, -W / 2 + 0.3 + STAIR_W, -zF + LANDING + RUN]].slice(0, stairs.length);
+  const stairWells = stairs.length ? [[W / 2 - 0.3 - STAIR_W, zF - LANDING - RUN - ARRIVE, W / 2 - 0.3, zF], [-W / 2 + 0.3, -zF, -W / 2 + 0.3 + STAIR_W, -zF + LANDING + RUN + ARRIVE]] : [];
+  const liftOn = !!model.lift || of("lift").length > 0, liftX = W / 2 - 0.3 - STAIR_W - 0.3 - 2.4, liftVoid = [liftX, zF - 2.4, liftX + 2.4, zF];
+  const voidsAt = (index: number, suspended: boolean) => (suspended ? [...(index <= lastFloor ? stairVoids : []), ...(liftOn ? [liftVoid] : [])] : []);
+  // the top of the stair steps at a point: each flight fills its half of the stairwell, stepped as it is drawn (not a smooth slope through the steps)
+  const fpStairHeights = (x: number, z: number) => {
+    const heights: number[] = [];
+    floors.forEach((f, i) => {
+      if (i === floors.length - 1 || !f.height) return;
+      const H = f.height, n = Math.max(3, Math.ceil(H / 2 / 0.175)), r = (H / 2) / n;
+      for (const st of stairs) {
+        const lx = st.turn ? st.x - x : x - st.x, lz = st.turn ? st.z - z : z - st.z;
+        if (lx < 0 || lx > STAIR_W || lz < -LANDING - RUN || lz > 0) continue;
+        if (lz >= -LANDING) heights.push(f.elevation + H / 2);
+        else { const s = (lz + LANDING + RUN) / RUN; heights.push(lx >= STAIR_W / 2 ? f.elevation + Math.min(n, Math.floor(s * n) + 1) * r : f.elevation + H / 2 + Math.min(n, Math.floor((1 - s) * n) + 1) * r); }
+      }
+    });
+    return heights;
+  };
+  // the floor somebody in first person stands on: the highest slab, stair flight, landing or ground at or just above their feet
+  const fpFloor = (x: number, z: number, feet: number) => {
+    const cand = [pit && Math.abs(x) < edgeX && Math.abs(z) < edgeZ ? footing : 0];
+    const inside = Math.abs(x) <= W / 2 + 0.15 && Math.abs(z) <= D / 2 + 0.15, inRect = (r: number[]) => x >= r[0] && z >= r[1] && x <= r[2] && z <= r[3];
+    if (inside) {
+      floors.forEach((f, rank) => { if (!voidsAt(f.index, rank > 0).some(inRect)) cand.push(f.elevation); });
+      if (!voidsAt(roofIndex, true).some(inRect)) cand.push(top);
+      cand.push(...fpStairHeights(x, z));
+    }
+    const under = cand.filter((c) => c <= feet + 0.55);
+    return under.length ? Math.max(...under) : Math.min(...cand);
+  };
+  /** A flat plate with holes cut in it, its top at y = 0. */
+  const plate = (w: number, d: number, t: number, holes: number[][]) => {
+    const shape = new THREE.Shape([v2(-w / 2, -d / 2), v2(w / 2, -d / 2), v2(w / 2, d / 2), v2(-w / 2, d / 2)]);
+    for (const [x0, z0, x1, z1] of holes) shape.holes.push(new THREE.Path([v2(x0, z0), v2(x0, z1), v2(x1, z1), v2(x1, z0)]));
+    return new THREE.ExtrudeGeometry(shape, { depth: t, bevelEnabled: false }).rotateX(Math.PI / 2);
+  };
 
   // ---------------------------------------------------------------------------------------------- structure, floor by floor. On each bay of a slab: props and formwork, rebar, then concrete poured from the back to the front.
   // Then the columns up to the next floor: rebar cages, formwork, concrete. A basement also gets its retaining walls. A floor the WBS does not name was there before the plan
   const structure = of("structure"), loose = structure.filter((e) => e.level === null);
   const roofIndex = (floors.length ? floors[floors.length - 1].index : 0) + 1;
   const levels = [...floors.map((f) => ({ index: f.index, name: f.name, elevation: f.elevation, height: f.height, planned: f.planned })), { index: roofIndex, name: "Roof slab", elevation: top, height: 0, planned: true }];
-  const ready = new Map<number, number>(), progressAt = new Map<number, (day: number) => number>();  // how far each floor's structure is, for the work that has to wait for it
+  const ready = new Map<number, number>(), progressAt = new Map<number, (day: number) => number>(), upAtOf = new Map<number, (day: number) => number>(), idsAt = new Map<number, string[]>();  // how far each floor's structure is, for the work that has to wait for it
   const after = (index: number, s: number) => ((ready.get(index) ?? 1) >= 0.999 ? s : 0);
   const fresh = new THREE.Color(LOOK.fresh), cured = new THREE.Color(LOOK.concrete);
   const columns = xs.flatMap((x) => zs.map((z) => ({ x, z })));
   const propMat = keep(new THREE.LineBasicMaterial({ color: "#c4532d" })), blindMat = mat("#77736c", { map: grain });
   const deckGeo = block(bayW - 0.04, 0.05, D + 0.4), meshGeo = block(bayW - 0.1, 0.02, D + 0.2), blindGeo = block(bayW, pit ? lowest - 0.3 - footing : 0.06, D + 0.4);
   const slabs = new Map<string, THREE.BufferGeometry>();
-  const slabOf = (k: number, suspended: boolean) => {
-    const key = `${suspended}${k === 0}`;
+  const holesIn = (k: number, rects: number[][]) => {  // the holes that fall in bay k, in its own frame
+    const cx = -W / 2 + (k + 0.5) * bayW, lo = -bayW / 2 + 0.05, hi = bayW / 2 - 0.05;
+    return rects.map(([x0, z0, x1, z1]) => [Math.max(lo, x0 - cx), z0, Math.min(hi, x1 - cx), z1]).filter(([a, , b]) => b - a > 0.2);
+  };
+  const slabOf = (k: number, suspended: boolean, holes: number[][]) => {
+    const key = `${suspended}${k === 0}${JSON.stringify(holes)}`;
     if (!slabs.has(key)) {
-      const list = [raw(bayW, 0.3, D + 0.4).translate(0, -0.3, 0)];
+      const list = [holes.length ? plate(bayW, D + 0.4, 0.3, holes) : raw(bayW, 0.3, D + 0.4).translate(0, -0.3, 0)];
       if (suspended) {  // the beams on the grid lines, under the slab
         for (const z of zs) list.push(raw(bayW, 0.6, 0.35).translate(0, -0.9, z));
         list.push(raw(0.35, 0.6, D).translate(bayW / 2, -0.9, 0));
@@ -522,18 +581,22 @@ export function buildScene(model: Model, holder: HTMLDivElement, onPick: (ids: s
     }
     return points;
   };
-  const COLUMN = /kolom|column/i, startOf = (list: El[]) => Math.min(...list.map((e) => e.start));
-  // a plan may name a floor's columns apart from its slab. Scheduled before the slab of the same floor they rise to that slab, as "Level 4 columns" then "Level 4 slab". Otherwise they rise from it
+  const COLUMN = /kolom|column/i, STAIR = /tangga|stair/i, SLAB = /\bplat\b|pelat|slab/i, startOf = (list: El[]) => Math.min(...list.map((e) => e.start));
+  const stairsAlone = (e: El) => STAIR.test(e.name) && !SLAB.test(e.name);  // "Balok Plat Tangga Ground" is the slab as well
+  // a plan may name a floor's columns apart from its slab. Finished before the slab of the same floor starts, they rise to that slab, as "Level 4 columns" then "Level 4 slab". Otherwise they rise from it,
+  // and always where the lowest floor names columns: nothing stands under it
+  const fromTheirFloor = structure.some((e) => e.level === levels[0].index && COLUMN.test(e.name));
   const planned = levels.map((f) => {
-    const own = structure.filter((e) => e.level === f.index), cols = own.filter((e) => COLUMN.test(e.name)), rest = own.filter((e) => !COLUMN.test(e.name));
-    return { own, cols, rest, under: cols.length > 0 && rest.length > 0 && startOf(cols) < startOf(rest) };
+    const own = structure.filter((e) => e.level === f.index && !stairsAlone(e)), cols = own.filter((e) => COLUMN.test(e.name)), rest = own.filter((e) => !COLUMN.test(e.name));
+    return { own, cols, rest, under: !fromTheirFloor && cols.length > 0 && rest.length > 0 && Math.max(...cols.map((e) => e.end)) <= startOf(rest) };
   });
+  const trussed = pitched && of("roof").length > 0 && !planned[planned.length - 1].own.length;  // a roof frame on the columns, with no roof slab named under it
   const brief = (text: string) => (text.length > 30 ? `${text.slice(0, 29)}…` : text);
   levels.forEach((f, rank) => {
     const { own, cols, rest, under } = planned[rank];
     const colWork = planned[rank + 1]?.under ? planned[rank + 1].cols : under ? [] : cols;  // the columns that stand on this floor's slab
     const parted = cols.length > 0 || colWork.length > 0, steps = own.length > 1 || parted;  // a plan that splits a floor into steps says in their names what is being done
-    const drivers = own.length ? own : f.index === roofIndex && !planned[rank - 1]?.under ? structure.filter((e) => e.level === roofIndex - 1) : [];
+    const drivers = own.length ? own : f.index === roofIndex && !trussed && !planned[rank - 1]?.under ? planned[rank - 1]?.own ?? [] : [];
     const work = steps ? [...rest, ...colWork] : drivers.length ? drivers : loose, ids = idsOf(steps && rest.length ? rest : work), colIds = idsOf(steps && colWork.length ? colWork : work), below = levels[rank - 1], suspended = !!below, y = f.elevation;
     const existing = !drivers.length && !loose.length && !f.planned;
     const whole = (day: number) => (existing ? 1 : drivers.length ? (f.index === roofIndex && !structure.some((e) => e.level === roofIndex) ? clamp((together(drivers, day) - 0.85) / 0.15) : together(drivers, day)) : spread(together(loose, day), rank, levels.length));
@@ -541,9 +604,11 @@ export function buildScene(model: Model, holder: HTMLDivElement, onPick: (ids: s
     const upAt = (day: number) => (!parted ? clamp((whole(day) - 0.55) / 0.45) : colWork.length ? together(colWork, day) : 0);
     const prog = (day: number) => (!parted ? whole(day) : Math.min(slabAt(day), colWork.length ? upAt(day) : 1));
     progressAt.set(f.index, prog);
+    upAtOf.set(f.index, upAt);
+    idsAt.set(f.index, colIds);
     // a bay's step comes from the names where the plan names its steps: formwork, rebar and the pour may each be a package. Otherwise each bay goes through all three in its turn
-    const named = (words: RegExp) => rest.filter((e) => words.test(e.name));
-    const forms = named(/form|bekisting/i), bars = named(/rebar|pembesian|tulangan/i), pours = named(/pour|pengecoran|\bcor\b/i);
+    const STEPS = [/form|bekisting/i, /rebar|pembesian|tulangan/i, /pour|pengecoran|\bcor\b/i];  // a package naming them all is not one step of them
+    const [forms, bars, pours] = STEPS.map((words) => rest.filter((e) => words.test(e.name) && STEPS.filter((w) => w.test(e.name)).length === 1));
     const bayAt = (day: number, k: number) => {
       const slab = slabAt(day);
       if (!forms.length && !bars.length && !pours.length) return clamp(slab * nx - k);
@@ -551,14 +616,15 @@ export function buildScene(model: Model, holder: HTMLDivElement, onPick: (ids: s
       const poured = together(pours, day), fixed = together(bars, day);
       return poured > 0 ? 0.6 + 0.4 * spread(poured, k, nx) : fixed > 0 ? 0.3 + 0.3 * spread(fixed, k, nx) : 0.3 * spread(together(forms, day), k, nx);
     };
+    const voids = voidsAt(f.index, suspended);
     const bays = Array.from({ length: nx }, (_, k) => {
-      const x = -W / 2 + (k + 0.5) * bayW, m = concrete(), pour = clip(m, V(0, 0, -1));
+      const x = -W / 2 + (k + 0.5) * bayW, m = concrete(), pour = clip(m, V(0, 0, -1)), holes = holesIn(k, voids);
       return {
         k, x, m, pour,
-        concrete: add(slabOf(k, suspended), m, ids, x, y, 0),
-        deck: suspended ? add(deckGeo, plyMat, ids, x, y - 0.35, 0) : add(blindGeo, blindMat, ids, x, pit ? footing : y - 0.36, 0),
+        concrete: add(slabOf(k, suspended, holes), m, ids, x, y, 0),
+        deck: suspended ? (holes.length ? add(keep(plate(bayW - 0.04, D + 0.4, 0.05, holes)), plyMat, ids, x, y - 0.3, 0) : add(deckGeo, plyMat, ids, x, y - 0.35, 0)) : add(blindGeo, blindMat, ids, x, pit ? footing : y - 0.36, 0),
         props: suspended ? lines(propsOf(below.elevation, y - 0.35), propMat, x) : null,
-        rebar: add(meshGeo, meshMat, ids, x, y - 0.1, 0, false),
+        rebar: holes.length ? add(keep(plate(bayW - 0.1, D + 0.2, 0.02, holes)), meshMat, ids, x, y - 0.08, 0, false) : add(meshGeo, meshMat, ids, x, y - 0.1, 0, false),
         done: when((d) => bayAt(d, k) >= 1),
       };
     });
@@ -568,11 +634,11 @@ export function buildScene(model: Model, holder: HTMLDivElement, onPick: (ids: s
     const retaining = sides.map(([w, d, x, z]) => ({ cage: add(block(w, h, d), meshMat, colIds, x, y, z, false), form: add(block(w + 0.15, h, d + 0.15), plyMat, colIds, x, y, z), cast: add(block(w, h, d), colMat, colIds, x, y, z) }));
     const parapet = f.index === roofIndex && !pitched ? [add(block(W, 1, 0.2), colMat, ids, 0, y, D / 2 + 0.1), add(block(W, 1, 0.2), colMat, ids, 0, y, -D / 2 - 0.1), add(block(0.2, 1, D + 0.4), colMat, ids, W / 2 + 0.1, y, 0), add(block(0.2, 1, D + 0.4), colMat, ids, -W / 2 - 0.1, y, 0)] : [];
     if (f.height) outline(keep(new THREE.BoxGeometry(W, f.height, D)), 0, y + f.height / 2, 0);
-    const castAt = when((d) => upAt(d) >= 1);
+    const castAt = when((d) => upAt(d) >= 1), unnamed = !own.length && f.index === roofIndex && (planned[rank - 1]?.own.length ?? 0) > 1;
     const next = levels[rank + 1]?.name ?? "";
     parts.push((day) => {
       const p = prog(day), slab = slabAt(day), up = upAt(day), on = busy(work, day);
-      ready.set(f.index, p);
+      ready.set(f.index, f.index === roofIndex && !drivers.length && !loose.length ? ready.get(lastFloor) ?? 1 : p);  // with no slab of its own, the roof waits on the floor below
       let active: (typeof bays)[number] | null = null, tActive = 0;
       for (const b of bays) {
         const t = !rank && pit && dugOut[zoneOf(b.x)] < 1 ? 0 : bayAt(day, b.k);
@@ -609,6 +675,7 @@ export function buildScene(model: Model, holder: HTMLDivElement, onPick: (ids: s
         hoist(c.x, y + h * (up < 0.75 ? 0.5 : 1), c.z, up < 0.4 ? "rebar" : up < 0.75 ? "forms" : "bucket");
         crew(5, 0, y, 0, W * 0.85, D * 0.85);
       }
+      if (unnamed) return;
       if (steps) {  // the names say it: only where
         for (const e of work) if (busy([e], day)) {
           const isCol = colWork.includes(e);
@@ -631,6 +698,80 @@ export function buildScene(model: Model, holder: HTMLDivElement, onPick: (ids: s
       } else say(work, `${f.name}: the structure of this floor is finished`, "", 0, y + 0.5, 0, false);
     });
   });
+
+  if (trussed && floors.length) {
+    const ring = add(keep(fuse([...zs.map((z) => raw(W + 0.35, 0.6, 0.35).translate(0, top - 0.6, z)), ...xs.map((x) => raw(0.35, 0.6, D).translate(x, top - 0.6, 0))])), concrete(), idsAt.get(lastFloor) ?? []);
+    parts.push(() => { ring.visible = (ready.get(lastFloor) ?? 1) >= 1; });
+  }
+
+  // ---------------------------------------------------------------------------------------------- the stairs and the lift. Each floor's flights are cast with its columns, or by the plan's own stair packages.
+  // The lift shaft rises with the frame, a door opening on every floor, and stands proud of a flat roof
+  const stairMat = mat("#b3b7bb", { map: grain }), railMat = stairRail, stairGeo = new Map<number, THREE.BufferGeometry>(), railGeo = new Map<number, THREE.BufferGeometry>();
+  const flight = (n: number, rise: number, going: number, width: number) => {
+    const points = [v2(0, -0.18)];
+    for (let i = 0; i < n; i++) points.push(v2(i * going, (i + 1) * rise), v2((i + 1) * going, (i + 1) * rise));
+    points.push(v2(n * going, n * rise - 0.18));
+    return new THREE.ExtrudeGeometry(new THREE.Shape(points), { depth: width, bevelEnabled: false });
+  };
+  const storeyStair = (H: number) => {  // in its own frame: across x from 0 to STAIR_W, the half landing at z = 0 by the outside wall, the flights back from it
+    if (!stairGeo.has(H)) {
+      const n = Math.max(3, Math.ceil(H / 2 / 0.175)), r = H / 2 / n, g = RUN / n, w = (STAIR_W - 0.3) / 2;
+      stairGeo.set(H, keep(fuse([flight(n, r, g, w).rotateY(-Math.PI / 2).translate(STAIR_W, 0, -LANDING - RUN), flight(n, r, g, w).rotateY(Math.PI / 2).translate(0, H / 2, -LANDING),
+        raw(STAIR_W, 0.2, LANDING).translate(STAIR_W / 2, H / 2 - 0.2, -LANDING / 2)])));
+      // the steel balustrade along the inner edge of both flights and round the half landing, which is what makes a stair read as one from outside
+      const a = STAIR_W - w, b = w, lo = -LANDING - RUN, hi = -LANDING, list = [bar(V(a, 0.9, lo), V(a, H / 2 + 0.9, hi), 0.05), bar(V(b, H / 2 + 0.9, hi), V(b, H + 0.9, lo), 0.05), bar(V(b, H / 2 + 0.9, hi), V(a, H / 2 + 0.9, hi), 0.05)];
+      for (let i = 0; i <= 4; i++) {
+        const t = i / 4, z = lo + (hi - lo) * t;
+        list.push(bar(V(a, (H / 2) * t, z), V(a, (H / 2) * t + 0.9, z), 0.03), bar(V(b, H - (H / 2) * t, z), V(b, H - (H / 2) * t + 0.9, z), 0.03));
+      }
+      railGeo.set(H, keep(fuse(list)));
+    }
+    return stairGeo.get(H)!;
+  };
+  floors.forEach((f, i) => {
+    const work = structure.filter((e) => e.level === f.index && STAIR.test(e.name)), only = work.filter(stairsAlone);
+    if (i === floors.length - 1 || !f.height) {  // the top floor's stairs go no higher, but a package may still name their last landing
+      if (only.length && stairs.length) parts.push((day) => { for (const e of only) if (busy([e], day)) say([e], "", brief(e.name), stairs[0].x + STAIR_W / 2, f.elevation + 1, stairs[0].z - LANDING - RUN / 2); });
+      return;
+    }
+    const ids = work.length ? idsOf(work) : idsAt.get(f.index) ?? [], geo = storeyStair(f.height), next = floors[i + 1].name;
+    const flights = stairs.map((st) => {
+      const form = add(geo, plyMat, ids, st.x, f.elevation, st.z), cast = add(geo, stairMat, ids, st.x, f.elevation, st.z), rail = add(railGeo.get(f.height)!, railMat, ids, st.x, f.elevation, st.z);
+      form.rotation.y = cast.rotation.y = rail.rotation.y = st.turn;
+      return { form, cast, rail };
+    });
+    parts.push((day) => {
+      const s = work.length ? together(work, day) : upAtOf.get(f.index)?.(day) ?? 0, a = stairs[0];
+      for (const fl of flights) { fl.form.visible = s > 0 && s < 0.6; fl.cast.visible = s >= 0.6; fl.rail.visible = s >= 1; }
+      if (busy(work, day) && a) {
+        const x = a.x + STAIR_W / 2, z = a.z - LANDING - RUN / 2, y = f.elevation + f.height / 2;
+        if (busy(only, day)) say(only, `${f.name}: ${s < 0.6 ? "formwork and rebar for the stairs" : "casting the stairs"} up to ${next}, at both ends of the building`, "Stairs", x, y + 1, z);
+        hoist(x, y, z, s < 0.6 ? "forms" : "bucket");
+        crew(3, x, f.elevation, z, STAIR_W, RUN);
+      }
+    });
+  });
+  const lifts = of("lift");
+  if (liftOn && floors.length) {
+    const shaftOf = (h: number) => keep(fuse([raw(2.4, h, 0.2).translate(1.2, 0, -0.1), raw(0.2, h, 2.4).translate(0.1, 0, -1.2), raw(0.2, h, 2.4).translate(2.3, 0, -1.2),
+      raw(0.7, h, 0.2).translate(0.35, 0, -2.3), raw(0.7, h, 0.2).translate(2.05, 0, -2.3), raw(1, Math.max(0.1, h - 2.2), 0.2).translate(1.2, Math.min(2.2, h - 0.1), -2.3)]));
+    const liftMat = concrete(), ids = idsOf(lifts);
+    const segments = floors.map((f, i) => {
+      const last = i === floors.length - 1, h = last ? top - f.elevation + (pitched ? 0.5 : 1.8) : floors[i + 1].elevation - f.elevation, geo = shaftOf(h), own = ids.length ? ids : idsAt.get(f.index) ?? [];
+      return { f, h, form: add(geo, plyMat, own, liftX, f.elevation, zF), cast: add(geo, liftMat, own, liftX, f.elevation, zF), cap: last && !pitched ? add(block(2.6, 0.2, 2.6), liftMat, own, liftX + 1.2, top + 1.8, zF - 1.2) : null };
+    });
+    parts.push((day) => {
+      let high = lowest;
+      for (const g of segments) {
+        const up = upAtOf.get(g.f.index)?.(day) ?? 0;
+        g.form.visible = up >= 0.35 && up < 0.7;
+        g.cast.visible = up >= 0.7;
+        if (g.cap) g.cap.visible = up >= 1;
+        if (up >= 0.35) high = g.f.elevation + g.h;
+      }
+      for (const e of lifts) if (busy([e], day)) say([e], "", brief(e.name), liftX + 1.2, high + 0.5, zF - 1.2);
+    });
+  }
 
   // the concrete pump and the mixer feeding it, parked on the street side of the slab being poured
   const pump = truck(), mixer = truck(), boom = group(), pumpMat = mat("#d65a23", { roughness: 0.5, metalness: 0.15 });
@@ -661,6 +802,8 @@ export function buildScene(model: Model, holder: HTMLDivElement, onPick: (ids: s
     const heads = many(keep(new THREE.CylinderGeometry(0.3, 0.3, 0.9, 14).translate(0, 0.45, 0)), headMat, ids, piling, footing);  // their heads stand proud of the floor, to be cut down into the caps
     const casings = many(keep(new THREE.CylinderGeometry(0.42, 0.42, 0.5, 14).translate(0, 0.25, 0)), steelMat, ids, piling, 0);
     const verb = model.pile === "driven" ? "Driving" : model.pile === "bored" ? "Boring" : "";
+    const capWork = fdn.filter((e) => /pile ?cap|poer/i.test(e.name)), pileWork = fdn.filter((e) => !capWork.includes(e) && /pile|tiang|pancang/i.test(e.name));
+    const parted = capWork.length > 0 || pileWork.length > 0, others = parted ? fdn.filter((e) => !capWork.includes(e) && !pileWork.includes(e)) : [];
     const caps = many(block(1.7, 1, 1.7), capMat, ids, piling, pit ? footing : -0.6);  // on the floor of the pit, their tops under the lowest slab
     const ties = add(keep(fuse([...zs.flatMap((z) => xs.slice(1).map((x) => raw(bayW - 1.7, 0.6, 0.3).translate(x - bayW / 2, pit ? footing : -0.2, z))), ...xs.flatMap((x) => zs.slice(1).map((z) => raw(0.3, 0.6, D / nz - 1.7).translate(x, pit ? footing : -0.2, z - D / nz / 2)))])), capMat, ids);
     const rig = group(), rigMat = mat("#c8421f", { roughness: 0.5, metalness: 0.15 });
@@ -671,7 +814,9 @@ export function buildScene(model: Model, holder: HTMLDivElement, onPick: (ids: s
     piece(rig, keep(lattice(16, 0.75, 0.75, 0.06).rotateZ(Math.PI / 2).translate(0.38, 0, 0)), rigMat, 1.5, 0.9, 0);
     piece(rig, keep(new THREE.CylinderGeometry(0.11, 0.11, 13, 8).translate(0, 6.5, 0)), steelMat, 2.3, 1.2, 0);
     parts.push((day) => {
-      const p = together(fdn, day), on = busy(fdn, day), bored = clamp(p / 0.75) * N, cast = clamp((p - 0.75) / 0.25) * N * 1.4;
+      const p = together(fdn, day);
+      const bored = (!parted ? clamp(p / 0.75) : pileWork.length ? together(pileWork, day) : together(capWork, day) > 0 ? 1 : 0) * N;
+      const cast = (!parted ? clamp((p - 0.75) / 0.25) : capWork.length ? together(capWork, day) : together(pileWork, day) >= 1 ? 1 : 0) * N * 1.4;
       const covered = (ready.get(levels[0]?.index) ?? 0) >= 0.55;  // the lowest slab goes over them
       piling.forEach((pt, i) => {
         const opened = pit ? dugOut[zoneOf(pt.x)] : 1, done = bored >= i + 1, capped = cast > i && opened >= 1;
@@ -681,17 +826,19 @@ export function buildScene(model: Model, holder: HTMLDivElement, onPick: (ids: s
       });
       heads.done(); casings.done(); caps.done();
       ties.visible = cast >= N && dugOut.every((d) => d >= 1) && !covered;
-      const boring = on && bored < N;
+      const boring = busy(parted ? pileWork : fdn, day) && bored < N, casting = busy(parted ? capWork : fdn, day) && !boring;
+      for (const e of others) if (busy([e], day)) say([e], "", brief(e.name), W / 4, Math.max(footing, 0) + 1.2, 0);
       rig.visible = boring;
       if (boring) {
         const i = Math.min(N - 1, Math.floor(bored)), pt = piling[i], y = soilAt(pt.x);
         rig.position.set(pt.x - 2.3, y, pt.z);
-        say(fdn, `${verb ? `${verb} the pile` : "Piling"} at column ${pt.name}, ${i + 1} of ${N}`, verb ? `${verb} piles` : "Piling", pt.x, y + 2.5, pt.z);
-        hoist(pt.x, y, pt.z, "rebar");
+        say(parted ? pileWork : fdn, `${verb ? `${verb} the pile` : "Piling"} at column ${pt.name}, ${i + 1} of ${N}`, verb ? `${verb} piles` : "Piling", pt.x, y + 2.5, pt.z);
+        if (verb !== "Driving") hoist(pt.x, y, pt.z, "rebar");
         crew(3, pt.x + 1.5, y, pt.z, 5, 5);
-      } else if (on) {
+      }
+      if (casting) {
         const open = dugOut.every((d) => d >= 1), i = Math.min(N - 1, Math.floor(cast)), pt = piling[i];
-        say(fdn, `Casting the pile caps and the tie beams at the foot of the columns${open ? "" : ", as the dig reaches them"}`, "Pile caps and tie beams", 0, footing + 1.2, 0);
+        say(parted ? capWork : fdn, `Casting the pile caps${parted ? "" : " and the tie beams"} at the foot of the columns${open ? "" : ", as the dig reaches them"}`, parted ? "Pile caps" : "Pile caps and tie beams", 0, footing + 1.2, 0);
         hoist(pt.x, footing, pt.z, "bucket");
         crew(5, 0, footing, 0, W * 0.8, D * 0.8);
       }
@@ -706,32 +853,16 @@ export function buildScene(model: Model, holder: HTMLDivElement, onPick: (ids: s
     parts.push((day) => {
       const p = after(base, fills.length ? together(fills, day) : clamp((day - finish) / 14));
       for (const m of around) { grow(m, p); m.material = p >= 1 ? siteMat : soilMat; }
-      if (busy(fills, day)) {
-        say(fills, p > 0 ? "Backfilling round the basement walls and compacting the soil" : "The backfill starts once the basement walls stand", "Backfilling", W / 2 + 1, 1, D / 2 + 1);
+      for (const e of fills) if (busy([e], day)) {
+        say([e], fills.length > 1 ? "" : p > 0 ? "Backfilling round the basement walls and compacting the soil" : "The backfill starts once the basement walls stand", fills.length > 1 ? brief(e.name) : "Backfilling", W / 2 + 1, 1, D / 2 + 1);
         if (p > 0) crew(2, W / 2 + 1, footing + deep * p, 0, gapX, D);
       }
     });
   } else if (fills.length) {
-    parts.push((day) => { if (busy(fills, day)) { say(fills, "Levelling and compacting the ground round the building", "Levelling", W / 2 + 2, 1, D / 2 + 2); crew(2, W / 2 + 2, 0, 0, 2, D); } });
+    parts.push((day) => { for (const e of fills) if (busy([e], day)) { say([e], "", brief(e.name), W / 2 + 2, 1, D / 2 + 2); crew(2, W / 2 + 2, 0, 0, 2, D); } });
   }
 
   // ---------------------------------------------------------------------------------------------- the lift shaft, rising with the floors
-  const lift = of("lift");
-  if (lift.length) {
-    const m = concrete(), plane = clip(m, DOWN), H = top + 0.5 - lowest, cx = xs[0] + bayW / 2, cz = (zs[0] + zs[Math.min(1, nz)]) / 2;
-    const shaft = add(keep(fuse([raw(2.8, H, 0.2).translate(0, 0, 1.3), raw(2.8, H, 0.2).translate(0, 0, -1.3), raw(0.2, H, 2.8).translate(1.3, 0, 0), raw(0.2, H, 2.8).translate(-1.3, 0, 0)])), m, idsOf(lift), cx, lowest, cz);
-    parts.push((day) => {
-      const p = together(lift, day), y = lowest + H * p;
-      plane.constant = y;
-      shaft.visible = p > 0;
-      if (busy(lift, day)) {
-        say(lift, `Lift shaft walls rising, now at ${floorAt(y)}`, "Lift shaft", cx, y + 1, cz);
-        hoist(cx, y, cz, "bucket");
-        crew(3, cx, y, cz, 2.4, 2.4);
-      }
-    });
-  }
-
   // ---------------------------------------------------------------------------------------------- walls, windows and the fit-out, each over every floor, from the bottom up
   const across = (work: El[], list: Floor[]) => {
     const unnamed = work.filter((e) => e.level === null);
@@ -751,6 +882,18 @@ export function buildScene(model: Model, holder: HTMLDivElement, onPick: (ids: s
     };
     for (let k = 0; k < nx; k++) for (const s of [1, -1]) put(-W / 2 + (k + 0.5) * bayW, (s * D) / 2, bayW - 0.6, 0, f.index === 0 && doors.includes(k));
     for (let j = 0; j < nz; j++) for (const s of [1, -1]) put((s * W) / 2, -D / 2 + (j + 0.5) * zb, zb - 0.6, Math.PI / 2, false);
+    for (const p of out) {  // a wall beside a stair is left open nearly floor to beam, with a guard rail, as a tropical stairwell often is: so the flights show from outside
+      if (p.hole?.y === 0) continue;
+      const px = p.at.elements[12], pz = p.at.elements[14], across = Math.abs(p.at.elements[0]) < 0.5;
+      for (const [x0, z0, x1, z1] of stairWells) {
+        const by = across ? Math.min(Math.abs(px - x0), Math.abs(px - x1)) < 0.6 : Math.min(Math.abs(pz - z0), Math.abs(pz - z1)) < 0.6;
+        const [a, b] = across ? [Math.max(z0, pz - p.w / 2), Math.min(z1, pz + p.w / 2)] : [Math.max(x0, px - p.w / 2), Math.min(x1, px + p.w / 2)];
+        if (!by || b - a < 1) continue;
+        const lo = Math.max(-p.w / 2 + 0.15, across ? -(b - pz) : a - px), hi = Math.min(p.w / 2 - 0.15, across ? -(a - pz) : b - px);
+        p.hole = { x: lo, y: 0.45, w: hi - lo, h: p.h - 0.7 };
+        p.open = true;
+      }
+    }
     return out;
   };
   const wallOf = ({ at, w, h, hole: o }: Panel, t: number, inset: number) => {
@@ -760,12 +903,14 @@ export function buildScene(model: Model, holder: HTMLDivElement, onPick: (ids: s
     if (o && o.y > 0) s.holes.push(new THREE.Path([v2(o.x + inset, o.y + inset), v2(o.x + inset, o.y + o.h - inset), v2(o.x + o.w - inset, o.y + o.h - inset), v2(o.x + o.w - inset, o.y + inset)]));
     return new THREE.ExtrudeGeometry(s, { depth: t, bevelEnabled: false }).translate(0, 0, -t / 2).applyMatrix4(at);
   };
-  const walls = of("walls"), wallsDone = new Map<number, number>();
+  const arch = of("architecture"), phased = (a: number, b: number) => arch.map((e) => ({ ...e, start: e.start + (e.end - e.start) * a, end: e.start + (e.end - e.start) * b }));
+  const walls = [...of("walls"), ...phased(0, 0.55)], wallsDone = new Map<number, number>();
   if (walls.length && above.length) {
-    const ids = idsOf(walls), progress = across(walls, above);
+    const ids = idsOf(walls), progress = across(walls, above), plastered = arch.length > 0 || walls.some((e) => /plester|plaster|acian/i.test(e.name));
     const built = above.map((f) => {
       const panels = panelsOf(f), brickMat = mat("#ffffff", { map: tex.brick }), plasterMat = mat(LOOK.plaster, { map: grain });
-      return { f, h: f.height - 0.9, brickPlane: clip(brickMat, DOWN), plasterPlane: clip(plasterMat, DOWN),
+      const guards = panels.filter((p) => p.open).map((p) => raw(p.hole!.w, 0.06, 0.06).translate(p.hole!.x + p.hole!.w / 2, 1.05, 0).applyMatrix4(p.at));
+      return { f, h: f.height - 0.9, brickPlane: clip(brickMat, DOWN), plasterPlane: clip(plasterMat, DOWN), guard: guards.length ? add(keep(fuse(guards)), stairRail, ids) : null,
         brick: add(keep(fuse(panels.map((p) => wallOf(p, 0.15, 0)))), brickMat, ids), plaster: add(keep(fuse(panels.map((p) => wallOf(p, 0.19, 0.02)))), plasterMat, ids) };
     });
     parts.push((day) => {
@@ -774,24 +919,25 @@ export function buildScene(model: Model, holder: HTMLDivElement, onPick: (ids: s
         const s = a.s[i], y = b.f.elevation;
         wallsDone.set(b.f.index, s);
         b.brick.visible = s > 0;
-        b.brickPlane.constant = y + b.h * clamp(s / 0.6);
-        b.plaster.visible = s > 0.6;
+        b.brickPlane.constant = y + b.h * clamp(plastered ? s / 0.6 : s);
+        b.plaster.visible = plastered && s > 0.6;
+        if (b.guard) b.guard.visible = s >= 1;
         b.plasterPlane.constant = y + b.h * clamp((s - 0.6) / 0.4);
       });
       if (!busy(walls, day) || !a.now) return;
       const f = a.now, s = a.s[above.indexOf(f)], y = f.elevation + 1.6;
       if (a.waiting) say(walls, `Brick walls start on ${f.name} once its frame is finished`, "Walls wait for the frame", 0, y, D / 2);
-      else if (s < 0.6) { say(walls, `${f.name}: laying the brick walls between the columns`, "Laying bricks", 0, y, D / 2); hoist(0, f.elevation, D / 2 - 2, "bricks"); }
+      else if (s < 0.6 || !plastered) { say(walls, `${f.name}: laying the brick walls between the columns`, "Laying bricks", 0, y, D / 2); hoist(0, f.elevation, D / 2 - 2, "bricks"); }
       else say(walls, `${f.name}: plastering the brick walls`, "Plastering", 0, y, D / 2);
       crew(4, 0, f.elevation, D / 2 - 1, W * 0.8, 1.2);
     });
   }
 
-  const openings = of("openings");
+  const openings = [...of("openings"), ...phased(0.4, 0.8)];
   if (openings.length && above.length) {
     const ids = idsOf(openings), progress = across(openings, above), frameMat = mat("#3a3f45", { metalness: 0.6, roughness: 0.4 });
     const built = above.map((f) => {
-      const panels = panelsOf(f).filter((p) => p.hole);
+      const panels = panelsOf(f).filter((p) => p.hole && !p.open);
       const frames = panels.flatMap((p) => {
         const o = p.hole!, e = 0.07, s = new THREE.Shape([v2(o.x, o.y), v2(o.x + o.w, o.y), v2(o.x + o.w, o.y + o.h), v2(o.x, o.y + o.h)]);
         s.holes.push(new THREE.Path([v2(o.x + e, o.y + e), v2(o.x + e, o.y + o.h - e), v2(o.x + o.w - e, o.y + o.h - e), v2(o.x + o.w - e, o.y + e)]));
@@ -813,12 +959,14 @@ export function buildScene(model: Model, holder: HTMLDivElement, onPick: (ids: s
   }
 
   const floorOf = (e: El, day: number, list: Floor[]) => (e.level !== null ? list.find((f) => f.index === e.level) ?? list[0] : list[Math.min(list.length - 1, Math.floor(progressOf(e, day) * list.length))]);
-  const interior = of("interior");
+  const interior = [...of("interior"), ...phased(0.5, 1)];
   if (interior.length && floors.length) {
     const ids = idsOf(interior), progress = across(interior, floors);
     const built = floors.map((f) => {
       const glow = keep(new THREE.MeshBasicMaterial({ color: "#ffdba3", transparent: true, opacity: 0, depthWrite: false }));
-      return { f, glow, finish: add(block(W - 1, 0.02, D - 1), mat("#e8dfcc", { map: tex.paving }), ids, 0, f.elevation + 0.01, 0, false), light: add(block(W - 1.2, f.height - 1.3, D - 1.2), glow, [], 0, f.elevation + 0.2, 0, false) };
+      const holes = voidsAt(f.index, f.index > lowestIndex).map(([x0, z0, x1, z1]) => [Math.max(x0, -W / 2 + 0.55), Math.max(z0, -D / 2 + 0.55), Math.min(x1, W / 2 - 0.55), Math.min(z1, D / 2 - 0.55)]);  // the stairs and the lift go through the finished floor
+      const ends = stairs.length ? STAIR_W + 0.6 : 0;  // the light inside stays clear of the stairwells at the ends
+      return { f, glow, finish: add(keep(plate(W - 1, D - 1, 0.02, holes)), mat("#e8dfcc", { map: tex.paving }), ids, 0, f.elevation + 0.03, 0, false), light: add(block(W - 1.2 - 2 * ends, f.height - 1.3, D - 1.2), glow, [], 0, f.elevation + 0.2, 0, false) };
     });
     parts.push((day) => {
       const a = progress(day);
@@ -877,18 +1025,19 @@ export function buildScene(model: Model, holder: HTMLDivElement, onPick: (ids: s
       const gables = [add(gable, gableMat, ids, W / 2 + 0.2, top, 0), add(gable, gableMat, ids, -W / 2 - 0.36, top, 0)];
       outline(keep(new THREE.ExtrudeGeometry(gableShape, { depth: wide, bevelEnabled: false }).rotateY(Math.PI / 2).translate(-wide / 2, 0, 0)), 0, top, 0);
       roofTiled = () => plane.constant >= top + rise;
+      const covered = model.roof_covered !== false, frameShare = covered ? 0.45 : 1;  // where the plan names only the frame, the frame is all that is drawn
       parts.push((day) => {
-        const p = after(roofIndex, together(roof, day)), up = clamp(p / 0.45) * count, q = clamp((p - 0.45) / 0.55);
+        const p = after(roofIndex, together(roof, day)), up = clamp(p / frameShare) * count, q = covered ? clamp((p - 0.45) / 0.55) : 0;
         spots.forEach((_, i) => trusses.show(i, up > i));
         trusses.done();
         plane.constant = top + rise * q;
         front.visible = back.visible = q > 0;
         ridge.visible = q >= 1;
-        for (const g of gables) g.visible = p >= 0.45;
+        for (const g of gables) g.visible = covered && p >= 0.45;
         if (!busy(roof, day)) return;
-        if (p === 0) say(roof, "The roof starts once the roof slab is finished", "Roof waits for the slab", 0, top + 2, 0);
-        else if (p < 0.45) { const i = Math.min(count - 1, Math.floor(up)); say(roof, `Putting up the roof frame, truss ${i + 1} of ${count}`, "Roof frame", spots[i].x, top + rise, 0); hoist(spots[i].x, top, 0, "truss"); crew(4, spots[i].x, top, 0, 3, D * 0.8); }
-        else { say(roof, "Covering the roof, from the eaves up to the ridge", "Roof covering", 0, top + rise * (q + 0.2), S * (1 - q)); crew(4, 0, top + rise * q, S * (1 - q), W * 0.8, 1); }
+        if (p === 0) say(roof, "The roof starts once the frame below it is finished", "Roof waits for the frame", 0, top + 2, 0);
+        else if (p < frameShare) { const i = Math.min(count - 1, Math.floor(up)); say(roof, `Putting up the roof frame, truss ${i + 1} of ${count}`, "Roof frame", spots[i].x, top + rise, 0); hoist(spots[i].x, top, 0, "truss"); crew(4, spots[i].x, top, 0, 3, D * 0.8); }
+        else if (covered) { say(roof, "Covering the roof, from the eaves up to the ridge", "Roof covering", 0, top + rise * (q + 0.2), S * (1 - q)); crew(4, 0, top + rise * q, S * (1 - q), W * 0.8, 1); }
       });
     } else {
       const skin = add(block(W + 0.4, 0.08, D + 0.4), mat("#4b5059", { map: grain }), ids, 0, top, 0);
@@ -904,20 +1053,21 @@ export function buildScene(model: Model, holder: HTMLDivElement, onPick: (ids: s
   // ---------------------------------------------------------------------------------------------- services: a riser for each, then a run under every floor. Solar panels and lightning rods where the plan names them
   const solar = els.find((e) => /solar/i.test(e.name)), rod = els.find((e) => /petir|lightning/i.test(e.name));
   for (const [kind, color, side, verb] of [["electrical", "#e8b923", -1, "Conduits, cable trays and wiring"], ["mechanical", "#3f8fd2", 1, "Pipes and ducts"]] as const) {
-    const work = of(kind);
+    const work = [...of(kind), ...of("services")];
     if (!work.length || !floors.length) continue;
     const m = mat(color, { roughness: 0.5, metalness: 0.2 }), ids = idsOf(work), progress = across(work, floors), H = top + 0.5 - lowest;
     const riser = add(keep(new THREE.CylinderGeometry(0.18, 0.18, H, 10).translate(0, H / 2, 0)), m, ids, xs[nx] - bayW / 2 + side * 0.7, lowest, zs[0] + bay / 2);
-    const run = kind === "electrical" ? block(W - 2, 0.1, 0.4) : keep(fuse([new THREE.CylinderGeometry(0.11, 0.11, W - 2, 8).rotateZ(Math.PI / 2).translate(0, 0.1, 0.2), new THREE.CylinderGeometry(0.11, 0.11, W - 2, 8).rotateZ(Math.PI / 2).translate(0, 0.1, -0.2)]));
+    const L = W - 2 - (stairs.length ? 2 * (STAIR_W + 0.6) : 0);  // the runs stop short of the stairwells at the ends
+    const run = kind === "electrical" ? block(L, 0.1, 0.4) : keep(fuse([new THREE.CylinderGeometry(0.11, 0.11, L, 8).rotateZ(Math.PI / 2).translate(0, 0.1, 0.2), new THREE.CylinderGeometry(0.11, 0.11, L, 8).rotateZ(Math.PI / 2).translate(0, 0.1, -0.2)]));
     const runs = floors.map((f) => add(run, m, ids, 0, f.elevation + f.height - 1.15, side * D * 0.25, false));
     parts.push((day) => {
       const a = progress(day);
       grow(riser, together(work, day));
       runs.forEach((r, i) => grow(r, a.s[i], "x"));
-      for (const e of work) if (busy([e], day)) {
+      for (const e of work) if (busy([e], day) && !(e.kind === "services" && kind === "mechanical")) {  // one pin for a package that is both
         const f = floorOf(e, day, floors), late = e === solar && progressOf(e, day) > 0.85;
         const started = (ready.get(f.index) ?? 1) >= 0.999;
-        say([e], late ? "Fixing the solar panels on the roof" : `${verb}, ${started ? "now on" : "starting once the frame is finished on"} ${f.name}`, late ? "Solar panels" : "", side * W * 0.3, f.elevation + 1.4, D / 2, f.index >= 0 && started);
+        say([e], late ? "Fixing the solar panels on the roof" : `${e.kind === "services" ? "Pipes, ducts, conduits and wiring" : verb}, ${started ? "now on" : "starting once the frame is finished on"} ${f.name}`, late ? "Solar panels" : "", side * W * 0.3, f.elevation + 1.4, D / 2, f.index >= 0 && started);
       }
     });
   }
@@ -974,6 +1124,25 @@ export function buildScene(model: Model, holder: HTMLDivElement, onPick: (ids: s
       grow(front, p, "x");
       grow(back, p, "x");
       if (busy(canopy, day)) { say(canopy, "Casting the entrance canopies, front and back", "Canopies", 0, ground0 + 0.4, D / 2 + 2); crew(3, 0, 0, D / 2 + 2, wide, 2.4); }
+    });
+  }
+  const entrance = of("entrance");
+  if (entrance.length) {  // the steps and the ramp up to the front doors
+    const wide = Math.min(W * 0.4, bayW * 1.6), lie = 1.6, rise2 = 0.32, run2 = 3.6, zAt = D / 2 + 0.35 + lie / 2;
+    const ramp = new THREE.ExtrudeGeometry(new THREE.Shape([v2(0, 0), v2(run2, 0), v2(0, rise2)]), { depth: 1.4, bevelEnabled: false }).translate(wide / 2, 0, -0.7);
+    const steps = add(keep(fuse([raw(wide, rise2, lie), raw(wide, rise2 / 2, 0.6).translate(0, 0, lie / 2 + 0.3), ramp])), concrete(), idsOf(entrance), 0, 0, zAt);
+    parts.push((day) => {
+      grow(steps, together(entrance, day));
+      if (busy(entrance, day)) { say(entrance, "Casting the entrance steps and ramp at the front of the building", "Entrance steps and ramp", 0, 1.2, zAt); crew(3, 0, 0, zAt + 1.2, wide, 1); }
+    });
+  }
+  const joint = of("joint");
+  if (joint.length) {  // the expansion joint, a dark line up the building's long sides
+    const seam = keep(fuse([raw(0.07, top, 0.03).translate(0, 0, D / 2 + 0.36), raw(0.07, top, 0.03).translate(0, 0, -D / 2 - 0.36)]));
+    const line = add(seam, mat("#2f3338"), idsOf(joint), 0, 0, 0, false);
+    parts.push((day) => {
+      grow(line, together(joint, day));
+      for (const e of joint) if (busy([e], day)) say([e], "", brief(e.name), 0, 1.5, D / 2 + 0.4);
     });
   }
   const catwalk = of("catwalk");
@@ -1040,10 +1209,44 @@ export function buildScene(model: Model, holder: HTMLDivElement, onPick: (ids: s
   }
 
   // ---------------------------------------------------------------------------------------------- the tower crane, where the contract lists one. It is erected before the frame, climbs a section at a time as the building rises, swings to the work of the day and lowers the load there, and parks with its hook up when no lift is needed
-  const frame = [...fdn, ...structure, ...lift, ...roof];
+  const frame = [...fdn, ...structure, ...lifts, ...roof];
   const crane = { angle: 2.2, r: 8, hook: 12, goalAngle: 2.2, goalR: 8, goalHook: 12, on: false, fresh: true };
   let craneStep: () => boolean = () => false;
-  if (model.crane && frame.length) {
+  const slingOn = (hook: THREE.Object3D): Record<Load, THREE.Object3D> => ({
+    rebar: piece(hook, block(5, 0.28, 0.5), rustMat, 0, -1.7, 0),
+    forms: piece(hook, block(2.4, 0.5, 1.2), plyMat, 0, -1.9, 0),
+    bucket: piece(hook, keep(new THREE.CylinderGeometry(0.7, 0.3, 1.3, 12).translate(0, 0.65, 0)), mat("#6f7479", { metalness: 0.4, roughness: 0.5 }), 0, -2.2, 0),
+    bricks: piece(hook, block(1.2, 1, 1.2), brickLook, 0, -2, 0),
+    truss: piece(hook, keep(fuse([bar(V(-5, 0, 0), V(5, 0, 0), 0.09), bar(V(-5, 0, 0), V(0, 1.8, 0), 0.09), bar(V(5, 0, 0), V(0, 1.8, 0), 0.09), bar(V(0, 0, 0), V(0, 1.8, 0), 0.06)])), steelMat, 0, -3, 0),
+  });
+  if (model.crane === "mobile" && frame.length) {  // a mobile crane comes for the lift: on the side of the building nearest the work, its boom up past the frame and a fly jib out over it
+    const carrier = truck(), reachOut = group(), hook = new THREE.Group();
+    piece(carrier, block(3.4, 0.9, 2.2), yellow, -1.2, 1.15, 0);
+    for (const x of [2, -2.8]) for (const z of [1.5, -1.5]) piece(carrier, block(0.5, 0.75, 0.5), dark, x, 0, z);
+    carrier.rotation.y = Math.PI / 2;
+    const jib = piece(reachOut, unit, yellow), fly = piece(reachOut, unit, yellow), rope = piece(reachOut, keep(new THREE.CylinderGeometry(0.035, 0.035, 1, 6).translate(0, 0.5, 0)), dark);
+    jib.scale.set(1.5, 1.5, 1);
+    fly.scale.set(0.8, 0.8, 1);
+    reachOut.add(hook);
+    piece(hook, block(0.5, 0.8, 0.34), yellow, 0, -0.8, 0);
+    const loads = slingOn(hook);
+    parts.push(() => {
+      carrier.visible = reachOut.visible = !!job;
+      for (const [k, m] of Object.entries(loads)) m.visible = !!job && job.load === k;
+      if (!job) return;
+      const side = job.x < 0 ? -1 : 1, x = side * (edgeX + 5), z = Math.max(-D / 2, Math.min(side > 0 ? (stp.length ? -2 : D / 2) : tank.length ? 2 : D / 2, job.z)), hookY = job.y + 3.4;
+      carrier.position.set(x, 0, z);
+      const top2 = Math.max(frameTop, job.y) + 6, apex = V(side * (W / 2 + 1.5), top2, z), tip = V(job.x, top2 + 1, job.z);
+      span3(jib, V(x, 2.2, z), apex);
+      jib.scale.set(1.5, 1.5, jib.scale.z);
+      span3(fly, apex, tip);
+      fly.scale.set(0.8, 0.8, fly.scale.z);
+      hook.position.set(job.x, hookY, job.z);
+      rope.position.set(job.x, hookY, job.z);
+      rope.scale.y = tip.y - hookY;
+    });
+  }
+  if (model.crane === "tower" && frame.length) {
     const from = Math.max(0, Math.min(...frame.map((e) => e.start)) - 4), until = Math.max(...frame.map((e) => e.end)) + 6;
     const cx = edgeX + 3.5, cz = -edgeZ - 1.5, footH = 0.6, section = 3, finalH = Math.ceil((top + rise + 9) / section) * section;
     const R = Math.max(...[[-W / 2, -D / 2], [-W / 2, D / 2], [W / 2, D / 2], [W / 2, -D / 2]].map(([x, z]) => Math.hypot(x - cx, z - cz))) + 3;
@@ -1064,13 +1267,7 @@ export function buildScene(model: Model, holder: HTMLDivElement, onPick: (ids: s
     const trolley = piece(head, block(1.1, 0.3, 1.1), dark, 8, 0.7, 0), hook = new THREE.Group(), cable = piece(head, keep(new THREE.CylinderGeometry(0.035, 0.035, 1, 6).translate(0, 0.5, 0)), dark);
     head.add(hook);
     piece(hook, block(0.5, 0.8, 0.34), yellow, 0, -0.8, 0);
-    const slung: Record<Load, THREE.Object3D> = {
-      rebar: piece(hook, block(5, 0.28, 0.5), rustMat, 0, -1.7, 0),
-      forms: piece(hook, block(2.4, 0.5, 1.2), plyMat, 0, -1.9, 0),
-      bucket: piece(hook, keep(new THREE.CylinderGeometry(0.7, 0.3, 1.3, 12).translate(0, 0.65, 0)), mat("#6f7479", { metalness: 0.4, roughness: 0.5 }), 0, -2.2, 0),
-      bricks: piece(hook, block(1.2, 1, 1.2), brickLook, 0, -2, 0),
-      truss: piece(hook, keep(fuse([bar(V(-5, 0, 0), V(5, 0, 0), 0.09), bar(V(-5, 0, 0), V(0, 1.8, 0), 0.09), bar(V(5, 0, 0), V(0, 1.8, 0), 0.09), bar(V(0, 0, 0), V(0, 1.8, 0), 0.06)])), steelMat, 0, -3, 0),
-    };
+    const slung = slingOn(hook);
     const pose = () => {
       const y = crane.hook - head.position.y;
       head.rotation.y = crane.angle;
@@ -1184,8 +1381,15 @@ export function buildScene(model: Model, holder: HTMLDivElement, onPick: (ids: s
   // ---------------------------------------------------------------------------------------------- clicking a part tells which work package builds it; dragging turns the view
   const ray = new THREE.Raycaster(), pointer = new THREE.Vector2();
   let pressed: [number, number] | null = null;
-  const down = (ev: PointerEvent) => { pressed = [ev.clientX, ev.clientY]; };
+  const down = (ev: PointerEvent) => { pressed = [ev.clientX, ev.clientY]; if (fp.on) fp.drag = [ev.clientX, ev.clientY]; };
+  const look = (ev: PointerEvent) => {
+    if (!fp.on || !fp.drag) return;
+    fp.yaw -= (ev.clientX - fp.drag[0]) * 0.0035;
+    fp.pitch = Math.max(-1.35, Math.min(1.35, fp.pitch - (ev.clientY - fp.drag[1]) * 0.0035));
+    fp.drag = [ev.clientX, ev.clientY];
+  };
   const up = (ev: PointerEvent) => {
+    fp.drag = null;
     if (!pressed || Math.hypot(ev.clientX - pressed[0], ev.clientY - pressed[1]) > 5) return;
     const box = renderer.domElement.getBoundingClientRect();
     pointer.set(((ev.clientX - box.left) / box.width) * 2 - 1, -((ev.clientY - box.top) / box.height) * 2 + 1);
@@ -1194,14 +1398,41 @@ export function buildScene(model: Model, holder: HTMLDivElement, onPick: (ids: s
     onPick(hit ? (hit.object.userData.ids as string[]) : null);
   };
   renderer.domElement.addEventListener("pointerdown", down);
+  renderer.domElement.addEventListener("pointermove", look);
   renderer.domElement.addEventListener("pointerup", up);
 
   // the drawing happens only when something moves: the view, the crane swinging to its next job, or the camera going to a part
   const render = () => { renderer.render(scene, camera); labels.render(scene, camera); };
   let goal: { target: THREE.Vector3; position: THREE.Vector3 } | null = null, frameId = 0;
-  const tick = () => {
+  const tick = (now = 0) => {
+    const dt = fp.last ? Math.min(0.05, (now - fp.last) / 1000) : 0.016;
+    fp.last = now;
     frameId = 0;
     let moving = craneStep();
+    if (fp.on) {
+      moving = true;
+      goal = null;
+      const speed = 7, fwd = (fp.keys.has("KeyW") ? 1 : 0) - (fp.keys.has("KeyS") ? 1 : 0), side = (fp.keys.has("KeyD") ? 1 : 0) - (fp.keys.has("KeyA") ? 1 : 0), len = Math.hypot(fwd, side) || 1;
+      const feetNow = camera.position.y - 1.62;
+      const hitsPlane = (nx: number, nz: number) => fpStairHeights(nx, nz).some((h) => h > feetNow + 0.55 && h < feetNow + 1.8);
+      let nx = camera.position.x + ((-Math.sin(fp.yaw) * fwd + Math.cos(fp.yaw) * side) / len) * 5.5 * dt;
+      let nz = camera.position.z + ((-Math.cos(fp.yaw) * fwd - Math.sin(fp.yaw) * side) / len) * 5.5 * dt;
+      if (hitsPlane(nx, nz)) { if (!hitsPlane(nx, camera.position.z)) nz = camera.position.z; else if (!hitsPlane(camera.position.x, nz)) nx = camera.position.x; else { nx = camera.position.x; nz = camera.position.z; } }
+      camera.position.x = nx;
+      camera.position.z = nz;
+      const stand = fpFloor(camera.position.x, camera.position.z, camera.position.y - 1.62) + 1.62;
+      if (fp.keys.has("KeyE")) { fp.air = false; fp.vy = 0; camera.position.y += speed * dt; }
+      else if (fp.keys.has("KeyQ")) { fp.air = false; fp.vy = 0; camera.position.y = Math.max(stand, camera.position.y - speed * dt); }
+      else {
+        if (fp.keys.has("Space") && !fp.air && camera.position.y <= stand + 0.02) { fp.air = true; fp.vy = 7; }
+        if (fp.air || camera.position.y > stand + 1.2) { fp.vy -= 22 * dt; camera.position.y += fp.vy * dt; if (camera.position.y <= stand) { camera.position.y = stand; fp.vy = 0; fp.air = false; } }
+        else { if (fwd || side) fp.bob += dt * 9; else fp.bob = 0; camera.position.y = stand + (fwd || side ? Math.abs(Math.sin(fp.bob)) * 0.05 : 0); }
+      }
+      camera.position.x = Math.max(-siteW, Math.min(siteW, camera.position.x));
+      camera.position.z = Math.max(-siteD, Math.min(siteD, camera.position.z));
+      camera.position.y = Math.max((pit ? footing : 0) + 1.2, Math.min(top + 18, camera.position.y));
+      camera.rotation.set(fp.pitch, fp.yaw, 0);
+    }
     if (goal) {
       controls.target.lerp(goal.target, 0.12);
       camera.position.lerp(goal.position, 0.12);
@@ -1228,6 +1459,36 @@ export function buildScene(model: Model, holder: HTMLDivElement, onPick: (ids: s
   const watch = new ResizeObserver(resize);
   watch.observe(holder);
   resize();
+  const setFp = (on: boolean) => {
+    if (on === fp.on) return;
+    if (on) {
+      fp.savedPos.copy(camera.position);
+      fp.savedTarget.copy(controls.target);
+      goal = null;
+      fp.keys.clear();
+      controls.enabled = false;
+      camera.rotation.order = "YXZ";
+      fp.vy = 0; fp.air = false; fp.jumpBase = 1.62; fp.bob = 0; fp.hadLock = false;
+      camera.position.set(0, 1.62, hd + 9);
+      const dir = V(0, Math.min(4, Math.max(2, top * 0.25)), 0).sub(camera.position).normalize();
+      fp.yaw = Math.atan2(-dir.x, -dir.z);
+      fp.pitch = Math.asin(dir.y);
+      fp.on = true;
+      camera.rotation.set(fp.pitch, fp.yaw, 0);
+      renderer.domElement.style.cursor = "grab";
+    } else {
+      fp.on = false;
+      fp.keys.clear();
+      fp.drag = null;
+      camera.position.copy(fp.savedPos);
+      controls.target.copy(fp.savedTarget);
+      controls.enabled = true;
+      controls.update();
+    }
+    onFirstPerson?.(on);
+    kick();
+  };
+  // (no pointer lock: the cursor stays usable while in first person)
 
   return {
     update: (day, ghost) => {
@@ -1258,12 +1519,16 @@ export function buildScene(model: Model, holder: HTMLDivElement, onPick: (ids: s
       goal = { target: wholeSite.target.clone(), position: wholeSite.position.clone() };
       kick();
     },
+    setFirstPerson: setFp,
     dispose: () => {
       watch.disconnect();
       if (frameId) cancelAnimationFrame(frameId);
       controls.removeEventListener("start", stopGoing);
       controls.dispose();
+      window.removeEventListener("keydown", fpKeyDown);
+      window.removeEventListener("keyup", fpKeyUp);
       renderer.domElement.removeEventListener("pointerdown", down);
+      renderer.domElement.removeEventListener("pointermove", look);
       renderer.domElement.removeEventListener("pointerup", up);
       for (const x of owned) x.dispose();
       renderer.dispose();

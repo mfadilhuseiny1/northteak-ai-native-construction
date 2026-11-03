@@ -1,6 +1,6 @@
 "use client";
 import { Icon } from "@/components/Icon";
-import { Bar, Empty, Kpi, Kpis, Loading, Pill, Problem, Table, td, tr, useData, useGo, type Rec } from "./kit";
+import { Bar, Kpi, Kpis, Loading, Pill, Problem, Table, td, tr, useData, useGo, type Rec, NotYet } from "./kit";
 import { NetworkSheet } from "./NetworkSheet";
 import { CpmNetwork, linkReasons } from "./CpmNetwork";
 
@@ -25,7 +25,7 @@ export function CriticalModule() {
         {m && <Kpi label={`${m.name}, due ${m.contract_date}`} value={m.days_late ? `${m.days_late} days late` : "on time"} tone={m.days_late ? "bad" : "ok"} />}
         <Kpi label="work packages with no float" value={`${rows.filter((r) => r.critical).length} of ${rows.length}`} tone={rows.some((r) => r.critical) ? "warn" : "ok"} />
       </Kpis>
-      <div className="min-h-0 flex-1 overflow-auto bg-[#161a1f]">
+      <div className="min-h-0 flex-1 overflow-auto bg-[#111820]">
         <div className="border-b border-white/5 px-3 py-2">
           {path.length ? (
             <>
@@ -54,7 +54,7 @@ export function CriticalModule() {
             </tr>
           ))}
         </Table>
-        {!rows.length && <Empty>No work packages yet. They come from the AI analysis of the documents.</Empty>}
+        {!rows.length && <NotYet>No work packages yet.</NotYet>}
         {data.network && <div className="border-t border-white/10 p-3"><p className="mb-2 text-[#abb3bf]">The links between the tasks of {data.network.title}.</p><NetworkSheet plan={data.network} /></div>}
       </div>
     </div>

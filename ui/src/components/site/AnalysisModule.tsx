@@ -25,7 +25,7 @@ function ModuleAnalysis({ v, busy, ask, decide }: { v: Rec; busy: string; ask: (
   return (
     <section id={`analysis-${v.key}`} className="scroll-mt-3">
       <Card
-        title={<span className="flex flex-wrap items-center gap-1.5"><Icon name="sparkle" className="h-3.5 w-3.5 text-[#9d8cff]" />{v.name}<span className="text-[10.5px] font-normal text-[#8f99a8]">{v.module}</span></span>}
+        title={<span className="flex flex-wrap items-center gap-1.5"><Icon name="sparkle" className="h-3.5 w-3.5 text-[#f5b82e]" />{v.name}<span className="text-[10.5px] font-normal text-[#8f99a8]">{v.module}</span></span>}
         right={<>
           {open > 0 && <Pill tone="violet">{open} to decide</Pill>}
           {findings.length > 0 && <Pill tone="warn">{findings.length} from the swarm</Pill>}
@@ -123,17 +123,17 @@ function ModuleAgents() {
         <Kpi label="findings from the swarm" value={findingsCount} tone={findingsCount ? "warn" : undefined} />
         <Kpi label="already decided" value={allItems.filter((x) => x.state !== "open").length} />
       </Kpis>
-      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-[#161a1f] p-3">
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-[#111820] p-3">
         <div className="flex flex-wrap gap-1">
           {views.map((v) => {
             const n = ((v.advice?.items ?? []) as Rec[]).filter((x) => x.state === "open").length;
             return (
-              <button key={v.key} onClick={() => document.getElementById(`analysis-${v.key}`)?.scrollIntoView()} className="rounded border border-white/10 bg-[#1c2127] px-2 py-1 text-[11px] text-[#d3d8de] hover:border-white/30 hover:text-white">
+              <button key={v.key} onClick={() => document.getElementById(`analysis-${v.key}`)?.scrollIntoView()} className="rounded border border-white/10 bg-[#1c2733] px-2 py-1 text-[11px] text-[#d3d8de] hover:border-white/30 hover:text-white">
                 {v.module}{n > 0 && <span className="ml-1 rounded-full bg-[#fab219] px-1.5 text-[10px] font-semibold text-black">{n}</span>}
               </button>
             );
           })}
-          <button onClick={() => document.getElementById("analysis-memory")?.scrollIntoView()} className="rounded border border-[#9d8cff]/40 bg-[#1c2127] px-2 py-1 text-[11px] text-[#d9d3ff] hover:border-[#9d8cff] hover:text-white">What they remember</button>
+          <button onClick={() => document.getElementById("analysis-memory")?.scrollIntoView()} className="rounded border border-[#f5b82e]/40 bg-[#1c2733] px-2 py-1 text-[11px] text-[#d9d3ff] hover:border-[#f5b82e] hover:text-white">What they remember</button>
         </div>
         {views.map((v) => <ModuleAnalysis key={v.key} v={v} busy={busy} ask={(m, mode) => void ask(m, mode)} decide={(m, i, verdict) => void decide(m, i, verdict)} />)}
         {!views.length && <Empty>No agents on this project.</Empty>}
@@ -149,9 +149,9 @@ export function AnalysisModule() {
   const [tab, setTab] = useState("ask");
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-      <div className="flex shrink-0 gap-1 border-b border-white/10 bg-[#161a1f] px-3 pt-2">
+      <div className="flex shrink-0 gap-1 border-b border-white/10 bg-[#111820] px-3 pt-2">
         {([["ask", "Ask anything"], ["agents", "Module agents"]] as const).map(([k, label]) => (
-          <button key={k} onClick={() => setTab(k)} aria-pressed={tab === k} className={`rounded-t border border-b-0 px-3 py-1.5 text-[12px] ${tab === k ? "border-white/15 bg-[#1c2127] font-medium text-white" : "border-transparent text-[#8f99a8] hover:text-white"}`}>{label}</button>
+          <button key={k} onClick={() => setTab(k)} aria-pressed={tab === k} className={`rounded-t border border-b-0 px-3 py-1.5 text-[12px] ${tab === k ? "border-white/15 bg-[#1c2733] font-medium text-white" : "border-transparent text-[#8f99a8] hover:text-white"}`}>{label}</button>
         ))}
       </div>
       {tab === "ask" ? <OperatorChat /> : <ModuleAgents />}

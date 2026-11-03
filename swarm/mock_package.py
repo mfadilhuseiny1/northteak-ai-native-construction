@@ -30,6 +30,8 @@ class MockPackageLlm(Scripted):
 
     def answer(self, results: dict, tools: set[str]) -> str:
         key = self.agent_key
+        if key == "director":
+            return json.dumps({"summary": "Scripted: what is being built and how the work is organised.\n\nScripted: nothing here is a model's reading.", "watch": ["Scripted: the first thing to settle, and why it matters."]})
         if key == "controller":
             docs = re.findall(r"Document (\S+?), .*?, (\d+) pages", self.message)
             numbers = [x.split(":")[0].strip() for x in self.message.split("\n\n")[0].splitlines()[1:]]

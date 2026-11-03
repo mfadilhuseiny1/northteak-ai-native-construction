@@ -5,7 +5,7 @@ import { dates, type Rec } from "./kit";
 /* The critical path as a network, activity on node: a circle for each work package and an arrow for each link, from Start to End. Each column is one link deeper than the last, and the chain that holds the finish date runs straight along the middle in red. It adds no facts: the dates, the float and the links are the ones code worked out. */
 
 const CW = 112, RH = 66, PADX = 46, PADT = 40, PADB = 44, R = 17, RE = 8, BEND = 0.62;
-const LINE = "#8f99a8", CRIT = "#e5484d", NODE = "#29a383", SHEET = "#161a1f";
+const LINE = "#8f99a8", CRIT = "#e5484d", NODE = "#29a383", SHEET = "#111820";
 const HALO = { stroke: SHEET, strokeWidth: 3, strokeLinejoin: "round" as const, style: { paintOrder: "stroke" as const } };  // keeps a label readable where a line passes behind it
 
 function layout(rows: Rec[], path: Rec[]) {
@@ -84,7 +84,7 @@ export function CpmNetwork({ rows, path, reasons = {}, onOpen }: { rows: Rec[]; 
   const shown = hover ? by[hover] : null;
   const item = (id: string, why?: string) => <p key={id}>{by[id].code} {by[id].name}{why && <span className="text-[#8f99a8]"> ({why})</span>}</p>;
   return (
-    <div className="my-2 rounded border border-white/10 bg-[#161a1f]">
+    <div className="my-2 rounded border border-white/10 bg-[#111820]">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-white/5 px-3 py-2 text-[10.5px] text-[#abb3bf]">
         <span className="flex items-center gap-1.5"><svg width={26} height={10} aria-hidden="true"><path d="M0 5H19" stroke={CRIT} strokeWidth={2.2} /><path d="M19 1L26 5L19 9Z" fill={CRIT} /></svg>The chain that holds the finish date</span>
         <span className="flex items-center gap-1.5"><svg width={16} height={16} aria-hidden="true"><circle cx={8} cy={8} r={6} fill="#29a3832e" stroke={CRIT} strokeWidth={2.2} /></svg>No float</span>
@@ -115,7 +115,7 @@ export function CpmNetwork({ rows, path, reasons = {}, onOpen }: { rows: Rec[]; 
             })}
           </svg>
           {shown && (
-            <div role="tooltip" className="pointer-events-none absolute z-10 w-[270px] rounded border border-white/15 bg-[#111418] p-2 text-[11px] leading-snug text-[#d3d8de] shadow-lg"
+            <div role="tooltip" className="pointer-events-none absolute z-10 w-[270px] rounded border border-white/15 bg-[#151e28] p-2 text-[11px] leading-snug text-[#d3d8de] shadow-lg"
               style={{ left: at[shown.id].x + R + 282 > width ? at[shown.id].x - R - 282 : at[shown.id].x + R + 12, ...(at[shown.id].y > height - 170 ? { bottom: height - at[shown.id].y - R } : { top: at[shown.id].y - R }) }}>
               <p className="font-semibold text-white">{shown.code} · {shown.name}</p>
               <p className="tabular-nums">{dates(shown.es, shown.ef)} · {shown.duration} days</p>

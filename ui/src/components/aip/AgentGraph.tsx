@@ -18,7 +18,7 @@ type Edge = { id: string; from: string; to: string; kind: "delegate" | "owns" | 
 export const AGENT_COLOR = ["#c23030", "#2d72d2", "#238551", "#d1980b", "#7961db", "#5f6b7c", "#0d8050"];
 // the map's semantic order (api/aip/domains.py SEMANTIC): neighbours on the ring answer neighbouring questions
 const PLACES = ["on site", "commercial", "controls", "other"];
-const ORCH = "#9d8cff";
+const ORCH = "#f5b82e";
 const RESOURCES = ["Dataset", "Pipeline", "Lineage", "Code"];
 
 type Box = [number, number, number, number];
@@ -289,35 +289,35 @@ export function AgentGraph({ agents, roles, links = [], active, touched, compact
               {isLive && <circle cx={n.x} cy={n.y} r={n.r + 9} fill={n.color} className="aip-pulse" />}
               {n.kind === "orch" && <circle cx={n.x} cy={n.y} r={n.r + 8} fill={ORCH} fillOpacity={0.12} />}
               {n.kind === "res" ? (
-                <rect x={n.x - n.r} y={n.y - n.r} width={n.r * 2} height={n.r * 2} rx={2} fill={n.color} fillOpacity={0.7} stroke="#1c2127" strokeWidth={2} />
+                <rect x={n.x - n.r} y={n.y - n.r} width={n.r * 2} height={n.r * 2} rx={2} fill={n.color} fillOpacity={0.7} stroke="#1c2733" strokeWidth={2} />
               ) : (
                 <circle cx={n.x} cy={n.y} r={n.r} fill={n.kind === "orch" ? "url(#aip-orch)" : n.color}
-                  fillOpacity={n.kind === "type" ? (isLive ? 1 : 0.75) : 1} stroke={isLive ? "#f6f7f9" : "#1c2127"} strokeWidth={isLive ? 2 : 2} />
+                  fillOpacity={n.kind === "type" ? (isLive ? 1 : 0.75) : 1} stroke={isLive ? "#f6f7f9" : "#1c2733"} strokeWidth={isLive ? 2 : 2} />
               )}
               {n.kind === "orch" && <text x={n.x} y={n.y + 4} textAnchor="middle" fontSize="11" fontWeight={600} fill="#fff">SS</text>}
               {n.kind === "agent" && placeSpot && (
-                <text x={placeSpot.x} y={placeSpot.y} textAnchor="middle" fontSize="9" letterSpacing="1.2" fill={n.color} stroke="#1c2127" strokeWidth={3}
+                <text x={placeSpot.x} y={placeSpot.y} textAnchor="middle" fontSize="9" letterSpacing="1.2" fill={n.color} stroke="#1c2733" strokeWidth={3}
                   paintOrder="stroke" style={{ textTransform: "uppercase" }}>{n.place}</text>
               )}
               {!spot ? null : n.kind === "agent" || n.kind === "orch" || n.kind === "chain" ? (
                 <>
-                  <text x={spot.x} y={spot.y} textAnchor={spot.anchor} fontSize={n.kind === "orch" ? 13 : 12} fontWeight={600} fill="#f6f7f9" stroke="#1c2127" strokeWidth={3} paintOrder="stroke">{n.label}</text>
-                  {n.sub && <text x={spot.x} y={spot.y + 14} textAnchor={spot.anchor} fontSize="10" fill="#8f99a8" stroke="#1c2127" strokeWidth={3} paintOrder="stroke">{n.sub}</text>}
+                  <text x={spot.x} y={spot.y} textAnchor={spot.anchor} fontSize={n.kind === "orch" ? 13 : 12} fontWeight={600} fill="#f6f7f9" stroke="#1c2733" strokeWidth={3} paintOrder="stroke">{n.label}</text>
+                  {n.sub && <text x={spot.x} y={spot.y + 14} textAnchor={spot.anchor} fontSize="10" fill="#8f99a8" stroke="#1c2733" strokeWidth={3} paintOrder="stroke">{n.sub}</text>}
                 </>
               ) : n.kind === "sub" ? (
                 <text x={spot.x} y={spot.y} textAnchor="middle" fontSize="9.5" fill="#f6f7f9" fontWeight={600}
-                  stroke="#1c2127" strokeWidth={3} paintOrder="stroke">{n.label}</text>
+                  stroke="#1c2733" strokeWidth={3} paintOrder="stroke">{n.label}</text>
               ) : (
                 <text x={spot.x} y={spot.y} textAnchor={spot.anchor} fontSize="10.5" dy={spot.rot !== undefined ? 3.5 : undefined}
                   transform={spot.rot !== undefined ? `rotate(${spot.rot} ${spot.x} ${spot.y})` : undefined}
-                  fill={isLive || hover === n.id ? "#f6f7f9" : "#c5cbd3"} fontWeight={isLive ? 600 : 400} stroke="#1c2127" strokeWidth={3} paintOrder="stroke">{n.label}</text>
+                  fill={isLive || hover === n.id ? "#f6f7f9" : "#c5cbd3"} fontWeight={isLive ? 600 : 400} stroke="#1c2733" strokeWidth={3} paintOrder="stroke">{n.label}</text>
               )}
             </g>
           );
         })}
       </svg>
       {tip && (
-        <div className="pointer-events-none absolute z-20 max-w-[300px] rounded-md border border-white/10 bg-[#111418]/95 px-3 py-2 text-[11px] shadow-xl"
+        <div className="pointer-events-none absolute z-20 max-w-[300px] rounded-md border border-white/10 bg-[#151e28]/95 px-3 py-2 text-[11px] shadow-xl"
           style={{ left: Math.max(4, Math.min(tip.x + 14, tip.maxX)), top: tip.y + 14 }}>
           <p className="flex items-center gap-1.5 font-semibold text-white"><span className="h-2 w-2 rounded-full" style={{ background: tip.n.color }} />{tip.n.label}</p>
           {tip.n.sub && <p className="text-[10.5px] text-[#8f99a8]">{tip.n.sub}</p>}
@@ -326,7 +326,7 @@ export function AgentGraph({ agents, roles, links = [], active, touched, compact
         </div>
       )}
       {!compact && (
-        <div className="pointer-events-none absolute left-3 top-2 w-[290px] rounded-md border border-white/10 bg-[#111418]/85 p-2.5 text-[10.5px]">
+        <div className="pointer-events-none absolute left-3 top-2 w-[290px] rounded-md border border-white/10 bg-[#151e28]/85 p-2.5 text-[10.5px]">
           <p className="mb-1 font-semibold text-[#e5e8eb]">Who answers what</p>
           {PLACES.filter((p) => agents.some((a) => (a.peta ?? "other") === p)).map((p) => (
             <div key={p} className="mb-1">

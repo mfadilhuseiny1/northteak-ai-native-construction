@@ -72,8 +72,8 @@ export function UploadForm({ activities, onDone }: { activities: Rec[]; onDone: 
       {files.length === 1 && <label className="block"><Label>Title</Label><input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={titleOf(files[0].name)} className={field} /></label>}
       {files.length > 1 && <p className="text-[11px] text-[#8f99a8]">Each file is titled from its file name. The kind, activity and issuer below apply to all of them.</p>}
       <div className="grid grid-cols-2 gap-2">
-        <label><Label>Kind</Label><select value={kind} onChange={(e) => setKind(e.target.value)} className={field}><option value="auto" className="bg-[#1c2127]">Sort them for me</option>{Object.entries(KINDS).map(([k, label]) => <option key={k} value={k} className="bg-[#1c2127]">{label}</option>)}</select></label>
-        <label><Label>Work package</Label><select value={activity} onChange={(e) => setActivity(e.target.value)} className={field}><option value="" className="bg-[#1c2127]">None yet</option>{activities.map((a) => <option key={a.id} value={a.id} className="bg-[#1c2127]">{a.id}</option>)}</select></label>
+        <label><Label>Kind</Label><select value={kind} onChange={(e) => setKind(e.target.value)} className={field}><option value="auto" className="bg-[#1c2733]">Sort them for me</option>{Object.entries(KINDS).map(([k, label]) => <option key={k} value={k} className="bg-[#1c2733]">{label}</option>)}</select></label>
+        <label><Label>Work package</Label><select value={activity} onChange={(e) => setActivity(e.target.value)} className={field}><option value="" className="bg-[#1c2733]">None yet</option>{activities.map((a) => <option key={a.id} value={a.id} className="bg-[#1c2733]">{a.id}</option>)}</select></label>
         <label><Label>Issued by</Label><input value={issuedBy} onChange={(e) => setIssuedBy(e.target.value)} className={field} /></label>
         <label><Label>Issued on</Label><input type="date" value={issuedOn} onChange={(e) => setIssuedOn(e.target.value)} className={field} /></label>
       </div>

@@ -34,17 +34,17 @@ function Orders({ target }: { target: string }) {
         <Kpi label="order value" value={money(rows.reduce((n, p) => n + p.value, 0))} />
       </Kpis>
       {form && (
-        <div className="grid shrink-0 grid-cols-[minmax(0,1fr)_180px_120px_130px_130px_110px_auto] gap-2 border-b border-white/5 bg-[#1c2127] p-2 max-lg:grid-cols-2">
+        <div className="grid shrink-0 grid-cols-[minmax(0,1fr)_180px_120px_130px_130px_110px_auto] gap-2 border-b border-white/5 bg-[#1c2733] p-2 max-lg:grid-cols-2">
           <input autoFocus value={form.item} onChange={(e) => setForm({ ...form, item: e.target.value })} placeholder="What" className={field} />
           <input value={form.supplier} onChange={(e) => setForm({ ...form, supplier: e.target.value })} placeholder="Supplier" className={field} />
-          <select aria-label="Activity" value={form.activity} onChange={(e) => setForm({ ...form, activity: e.target.value })} className={field}><option value="" className="bg-[#1c2127]">No activity</option>{(data.activities as Rec[]).map((a) => <option key={a.id} value={a.id} className="bg-[#1c2127]">{a.id}</option>)}</select>
+          <select aria-label="Activity" value={form.activity} onChange={(e) => setForm({ ...form, activity: e.target.value })} className={field}><option value="" className="bg-[#1c2733]">No activity</option>{(data.activities as Rec[]).map((a) => <option key={a.id} value={a.id} className="bg-[#1c2733]">{a.id}</option>)}</select>
           <input type="date" aria-label="Needed" title="Needed" value={form.needed} onChange={(e) => setForm({ ...form, needed: e.target.value })} className={field} />
           <input type="date" aria-label="Promised" title="Promised" value={form.promised} onChange={(e) => setForm({ ...form, promised: e.target.value })} className={field} />
           <input type="number" value={form.value} onChange={(e) => setForm({ ...form, value: e.target.value })} placeholder="Value, Rp" className={field} />
           <button disabled={!form.item.trim() || !form.supplier.trim() || !form.needed} onClick={async () => { if (await act(() => api("/api/project/orders", { ...form, value: Number(form.value) || 0 }))) setForm(null); }} className={primary}>Place</button>
         </div>
       )}
-      <div className="min-h-0 flex-1 overflow-auto bg-[#161a1f]">
+      <div className="min-h-0 flex-1 overflow-auto bg-[#111820]">
         <Table heads={["Order", "Item", "Supplier", "Holds", "Needed", "Promised", "Status", "Value", ""]}>
           {rows.map((p) => {
             const isLate = p.status !== "received" && p.promised > p.needed;
@@ -85,14 +85,14 @@ function Materials() {
   const go = useGo();
   if (!data) return <div className="flex-1"><Problem err={err} />{!err && <Loading />}</div>;
   const rows = data.materials as Rec[];
-  if (!data.plan) return <div className="flex-1 bg-[#161a1f] text-[12px]"><Empty>What the work needs comes from a work plan. <button onClick={() => go("wbs/plan")} className="underline">Open Work plan</button>.</Empty></div>;
+  if (!data.plan) return <div className="flex-1 bg-[#111820] text-[12px]"><Empty>What the work needs comes from a work plan. <button onClick={() => go("wbs/plan")} className="underline">Open Work plan</button>.</Empty></div>;
   const count = (s: string) => rows.filter((m) => m.state === s).length;
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden text-[12px]">
       <Bar title="Material availability" note={`what ${data.plan.id}, ${data.plan.title}, needs against what is ordered`}><button onClick={() => go("cost/takeoff")} className={quiet}>The bill of materials</button></Bar>
       <Problem err={err} />
       <Kpis><Kpi label="on site" value={count("available")} tone="ok" /><Kpi label="on order" value={count("on_order")} /><Kpi label="not ordered" value={count("not_ordered") + count("not_requested")} tone={count("not_ordered") ? "warn" : undefined} /><Kpi label="arrive late" value={count("late")} tone={count("late") ? "bad" : "ok"} /></Kpis>
-      <div className="min-h-0 flex-1 overflow-auto bg-[#161a1f]">
+      <div className="min-h-0 flex-1 overflow-auto bg-[#111820]">
         <Table heads={["Material", "To order", "Value", "First needed", "For tasks", "Order", "Supplier", "Promised", "State", "Worth a check"]}>
           {rows.map((m) => (
             <tr key={m.key} className={tr}>
@@ -116,7 +116,7 @@ function Suppliers() {
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden text-[12px]">
       <Bar title="Suppliers" note="read from the orders" />
       <Problem err={err} />
-      <div className="min-h-0 flex-1 overflow-auto bg-[#161a1f]">
+      <div className="min-h-0 flex-1 overflow-auto bg-[#111820]">
         <Table heads={["Supplier", "Orders", "Open", "Received", "Late", "Value", "Which"]}>
           {rows.map((s) => <tr key={s.name} className={tr}><td className={`${td} font-medium text-white`}>{clean(s.name)}</td><td className={td}>{s.orders}</td><td className={td}>{s.open}</td><td className={td}>{s.received}</td><td className={td}>{s.late ? <Pill tone="bad">{s.late}</Pill> : "–"}</td><td className={`${td} whitespace-nowrap`}>{money(s.value)}</td><td className={td}><span className="flex flex-wrap gap-1">{(s.items as string[]).map((x) => <Ref key={x} to={`procurement/orders:${x}`}>{x}</Ref>)}</span></td></tr>)}
         </Table>
@@ -138,7 +138,7 @@ function Assignments({ target }: { target: string }) {
         <Bar title="Subcontractor assignments" note="who is programmed on what, against who the work plan needs" />
         <Problem err={err} />
         <Kpis><Kpi label="not programmed where the plan needs them" value={data.gaps} tone={data.gaps ? "warn" : "ok"} /><Kpi label="more than their crew" value={rows.filter((r) => r.over).length} tone={rows.some((r) => r.over) ? "bad" : "ok"} /></Kpis>
-        <div className="min-h-0 flex-1 overflow-auto bg-[#161a1f]">
+        <div className="min-h-0 flex-1 overflow-auto bg-[#111820]">
           <Table heads={["WBS", "Activity", "Dates", "Programmed", "The work needs", "Sections", "Peak · crew", "Standing", ""]}>
             {rows.map((r) => (
               <tr key={r.id} className={`${tr} ${target && r.by === target ? "bg-white/[.07]" : ""}`}>
@@ -154,8 +154,8 @@ function Assignments({ target }: { target: string }) {
       </div>
       {moving && (
         <Side eyebrow={moving.activity} title="Move a section to another crew" onClose={() => setMoving(null)}>
-          <label className="block"><Label>Section</Label><select value={moving.section} onChange={(e) => setMoving({ ...moving, section: e.target.value })} className={field}>{(moving.sections as string[]).map((s) => <option key={s} value={s} className="bg-[#1c2127]">{s}</option>)}</select></label>
-          <label className="block"><Label>Crew</Label><select value={moving.by} onChange={(e) => setMoving({ ...moving, by: e.target.value })} className={field}><option value="self" className="bg-[#1c2127]">Own crew</option>{(data.subs as Rec[]).map((s) => <option key={s.id} value={s.id} className="bg-[#1c2127]">{s.name}</option>)}</select></label>
+          <label className="block"><Label>Section</Label><select value={moving.section} onChange={(e) => setMoving({ ...moving, section: e.target.value })} className={field}>{(moving.sections as string[]).map((s) => <option key={s} value={s} className="bg-[#1c2733]">{s}</option>)}</select></label>
+          <label className="block"><Label>Crew</Label><select value={moving.by} onChange={(e) => setMoving({ ...moving, by: e.target.value })} className={field}><option value="self" className="bg-[#1c2733]">Own crew</option>{(data.subs as Rec[]).map((s) => <option key={s.id} value={s.id} className="bg-[#1c2733]">{s.name}</option>)}</select></label>
           <button onClick={async () => { if (await act(() => api("/api/project/assignments", { activity: moving.activity, section: moving.section, by: moving.by }))) setMoving(null); }} className={`${primary} w-full`}>Move its open tasks on the board</button>
           <p className="text-[11px] text-[#abb3bf]">Their cards go to that crew. The plan&apos;s figures stay as they were.</p>
         </Side>

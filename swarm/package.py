@@ -178,7 +178,7 @@ def read_recap(text: str) -> dict | None:
 
 BOQ_ROW = re.compile(r"^(?:(\d{1,3}|[a-zA-Z]{1,2})[.)]?\s+)?(.*?)\s*(\d[\d.,]*)\s+([A-Za-z][\w'’²³/.]{0,7})\s*(-?\s*Rp\b.*)$")
 BOQ_GLUED = re.compile(r"^(?:(\d{1,3}|[a-zA-Z]{1,2})[.)]?\s+)?(\d[\d.,]*?)([A-Za-z].*?)\s+([A-Za-z][\w'’²³/.]{0,7})\s*(-?\s*Rp\b.*)$")  # the layout reading can run a row's volume into its description: "c. 1.11Beton Fc' 30 Mpa m3 -Rp"
-BOQ_HEAD = re.compile(r"^([A-Z]{1,2}|[IVX]+)[.)]\s+(.{3,})$")
+BOQ_HEAD = re.compile(r"^([A-Z]{1,2}(?:\.\d{1,2})?|[IVX]+)[.)]?\s+(.{3,})$")
 BOQ_GROUP = re.compile(r"^(\d{1,3})[.)]?\s+(.{3,})$")
 
 
@@ -206,13 +206,17 @@ def read_layout(path: Path) -> list[str]:
 
 
 def read_boq_lines(doc: str, pages: list[str]) -> list[dict]:
-    """A BoQ's rows, by code: each row with its section, description, volume and unit, its price if it has one, and the page it is on. Only what the text states. A row whose description the extraction lost stays in, with no description, for a person to read on its page."""
+    """A BoQ's rows, by code: each row with its section, description, volume and unit, its price if it has one, the page it is on, and the work its header names. Only what the text states. A row whose description the extraction lost stays in, with no description, for a person to read on its page. One file can hold the BoQs of two projects, as a tender for two buildings does, so each row keeps the name of the work it is under."""
     out: list[dict] = []
-    head = group = ""
+    head = group = work = ""
     for n, text in enumerate(pages, 1):
         for raw in text.splitlines():
             line = " ".join(raw.split())
-            if not line or re.match(r"^(NO|PEKERJAAN|LOKASI|TAHUN ANGGARAN)\b", line):
+            if title := re.match(r"^PEKERJAAN\s*:\s*(.+)$", line):
+                if title.group(1).strip() != work:
+                    work, head, group = title.group(1).strip(), "", ""
+                continue
+            if not line or re.match(r"^(NO|LOKASI|TAHUN ANGGARAN|SUB PEKERJAAN)\b", line):
                 continue
             m = BOQ_ROW.match(line)
             qty = _number(m.group(3)) if m else None
@@ -221,13 +225,38 @@ def read_boq_lines(doc: str, pages: list[str]) -> list[dict]:
                 m, qty, name = g, _number(g.group(2)), g.group(3)
             if m and qty is not None:
                 prices = [_number(x) for x in re.findall(r"Rp\s*(\d[\d.,]*)", m.group(5))]
-                out.append({"doc": doc, "page": n, "section": head, "group": group, "no": m.group(1) or "", "name": name.strip(" ;:"), "qty": qty, "unit": m.group(4), "rate": prices[0] if prices else None, "amount": prices[1] if len(prices) > 1 else None})
+                out.append({"doc": doc, "page": n, "work": work, "section": head, "group": group, "no": m.group(1) or "", "name": name.strip(" ;:"), "qty": qty, "unit": m.group(4), "rate": prices[0] if prices else None, "amount": prices[1] if len(prices) > 1 else None})
                 continue
             top = BOQ_HEAD.match(line)
             if top and top.group(2) == top.group(2).upper():
-                head, group = " ".join([top.group(1) + ".", top.group(2)]), ""
+                head, group = line, ""  # as the BoQ writes it
             elif sub := BOQ_GROUP.match(line):
                 group = sub.group(2).strip(" ;:")
+    return out
+
+
+def boq_outline(lines: list[dict]) -> str:
+    """A BoQ in a few lines, read by code: each section, how many rows it has and where, and a few of its groups to say what is in it. A long BoQ does not fit in what an agent is given, and its last sections would be lost. Every group is not listed: an agent given all of them makes a work package of each, one for every type of column."""
+    out: list[str] = []
+    for section in dict.fromkeys(x["section"] for x in lines):
+        mine = [x for x in lines if x["section"] == section]
+        groups = list(dict.fromkeys(x["group"] for x in mine if x["group"]))
+        out.append(f"{section or 'Before the first section'} ({len(mine)} rows, pages {mine[0]['page']} to {mine[-1]['page']})" + (f", such as {'; '.join(groups[:3])}" if groups else ""))
+    return "\n".join(out)
+
+
+UNCOMMON = {"pekerjaan", "struktur", "dan", "the", "and", "of", "work", "lantai"}
+
+
+def uncovered(lines: list[dict], names: list[str]) -> list[dict]:
+    """Sections of the BoQ that no work package names: none of the section's own words is in any work package or control account. A word match, so a person checks each one."""
+    said = {w for n in names for w in re.findall(r"[a-z0-9]+", n.lower())}
+    out = []
+    for section in dict.fromkeys(x["section"] for x in lines if x["section"]):
+        words = {w for w in re.findall(r"[a-z]+", re.sub(r"^\S+\s+", "", section).lower()) if len(w) > 2 and w not in UNCOMMON}
+        if words and not words & said:
+            mine = [x for x in lines if x["section"] == section]
+            out.append({"section": section, "rows": len(mine), "doc": mine[0]["doc"], "page": mine[0]["page"]})
     return out
 
 
@@ -284,9 +313,9 @@ def review() -> dict:
         if digest and not twin:
             seen[digest] = d["id"]
         use = bool(d.get("use", True)) and not twin
-        rows.append({**{k: d.get(k) for k in ("id", "title", "kind", "pages", "filename", "date", "how_read", "file")}, "use": use, "why": f"The same file as {twin}" if twin else d.get("why") or "", "words": d.get("words", 0), "overruled": bool(d.get("overruled"))})
+        rows.append({**{k: d.get(k) for k in ("id", "title", "kind", "pages", "filename", "date", "how_read", "file")}, **({"typed": True, "text": d.get("text") or ""} if d.get("typed") else {}), "use": use, "why": f"The same file as {twin}" if twin else d.get("why") or "", "words": d.get("words", 0), "overruled": bool(d.get("overruled"))})
     used = [r for r in rows if r["use"]]
-    kinds = {r["kind"] for r in used}
+    kinds = {r["kind"] for r in used if not r.get("typed")}  # a person's few words on the job are not the specification a procedure rests on
     missing = []
     if "programme" not in kinds:
         missing.append("No master schedule: the agents have to estimate every duration.")

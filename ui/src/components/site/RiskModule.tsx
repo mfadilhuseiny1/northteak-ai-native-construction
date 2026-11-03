@@ -82,7 +82,7 @@ function RiskDetail({ r, data, act, onClose, onRegister }: { r: Rec; data: Rec; 
   const save = () => act(() => api(`/api/project/risks/${r.id}`, { probability: Number(f.probability), impact: Number(f.impact), owner: f.owner, strategy: f.strategy, response: f.response, due: f.due, status: f.status }));
   const toBoard = async () => { if (await act(() => api("/api/project/work-items", { title: `Risk ${r.id}: ${f.response || r.title}`, owner: f.owner || "Project manager", due: f.due || "", activity: r.activity || "" }))) setBoarded("On the board: it waits in Kanban with the other agreed actions."); };
   const pi = (label: string, key: string, words: string[]) => (
-    <label className="block"><Label>{label}</Label><select value={f[key]} onChange={(e) => setF({ ...f, [key]: Number(e.target.value) })} className={field}>{[1, 2, 3, 4, 5].map((n) => <option key={n} value={n} className="bg-[#1c2127]">{n} · {words[n]}</option>)}</select></label>
+    <label className="block"><Label>{label}</Label><select value={f[key]} onChange={(e) => setF({ ...f, [key]: Number(e.target.value) })} className={field}>{[1, 2, 3, 4, 5].map((n) => <option key={n} value={n} className="bg-[#1c2733]">{n} · {words[n]}</option>)}</select></label>
   );
   return (
     <Side eyebrow={`${r.id} · ${r.source === "detected" ? "detected by code" : "on the register"} · ${r.category}`} title={clean(r.title)} onClose={onClose}>
@@ -106,11 +106,11 @@ function RiskDetail({ r, data, act, onClose, onRegister }: { r: Rec; data: Rec; 
           <p className="flex items-center gap-2 text-[11px] text-[#abb3bf]">New score <ScoreBadge score={score} /> <span className="capitalize">{levelOf(score)}</span></p>
           <label className="block"><Label>Owner</Label><input value={f.owner} onChange={(e) => setF({ ...f, owner: e.target.value })} placeholder="Who carries this risk" className={field} /></label>
           <div className="grid grid-cols-2 gap-2">
-            <label><Label>Response strategy</Label><select value={f.strategy} onChange={(e) => setF({ ...f, strategy: e.target.value })} className={field}>{(data.strategies as string[]).map((s) => <option key={s} value={s} className="bg-[#1c2127]">{s}</option>)}</select></label>
+            <label><Label>Response strategy</Label><select value={f.strategy} onChange={(e) => setF({ ...f, strategy: e.target.value })} className={field}>{(data.strategies as string[]).map((s) => <option key={s} value={s} className="bg-[#1c2733]">{s}</option>)}</select></label>
             <label><Label>Response due</Label><input type="date" value={f.due} onChange={(e) => setF({ ...f, due: e.target.value })} className={field} /></label>
           </div>
           <label className="block"><Label>Response: what will be done</Label><textarea rows={3} value={f.response} onChange={(e) => setF({ ...f, response: e.target.value })} placeholder="The agreed action that brings this risk down" className={field} /></label>
-          <label className="block"><Label>Status</Label><select value={f.status} onChange={(e) => setF({ ...f, status: e.target.value })} className={field}>{(data.statuses as string[]).map((s) => <option key={s} value={s} className="bg-[#1c2127]">{s}</option>)}</select></label>
+          <label className="block"><Label>Status</Label><select value={f.status} onChange={(e) => setF({ ...f, status: e.target.value })} className={field}>{(data.statuses as string[]).map((s) => <option key={s} value={s} className="bg-[#1c2733]">{s}</option>)}</select></label>
           {r.activity && <p className="text-[11px] text-[#abb3bf]">Hangs on activity <button onClick={() => go(`schedule/gantt:${r.activity}`)} className="underline">{r.activity}</button>{r.created ? ` · registered ${r.created}` : ""}</p>}
           <span className="flex gap-1"><button onClick={save} className={`${primary} flex-1`}>Save the risk</button><button disabled={!f.response && !r.response} onClick={toBoard} className={quiet}>Put the response on the board</button></span>
           {boarded && <p className="text-[#7ee2c0]">{boarded} <button onClick={() => go("kanban/board")} className="underline">Open Kanban</button></p>}
@@ -126,22 +126,22 @@ function AddRisk({ data, seed, act, onClose }: { data: Rec; seed: Rec | null; ac
   const save = async () => { if (await act(() => api("/api/project/risks", { ...f, probability: Number(f.probability), impact: Number(f.impact) }))) onClose(); };
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6" role="dialog" aria-modal="true" aria-label="Add a risk" onClick={onClose}>
-      <div className="max-h-[92vh] w-full max-w-[520px] space-y-2 overflow-y-auto rounded-lg border border-white/10 bg-[#1c2127] p-4 text-[12px] shadow-2xl" onClick={(e) => e.stopPropagation()}>
+      <div className="max-h-[92vh] w-full max-w-[520px] space-y-2 overflow-y-auto rounded-lg border border-white/10 bg-[#1c2733] p-4 text-[12px] shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <p className="text-[14px] font-semibold text-white">{seed ? "Put this risk on the register" : "Add a risk"}</p>
         <label className="block"><Label>Risk</Label><input autoFocus value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} placeholder="What might happen, in one line" className={field} /></label>
         <label className="block"><Label>Detail: cause and consequence</Label><textarea rows={2} value={f.detail} onChange={(e) => setF({ ...f, detail: e.target.value })} placeholder="Why it might happen, and what it would do to the work" className={field} /></label>
         <div className="grid grid-cols-2 gap-2">
-          <label><Label>Category</Label><select value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })} className={field}>{(data.categories as string[]).map((c) => <option key={c} value={c} className="bg-[#1c2127]">{c}</option>)}</select></label>
-          <label><Label>Activity (WBS)</Label><select value={f.activity} onChange={(e) => setF({ ...f, activity: e.target.value })} className={field}><option value="" className="bg-[#1c2127]">Whole project</option>{(data.activities as Rec[]).map((a) => <option key={a.id} value={a.id} className="bg-[#1c2127]">{a.id} {a.name}</option>)}</select></label>
-          <label><Label>Probability</Label><select value={f.probability} onChange={(e) => setF({ ...f, probability: Number(e.target.value) })} className={field}>{[1, 2, 3, 4, 5].map((n) => <option key={n} value={n} className="bg-[#1c2127]">{n} · {P_WORD[n]}</option>)}</select></label>
-          <label><Label>Impact</Label><select value={f.impact} onChange={(e) => setF({ ...f, impact: Number(e.target.value) })} className={field}>{[1, 2, 3, 4, 5].map((n) => <option key={n} value={n} className="bg-[#1c2127]">{n} · {I_WORD[n]}</option>)}</select></label>
+          <label><Label>Category</Label><select value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })} className={field}>{(data.categories as string[]).map((c) => <option key={c} value={c} className="bg-[#1c2733]">{c}</option>)}</select></label>
+          <label><Label>Activity (WBS)</Label><select value={f.activity} onChange={(e) => setF({ ...f, activity: e.target.value })} className={field}><option value="" className="bg-[#1c2733]">Whole project</option>{(data.activities as Rec[]).map((a) => <option key={a.id} value={a.id} className="bg-[#1c2733]">{a.id} {a.name}</option>)}</select></label>
+          <label><Label>Probability</Label><select value={f.probability} onChange={(e) => setF({ ...f, probability: Number(e.target.value) })} className={field}>{[1, 2, 3, 4, 5].map((n) => <option key={n} value={n} className="bg-[#1c2733]">{n} · {P_WORD[n]}</option>)}</select></label>
+          <label><Label>Impact</Label><select value={f.impact} onChange={(e) => setF({ ...f, impact: Number(e.target.value) })} className={field}>{[1, 2, 3, 4, 5].map((n) => <option key={n} value={n} className="bg-[#1c2733]">{n} · {I_WORD[n]}</option>)}</select></label>
         </div>
         <p className="flex items-center gap-2 text-[11px] text-[#abb3bf]">Exposure <ScoreBadge score={score} /> <span className="capitalize">{levelOf(score)}</span> risk, before any response.</p>
         <div className="grid grid-cols-2 gap-2">
           <label><Label>Owner</Label><input value={f.owner} onChange={(e) => setF({ ...f, owner: e.target.value })} placeholder="Who carries it" className={field} /></label>
           <label><Label>Response due</Label><input type="date" value={f.due} onChange={(e) => setF({ ...f, due: e.target.value })} className={field} /></label>
         </div>
-        <label className="block"><Label>Response strategy</Label><select value={f.strategy} onChange={(e) => setF({ ...f, strategy: e.target.value })} className={field}>{(data.strategies as string[]).map((s) => <option key={s} value={s} className="bg-[#1c2127]">{s}</option>)}</select></label>
+        <label className="block"><Label>Response strategy</Label><select value={f.strategy} onChange={(e) => setF({ ...f, strategy: e.target.value })} className={field}>{(data.strategies as string[]).map((s) => <option key={s} value={s} className="bg-[#1c2733]">{s}</option>)}</select></label>
         <label className="block"><Label>Response: what will be done</Label><textarea rows={2} value={f.response} onChange={(e) => setF({ ...f, response: e.target.value })} className={field} /></label>
         <div className="flex justify-end gap-1.5"><button onClick={onClose} className={quiet}>Cancel</button><button disabled={!String(f.title).trim()} onClick={save} className={primary}>Add to the register</button></div>
       </div>
@@ -189,17 +189,17 @@ export function RiskModule() {
           <Kpi label="responses overdue" value={c.overdue} tone={c.overdue ? "bad" : "ok"} />
           <Kpi label="closed" value={c.closed} tone="ok" />
         </Kpis>
-        <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-white/10 bg-[#1c2127] px-3 py-1.5">
+        <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-white/10 bg-[#1c2733] px-3 py-1.5">
           <span className="flex rounded-full border border-white/10 p-0.5">{chip("", "All levels")}{chip("extreme", "Extreme", c.extreme)}{chip("high", "High", c.high)}{chip("medium", "Medium")}{chip("low", "Low")}</span>
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search risks, owners, records…" aria-label="Search risks" className={`${inline} !w-[210px]`} />
-          <select value={category} onChange={(e) => setCategory(e.target.value)} aria-label="Category" className={`${inline} !w-auto`}><option value="" className="bg-[#1c2127]">All categories</option>{(data.categories as string[]).map((x) => <option key={x} value={x} className="bg-[#1c2127]">{x}</option>)}</select>
-          <select value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Status" className={`${inline} !w-auto`}><option value="" className="bg-[#1c2127]">Any status</option>{(data.statuses as string[]).map((x) => <option key={x} value={x} className="bg-[#1c2127]">{x}</option>)}</select>
-          <select value={source} onChange={(e) => setSource(e.target.value)} aria-label="Source" className={`${inline} !w-auto`}><option value="" className="bg-[#1c2127]">Detected + registered</option><option value="detected" className="bg-[#1c2127]">Detected by code</option><option value="register" className="bg-[#1c2127]">Registered by people</option></select>
+          <select value={category} onChange={(e) => setCategory(e.target.value)} aria-label="Category" className={`${inline} !w-auto`}><option value="" className="bg-[#1c2733]">All categories</option>{(data.categories as string[]).map((x) => <option key={x} value={x} className="bg-[#1c2733]">{x}</option>)}</select>
+          <select value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Status" className={`${inline} !w-auto`}><option value="" className="bg-[#1c2733]">Any status</option>{(data.statuses as string[]).map((x) => <option key={x} value={x} className="bg-[#1c2733]">{x}</option>)}</select>
+          <select value={source} onChange={(e) => setSource(e.target.value)} aria-label="Source" className={`${inline} !w-auto`}><option value="" className="bg-[#1c2733]">Detected + registered</option><option value="detected" className="bg-[#1c2733]">Detected by code</option><option value="register" className="bg-[#1c2733]">Registered by people</option></select>
           <label className="flex items-center gap-1.5 text-[11px] text-[#abb3bf]"><input type="checkbox" checked={hideClosed} onChange={(e) => setHideClosed(e.target.checked)} />Hide closed</label>
           <span className="ml-auto text-[11px] text-[#8f99a8]">{shown.length} of {risks.length} shown</span>
         </div>
-        <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_300px] items-start gap-3 overflow-y-auto bg-[#161a1f] p-3 max-xl:grid-cols-1">
-          <section className="min-w-0 overflow-hidden rounded border border-white/10 bg-[#1c2127]">
+        <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_300px] items-start gap-3 overflow-y-auto bg-[#111820] p-3 max-xl:grid-cols-1">
+          <section className="min-w-0 overflow-hidden rounded border border-white/10 bg-[#1c2733]">
             <div className="max-h-[calc(100vh-238px)] overflow-auto max-xl:max-h-none">
               <Table heads={["Score", "Risk", "Category", "WBS / record", "P × I", "Owner", "Due", "Status"]}>
                 {shown.map((r) => (

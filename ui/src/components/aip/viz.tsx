@@ -4,10 +4,10 @@ import type { Rec } from "./aipRun";
 
 /* Charts and cell formatting of SiteSwarm's dynamic screen, drawn natively (SVG) on the app's dark surface. Specs from the
    data-viz method: thin marks with 4px rounded data ends, a 2px surface gap, hairline grid, a hover tooltip on every
-   mark, a table view for every chart, the categorical palette validated on #1c2127 (blue, orange, aqua, yellow,
+   mark, a table view for every chart, the categorical palette validated on #1c2733 (blue, orange, aqua, yellow,
    magenta, green: all checks pass), one hue for magnitude, emphasis (the entity the answer is about) over rainbow. */
 
-export const SURFACE = "#1c2127";
+export const SURFACE = "#1c2733";
 export const SERIES = ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#008300"];
 const MUTED_MARK = "#4b5866"; // the rest, when one entity is emphasised
 export const GRID = "#2c333b";
@@ -75,7 +75,7 @@ export type Tip = { x: number; y: number; lines: { key?: string; value: string; 
 export function Tooltip({ tip }: { tip: Tip }) {
   if (!tip) return null;
   return (
-    <div className="pointer-events-none absolute z-20 min-w-[140px] max-w-[280px] rounded-md border border-white/10 bg-[#111418]/95 px-2.5 py-1.5 text-[11px] shadow-xl"
+    <div className="pointer-events-none absolute z-20 min-w-[140px] max-w-[280px] rounded-md border border-white/10 bg-[#151e28]/95 px-2.5 py-1.5 text-[11px] shadow-xl"
       style={{ left: tip.x + 12, top: tip.y + 12 }}>
       {tip.title && <p className="mb-1 truncate text-[#abb3bf]">{tip.title}</p>}
       {tip.lines.map((l, i) => (
@@ -478,7 +478,7 @@ export function DataTable({ rows, fields, types, limit = 50, onRow }: { rows: Re
 export function ChartCard({ title, insight, source, children, table }: { title: string; insight?: string; source?: ReactNode; children: ReactNode; table?: ReactNode }) {
   const [view, setView] = useState<"chart" | "table">("chart");
   return (
-    <section className="flex min-w-0 flex-col rounded-lg border border-white/[.07] bg-[#1c2127] p-3.5">
+    <section className="flex min-w-0 flex-col rounded-lg border border-white/[.07] bg-[#1c2733] p-3.5">
       <div className="flex items-start gap-2">
         <div className="min-w-0 flex-1">
           <h3 className="text-[13px] font-semibold leading-snug text-white">{title}</h3>

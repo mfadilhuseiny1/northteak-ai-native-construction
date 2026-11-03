@@ -22,9 +22,9 @@ const AgentAnimation = dynamic(() => import("@/components/aip/AgentAnimation").t
    orchestration concept at work; every signal streams in with its strength and marking; the orchestrator's report closes the review. */
 
 export const LINI: Record<string, { label: string; color: string }> = {
-  pimpinan: { label: "Orchestrator", color: "#9d8cff" }, site: { label: "Site operations", color: "#3987e5" }, subcontract: { label: "Subcontractors", color: "#d95926" },
+  pimpinan: { label: "Orchestrator", color: "#f5b82e" }, site: { label: "Site operations", color: "#3987e5" }, subcontract: { label: "Subcontractors", color: "#d95926" },
   procurement: { label: "Procurement", color: "#199e70" }, planning: { label: "Planning", color: "#3987e5" }, cost: { label: "Cost control", color: "#c98500" },
-  quality: { label: "Quality & safety", color: "#d55181" }, contract: { label: "Contract", color: "#c084fc" },
+  quality: { label: "Quality & safety", color: "#d55181" }, contract: { label: "Contract", color: "#e879a8" },
   qa: { label: "QA & red team", color: "#8f99a8" },
   laporan: { label: "Report desk", color: "#008300" },  // the report desk
 };
@@ -248,7 +248,7 @@ export function SwarmView() {
   const copiedNote = copied && <p className="mb-3 rounded bg-white/[.04] px-2 py-1 text-[11px] text-[#c5cbd3]">Report rewritten from review <b>{String(copied.sumber)}</b>: phases {(copied.fase as string[] ?? []).join(", ")} copied from its trail (not rerun; no signal, risk register or option ruling is written twice) — only the report phase is new.</p>;
   // the orchestrator's report as it wrote it: the draft while it writes, the fallback of the long report
   const orchestratorReport = (report || draft) ? (
-    <section className="rounded border border-white/10 bg-[#1c2127] p-4">
+    <section className="rounded border border-white/10 bg-[#1c2733] p-4">
       <div className="mb-2 flex items-center gap-2">
         <p className="text-[13px] font-semibold text-white">Orchestrator report{report ? "" : " (draft)"}</p>
         {[finalVerdict].filter(Boolean).map((v) => v && (
@@ -269,12 +269,12 @@ export function SwarmView() {
         <StartForm cfg={cfg} project={project} count={runsOf(project.id).length} agents={team?.jumlah_agen} last={last} busy={busy} err={err}
           onStart={start} onClose={() => { setAsk(null); setErr(""); }} />
       )}
-      <aside className="flex w-[260px] shrink-0 flex-col border-r border-black/30 bg-[#1c2127] max-lg:hidden">
+      <aside className="flex w-[260px] shrink-0 flex-col border-r border-black/30 bg-[#1c2733] max-lg:hidden">
         <div className="space-y-2 border-b border-white/5 p-3">
           <p className="text-[13px] font-semibold text-white">AI Agent Swarm</p>
           <p className="line-clamp-4 text-[11px] leading-snug text-[#abb3bf]">The agents work one review on this project's records (synthetic data): the orchestrator, each domain lead leading its analysts (site analysts, subcontract specialists, risk register option analysts, impact analysts), the validator with QA and the red team. The validation contract is written before work; code validators close each phase.</p>
           <button disabled={!cfg} onClick={() => setForm({ project: null })} title={cfg ? undefined : "loading configuration…"}
-            className="flex w-full items-center justify-center gap-1 rounded-sm bg-[#5b5fd6] py-1.5 font-medium text-white hover:bg-[#6a6ee0] disabled:opacity-40">
+            className="flex w-full items-center justify-center gap-1 rounded-sm bg-[#d99a16] py-1.5 font-medium text-white hover:bg-[#6a6ee0] disabled:opacity-40">
             <Icon name="plus" className="h-3 w-3" />New review workspace
           </button>
           {err && ask !== "mulai" && <p className="text-[11px] text-red-300">{err}</p>}
@@ -288,7 +288,7 @@ export function SwarmView() {
               <div key={p.id} className="border-b border-white/5">
                 <div className={`group relative ${on ? "bg-white/[.05]" : "hover:bg-white/5"}`}>
                   <button onClick={() => open(p.id)} className="flex w-full items-start gap-2 px-3 py-2 pr-8 text-left">
-                    <Icon name="project" className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${on ? "text-[#9d8cff]" : "text-[#8f99a8]"}`} />
+                    <Icon name="project" className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${on ? "text-[#f5b82e]" : "text-[#8f99a8]"}`} />
                     <span className="min-w-0">
                       <span className="block truncate text-[12px] font-medium text-white">{p.nama}</span>
                       <span className="block text-[10.5px] text-[#8f99a8]">{rs.length ? `${rs.length} review${rs.length === 1 ? "" : "s"} · latest ${rs[0].status}` : "no reviews yet"}</span>
@@ -315,7 +315,7 @@ export function SwarmView() {
                   <div key={r.id} className={`group relative ${sel === r.id ? "bg-white/[.08]" : "hover:bg-white/5"}`}>
                     <button onClick={() => { chosen.current = true; setSel(r.id); setFocus(null); }} className="block w-full py-1.5 pl-8 pr-8 text-left">
                       {r.nama && <p className="truncate text-[11.5px] font-medium text-white">{String(r.nama)}</p>}
-                      {r.jenis === "plan" && <span className="mr-1 inline-block rounded bg-[#5b5fd6]/30 px-1 text-[9.5px] font-semibold text-[#c9c0ff]">Work plan</span>}
+                      {r.jenis === "plan" && <span className="mr-1 inline-block rounded bg-[#d99a16]/30 px-1 text-[9.5px] font-semibold text-[#c9c0ff]">Work plan</span>}
                       <span className={`mr-1 inline-block rounded px-1 text-[9.5px] font-semibold ${VERSI_BADGE[String(r.versi)]?.[1] ?? "bg-white/10 text-[#abb3bf]"}`}
                         title={VERSI_BADGE[String(r.versi)]?.[0] ?? ""}>
                         {VERSI_BADGE[String(r.versi)]?.[0] ?? "Run"}</span>
@@ -363,9 +363,9 @@ export function SwarmView() {
             if (!p) return null;
             const live = runsOf(pid).some((r) => r.status === "running");
             return (
-              <div key={pid} className={`flex max-w-[240px] shrink-0 items-center gap-1 rounded-t border border-b-0 pl-2.5 pr-1 ${active === pid ? "border-white/10 bg-[#1c2127] text-white" : "border-transparent text-[#abb3bf] hover:bg-white/5"}`}>
+              <div key={pid} className={`flex max-w-[240px] shrink-0 items-center gap-1 rounded-t border border-b-0 pl-2.5 pr-1 ${active === pid ? "border-white/10 bg-[#1c2733] text-white" : "border-transparent text-[#abb3bf] hover:bg-white/5"}`}>
                 <button onClick={() => open(pid)} className="flex min-w-0 items-center gap-1.5 py-1.5 text-[11.5px]">
-                  <Icon name="project" className={`h-3 w-3 shrink-0 ${active === pid ? "text-[#9d8cff]" : ""}`} />
+                  <Icon name="project" className={`h-3 w-3 shrink-0 ${active === pid ? "text-[#f5b82e]" : ""}`} />
                   <span className="truncate">{p.nama}</span>
                   {live && <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-[#b8a9ff]" title="review running" />}
                 </button>
@@ -386,7 +386,7 @@ export function SwarmView() {
               )}
               {sel && (
                 <button disabled={busy || anyRunning} onClick={() => setAsk("mulai")} title={anyRunning ? "a review is already running" : undefined}
-                  className="flex items-center gap-1 rounded bg-[#5b5fd6] px-2.5 py-0.5 text-[11px] font-medium text-white hover:bg-[#6a6ee0] disabled:opacity-40">
+                  className="flex items-center gap-1 rounded bg-[#d99a16] px-2.5 py-0.5 text-[11px] font-medium text-white hover:bg-[#6a6ee0] disabled:opacity-40">
                   <Icon name="play" className="h-3 w-3" />Start new review
                 </button>
               )}
@@ -401,7 +401,7 @@ export function SwarmView() {
           </div>
         ) : (
       <div className="flex min-w-0 flex-1 flex-col overflow-y-auto">
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-1 border-b border-white/5 bg-[#1c2127] px-4 py-2">
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-1 border-b border-white/5 bg-[#1c2733] px-4 py-2">
           <Kpi label="agents & instances" value={`${done}/${roster.filter((a) => a.jenjang !== "peran" || !formed.some((x) => x.instans_dari === a.key)).length}`}
             hint={working ? `${working} working` : run?.status ?? ""} />
           <Kpi label="signals by agents" value={tagCount.toLocaleString("id-ID")} />
@@ -421,7 +421,7 @@ export function SwarmView() {
           ))}
           {sel && <button onClick={() => { setPlayKey((k) => k + 1); chart.current?.scrollIntoView({ block: "start", behavior: "smooth" }); }}
             title="replay this review on the firm chart: agents light up while working, interaction log, signal → decision flow"
-            className="flex items-center gap-1 rounded border border-[#9d8cff]/50 px-2 py-0.5 text-[11px] text-[#c9c0ff] hover:bg-[#9d8cff]/10"><Icon name="play" className="h-3 w-3" />Play AI Agent Swarm</button>}
+            className="flex items-center gap-1 rounded border border-[#f5b82e]/50 px-2 py-0.5 text-[11px] text-[#c9c0ff] hover:bg-[#f5b82e]/10"><Icon name="play" className="h-3 w-3" />Play AI Agent Swarm</button>}
           <div className="ml-auto flex flex-wrap gap-1">
             {["penugasan", "lapangan", "register", "investigasi", "sintesis", "qa", "laporan"].map((p) => {
               const st = phases[p]?.status;
@@ -443,7 +443,7 @@ export function SwarmView() {
             const n = k === "indikasi" ? tagCount + recs.length : k === "jejak" ? scrutinies.length + verdicts.length : 0;
             return (
               <button key={k} role="tab" aria-selected={tab === k} onClick={() => setSub({ run: sel, tab: k })}
-                className={`-mb-px rounded-t border-x border-t px-3 py-1.5 text-[12px] ${tab === k ? "border-white/10 bg-[#1c2127] font-medium text-white" : "border-transparent text-[#abb3bf] hover:text-white"}`}>
+                className={`-mb-px rounded-t border-x border-t px-3 py-1.5 text-[12px] ${tab === k ? "border-white/10 bg-[#1c2733] font-medium text-white" : "border-transparent text-[#abb3bf] hover:text-white"}`}>
                 {label}{n ? <span className="ml-1.5 rounded-full bg-white/10 px-1.5 text-[10px] tabular-nums text-[#c5cbd3]">{n.toLocaleString("id-ID")}</span> : null}
               </button>
             );
@@ -459,7 +459,7 @@ export function SwarmView() {
             <div className="grid gap-3 xl:grid-cols-[1fr_320px]">
               <div className="min-w-0 space-y-3">
             {plan && (
-              <section className="rounded border border-white/10 bg-[#1c2127] p-3">
+              <section className="rounded border border-white/10 bg-[#1c2733] p-3">
                 <p className="mb-1 font-semibold text-white">Orchestrator plan</p>
                 <p className="text-[#d3d8de]">{txt(plan.ringkasan)}</p>
                 <p className="mt-1 text-[10.5px] font-medium uppercase tracking-wide text-[#8f99a8]">Global hypotheses (project context)</p>
@@ -474,15 +474,15 @@ export function SwarmView() {
               </section>
             )}
             {scrutinies.length > 0 && (
-              <section className="space-y-1.5 rounded border border-white/10 bg-[#1c2127] p-3">
+              <section className="space-y-1.5 rounded border border-white/10 bg-[#1c2733] p-3">
                 <p className="font-semibold text-white">Validator scrutiny per milestone</p>
                 <p className="text-[10.5px] text-[#8f99a8]">Code, not a model: run at the end of each phase on what that phase left in shared state.</p>
                 {scrutinies.map((e) => <ScrutinyCard key={e.seq} ev={e} />)}
               </section>
             )}
-            {outline && <section className="rounded border border-white/10 bg-[#1c2127] p-3"><OutlineCard ev={outline} written={written} /></section>}
+            {outline && <section className="rounded border border-white/10 bg-[#1c2733] p-3"><OutlineCard ev={outline} written={written} /></section>}
             {verdicts.some((v) => v.lini) && (
-              <section className="rounded border border-white/10 bg-[#1c2127] p-3">
+              <section className="rounded border border-white/10 bg-[#1c2733] p-3">
                 <p className="mb-1 font-semibold text-white">QA across model families</p>
                 {verdicts.filter((v) => v.lini).map((v) => (
                   <details key={v.seq} className="border-t border-white/5 py-1">
@@ -493,7 +493,7 @@ export function SwarmView() {
               </section>
             )}
             {report && orchestratorReport && (
-              <details className="rounded border border-white/10 bg-[#1c2127] p-3">
+              <details className="rounded border border-white/10 bg-[#1c2733] p-3">
                 <summary className="cursor-pointer font-semibold text-white">Orchestrator report text (original)</summary>
                 <div className="mt-2">{orchestratorReport}</div>
               </details>
@@ -505,7 +505,7 @@ export function SwarmView() {
           )}
           {tab === "indikasi" && (
             <div className="grid gap-3 lg:grid-cols-2">
-            <section className="rounded border border-white/10 bg-[#1c2127] p-3">
+            <section className="rounded border border-white/10 bg-[#1c2733] p-3">
               <p className="mb-1 font-semibold text-white">Incoming signals (live)</p>
               <p className="mb-2 text-[10.5px] text-[#8f99a8]">Every signal, however small, is flagged with evidence from what the agent itself read. Strength is computed from its source; Secret marking for strong ones.</p>
               <div className="max-h-[640px] space-y-1 overflow-y-auto">
@@ -525,13 +525,13 @@ export function SwarmView() {
             </section>
               <div className="space-y-3">
             {reds.length > 0 && (
-              <section className="rounded border border-white/10 bg-[#1c2127] p-3">
+              <section className="rounded border border-white/10 bg-[#1c2733] p-3">
                 <p className="mb-1 font-semibold text-white">Red team</p>
                 {reds.map((r) => <p key={r.seq} className="border-t border-white/5 py-1 text-[11px]"><span className={r.hasil === "bertahan" ? "text-[#ffb4b4]" : "text-[#7ee2c0]"}>{r.hasil}</span> · {r.tag} · <span className="text-[#d3d8de]">{r.judul}</span> → {r.kekuatan}</p>)}
               </section>
             )}
             {recs.length > 0 && (
-              <section className="rounded border border-white/10 bg-[#1c2127] p-3">
+              <section className="rounded border border-white/10 bg-[#1c2733] p-3">
                 <p className="mb-1 font-semibold text-white">{isPlan ? "Sections planned" : "Option rulings"}</p>
                 {recs.map((r) => (
                   <div key={r.seq} className="border-t border-white/5 py-1 text-[11px]">
@@ -578,7 +578,7 @@ function RunCost({ run }: { run: Run }) {
   const calls = use.reduce((s, u) => s + (u.calls ?? 0), 0);
   const budget = Number((run as Rec).budget_usd) || 0;
   return (
-    <div className="mb-3 flex flex-wrap items-end gap-x-8 gap-y-2 rounded border border-white/10 bg-[#1c2127] px-4 py-3" data-run-costToggle>
+    <div className="mb-3 flex flex-wrap items-end gap-x-8 gap-y-2 rounded border border-white/10 bg-[#1c2733] px-4 py-3" data-run-costToggle>
       <div>
         <p className="text-[10.5px] font-semibold uppercase tracking-[.12em] text-[#d95926]">Total cost of this run</p>
         <p className="mt-0.5 text-[22px] font-semibold tabular-nums text-white">{usd(run.spent_usd ?? 0)}</p>
@@ -625,7 +625,7 @@ export function OrgChart({ roster, states, focus, onFocus, machines }: { roster:
   const planMachines = roster.some((a) => a.key === "doc_drawings");
   const MACH = planMachines ? [["auto_checks", "Package check"], ["impact_engine", "Quantities"], ["register", "Findings"]] : [["auto_checks", "Auto checks"], ["impact_engine", "Schedule and cost code"], ["register", "Risk register"]];
   return (
-    <section className="rounded border border-white/10 bg-[#161a1f] p-2">
+    <section className="rounded border border-white/10 bg-[#111820] p-2">
       <svg viewBox={`0 0 ${W} ${maxY + 10}`} className="w-full" role="img" aria-label="Firm chart">
         {roster.filter((a) => a.induk && pos[a.key] && pos[a.induk]).map((a) => {
           const p = pos[a.key], q = pos[a.induk!];
@@ -635,7 +635,7 @@ export function OrgChart({ roster, states, focus, onFocus, machines }: { roster:
           const x = 70 + i * 120, st = mstate[k];
           return (
             <g key={k} transform={`translate(${x},36)`}>
-              <rect x={-9} y={-9} width={18} height={18} transform="rotate(45)" fill="#232a33" stroke={st === "selesai" ? "#29a383" : st === "bekerja" ? "#b8a9ff" : st === "gagal" ? "#e5484d" : "#4b5563"} strokeWidth={2} />
+              <rect x={-9} y={-9} width={18} height={18} transform="rotate(45)" fill="#1c2733" stroke={st === "selesai" ? "#29a383" : st === "bekerja" ? "#b8a9ff" : st === "gagal" ? "#e5484d" : "#4b5563"} strokeWidth={2} />
               <text y={26} textAnchor="middle" className="fill-[#8f99a8] text-[10px]">{label}</text>
             </g>
           );
@@ -707,7 +707,7 @@ function AgentPanel({ agent, state, events, usage, onClose }: { agent?: FirmAgen
   const handoff = events.filter((e) => e.type === "handoff" && e.agent === agent.key).at(-1)?.handoff as Rec | undefined;
   const mine = events.filter((e) => e.type === "tag" && e.agent === agent.key);
   return (
-    <section className="rounded border border-[#b8a9ff]/30 bg-[#1c2127] p-3">
+    <section className="rounded border border-[#b8a9ff]/30 bg-[#1c2733] p-3">
       <div className="flex items-start gap-2">
         <div className="min-w-0">
           <p className="text-[13px] font-semibold text-white">{agent.name}</p>

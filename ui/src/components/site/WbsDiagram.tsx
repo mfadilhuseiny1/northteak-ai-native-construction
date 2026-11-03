@@ -1,12 +1,12 @@
 "use client";
-import { useMemo, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Markdown } from "@/components/aip/Briefing";
 import { type Rec } from "./kit";
 
 /* The WBS as a civil engineer draws it: the work at the top, the level below it side by side along a bar, and everything under each of those hanging down in an indented column, each level a step further in. However many work packages there are, the drawing grows down rather than across. */
 
 const W = 172, H = 46, IND = 28, RAIL = 14, GAP = 8, COL = 26, BUS = 36;
-const TONE: Record<string, string> = { project: "border-[#9d8cff]/60 bg-[#9d8cff]/15", work: "border-[#9d8cff]/60 bg-[#9d8cff]/15", package: "border-[#3987e5]/50 bg-[#3987e5]/15", activity: "border-[#29a383]/50 bg-[#29a383]/10", section: "border-white/20 bg-white/[.05]", task: "border-white/10 bg-[#1c2127]" };
+const TONE: Record<string, string> = { project: "border-[#6db3e8]/90 bg-[#3987e5]/[.22]", work: "border-[#6db3e8]/90 bg-[#3987e5]/[.22]", package: "border-[#3987e5]/60 bg-[#3987e5]/[.13]", activity: "border-[#4cae9c]/55 bg-[#2f8f7d]/[.13]", section: "border-white/20 bg-[#1c2733]", task: "border-white/10 bg-[#1c2733]" };
 const KIND: Record<string, string> = { operation: "Operation", inspection: "Inspection", handling: "Handling" };
 
 export type WbsNode = { code: string; name: string; type: string; ref?: string; kind?: string; critical?: boolean; hold_point?: boolean; status?: string; by_name?: string; children?: WbsNode[] };
@@ -24,17 +24,55 @@ function hang(n: WbsNode, x: number, y: number, hide: Set<string>): { p: Placed;
   return { p: { node: n, x, y, h: tall(n), row: false, kids }, bottom: at };
 }
 
-/** The top box over a row of columns. When nothing below it has children of its own, a row says nothing, so it all hangs under the top box instead. */
-function layout(root: WbsNode, hide: Set<string>): { top: Placed; width: number; height: number } {
+/** The top box over a row of columns. When nothing below it has children of its own, a row says nothing, so it all hangs under the top box instead. When the row would run wider than the screen, the columns wrap into bands under the same top box, each band on its own bus from the one spine: the drawing fits the width, boxes stay full size, and the page scrolls down a little instead of sideways. */
+type LaidOut = { top: Placed; width: number; height: number; boxes: Placed[]; lines: Placed[]; extra: string[] };
+function layout(root: WbsNode, hide: Set<string>, avail = Infinity): LaidOut {
   const first = below(root, hide);
   if (!first.some((c) => below(c, hide).length)) {
     const { p, bottom } = hang(root, 0, 0, hide);
-    return { top: p, width: W + IND * levels(root, hide), height: bottom };
+    return { top: p, width: W + IND * levels(root, hide), height: bottom, boxes: flat(p), lines: [p], extra: [] };
   }
-  let x = 0, bottom = 0;
-  const kids = first.map((c) => { const k = hang(c, x, tall(root) + BUS, hide); x += W + IND * levels(c, hide) + COL; bottom = Math.max(bottom, k.bottom); return k.p; });
-  const width = x - COL;
-  return { top: { node: root, x: (width - W) / 2, y: 0, h: tall(root), row: true, kids }, width, height: bottom };
+  const cols = first.map((c) => ({ node: c, w: W + IND * levels(c, hide) }));
+  const rowWidth = cols.reduce((n, c) => n + c.w, 0) + COL * (cols.length - 1);
+  if (rowWidth <= avail) {
+    let x = 0, bottom = 0;
+    const kids = cols.map((c) => { const k = hang(c.node, x, tall(root) + BUS, hide); x += c.w + COL; bottom = Math.max(bottom, k.bottom); return k.p; });
+    const top: Placed = { node: root, x: (rowWidth - W) / 2, y: 0, h: tall(root), row: true, kids };
+    return { top, width: rowWidth, height: bottom, boxes: flat(top), lines: [top], extra: [] };
+  }
+  const bands: (typeof cols)[] = [];
+  let band: typeof cols = [], bandW = 0;
+  for (const c of cols) {
+    if (band.length && bandW + COL + c.w > avail) { bands.push(band); band = []; bandW = 0; }
+    band.push(c);
+    bandW += (band.length > 1 ? COL : 0) + c.w;
+  }
+  if (band.length) bands.push(band);
+  const width = Math.max(...bands.map((b) => b.reduce((n, c) => n + c.w, 0) + COL * (b.length - 1)));
+  const top: Placed = { node: root, x: (width - W) / 2, y: 0, h: tall(root), row: false, kids: [] };
+  const spine = top.x + W / 2;
+  const boxes: Placed[] = [top], lines: Placed[] = [], extra: string[] = [];
+  let y = tall(root) + BUS, lastBus = y - BUS / 2, height = y;
+  for (const b of bands) {
+    const bus = y - BUS / 2;
+    lastBus = bus;
+    let x = 0, bottom = y;
+    const centers: number[] = [];
+    for (const c of b) {
+      const k = hang(c.node, x, y, hide);
+      boxes.push(...flat(k.p));
+      lines.push(k.p);
+      centers.push(k.p.x + W / 2);
+      bottom = Math.max(bottom, k.bottom);
+      x += c.w + COL;
+    }
+    extra.push(`M${Math.min(spine, ...centers)} ${bus}H${Math.max(spine, ...centers)}`);
+    for (const cx of centers) extra.push(`M${cx} ${bus}V${y}`);
+    height = bottom;
+    y = bottom + BUS;
+  }
+  extra.push(`M${spine} ${tall(root)}V${lastBus}`);
+  return { top, width, height, boxes, lines, extra };
 }
 
 function flat(p: Placed): Placed[] {
@@ -65,22 +103,30 @@ function Lines({ p }: { p: Placed }) {
 }
 
 export function WbsDiagram({ root, hide = [], sel, onSelect }: { root: WbsNode; hide?: string[]; sel?: string | null; onSelect?: (code: string) => void }) {
-  const { top, width, height, boxes } = useMemo(() => {
-    const placed = layout(root, new Set(hide));
-    return { ...placed, boxes: flat(placed.top) };
-  }, [root, hide]);
+  const wrap = useRef<HTMLDivElement>(null);
+  const [avail, setAvail] = useState(1600);
+  useEffect(() => {
+    const el = wrap.current;
+    if (!el) return;
+    const read = () => setAvail(el.clientWidth);
+    read();
+    const ro = new ResizeObserver(read);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const { width, height, boxes, lines, extra } = useMemo(() => layout(root, new Set(hide), Math.max(avail - 32, W)), [root, hide, avail]);
   return (
-    <div className="overflow-x-auto p-3">
+    <div ref={wrap} className="dotgrid overflow-x-auto rounded-lg p-4">
       <div className="relative mx-auto" style={{ width, height }}>
-        <svg className="pointer-events-none absolute inset-0" width={width} height={height} fill="none" stroke="#5f6b7c" strokeWidth={1.25} aria-hidden="true"><Lines p={top} /></svg>
+        <svg className="pointer-events-none absolute inset-0" width={width} height={height} fill="none" stroke="#7186a0" strokeWidth={1.5} aria-hidden="true">{extra.map((d) => <path key={d} d={d} />)}{lines.map((p) => <Lines key={p.node.code} p={p} />)}</svg>
         {boxes.map(({ node: n, x, y }) => {
           const small = n.type === "task";
           return (
             <button key={n.code} onClick={() => onSelect?.(n.code)} disabled={!onSelect} title={`${n.code} ${n.name}${n.by_name ? ` · ${n.by_name}` : ""}${n.kind ? ` · ${KIND[n.kind] ?? n.kind}` : ""}`}
-              className={`absolute overflow-hidden rounded border px-1.5 py-0.5 text-left ${TONE[n.type] ?? TONE.task} ${n.hold_point ? "!border-l-2 !border-l-[#e5484d]" : n.critical ? "!border-l-2 !border-l-[#fab219]" : ""} ${sel === n.code ? "outline outline-2 outline-offset-1 outline-white" : ""} ${onSelect ? "hover:brightness-125" : "cursor-default"}`}
+              className={`absolute overflow-hidden rounded-md border px-2 py-1 text-left shadow-[0_3px_10px_rgb(0_0_0/.30)] ${TONE[n.type] ?? TONE.task} ${n.hold_point ? "!border-l-[3px] !border-l-[#e5484d]" : n.critical ? "!border-l-[3px] !border-l-[#fab219]" : ""} ${sel === n.code ? "outline outline-2 outline-offset-2 outline-[#f5b82e] brightness-125" : ""} ${onSelect ? "hover:-translate-y-px hover:brightness-125 hover:shadow-[0_6px_16px_rgb(0_0_0/.4)]" : "cursor-default"}`}
               style={{ left: x, top: y, width: W, height: small ? H - 6 : H }}>
               <span className="flex items-baseline gap-1 text-[9.5px] tabular-nums text-[#8f99a8]"><span className="truncate">{n.code}</span>{n.ref && n.type !== "section" && <span className="ml-auto shrink-0 font-semibold text-[#abb3bf]">{n.ref}</span>}</span>
-              <span className={`block leading-[1.15] text-white ${small ? "line-clamp-2 text-[10px]" : "line-clamp-2 text-[10.5px] font-medium"}`}>{n.name}</span>
+              <span className={`block leading-[1.15] text-white ${small ? "line-clamp-2 text-[10px]" : "line-clamp-2 text-[10.5px] font-semibold"}`}>{n.name}</span>
             </button>
           );
         })}
@@ -120,7 +166,7 @@ export function WbsReport({ text, plan, onSelect, network }: { text: string; pla
   return (
     <>
       <Markdown text={`${text.slice(0, at)}## The WBS${source ? `\n\n${source}` : ""}`} />
-      <div className="my-2 rounded border border-white/10 bg-[#161a1f]">
+      <div className="my-2 overflow-hidden rounded-lg border border-white/10 bg-[#111820] shadow-[0_4px_16px_rgb(0_0_0/.25)]">
         {!packages && <p className="flex flex-wrap gap-x-4 border-b border-white/5 px-3 py-1.5 text-[10.5px] text-[#abb3bf]"><span className="flex items-center gap-1.5"><i className="h-3 w-0.5 bg-[#fab219]" />Critical path</span><span className="flex items-center gap-1.5"><i className="h-3 w-0.5 bg-[#e5484d]" />Hold point: work stops until signed</span><span className="ml-auto text-[#8f99a8]">O operation · I inspection · H handling</span></p>}
         <WbsDiagram root={planTree(plan)} hide={packages ? ["section", "task"] : []} onSelect={onSelect} />
       </div>

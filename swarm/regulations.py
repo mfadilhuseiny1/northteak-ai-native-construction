@@ -79,7 +79,7 @@ def _ends(flat: str) -> list[int]:
     return out
 
 
-MARKER = re.compile(r"(?<!\S)(?:\d{1,3}(?:\.\d{1,3})?\)?[.)]|\d{1,3}\.\d{1,3}|[a-z][.)]|\([a-z]\)|\(\d{1,2}\))(?=\s)", re.I)  # "1.", "17).", "23.1", "a.", "(b)", "(2)": where a clause starts. Not "(Dua)", which spells out a number
+MARKER = re.compile(r"(?<!\S)(?:\d{1,3}\.\d{1,3}\.\(?\w{1,2}\)?|\d{1,3}(?:\.\d{1,3})?\)?[.)]|\d{1,3}\.\d{1,3}|[a-z][.)]|\([a-z]\)|\(\d{1,2}\))(?=\s)", re.I)  # "70.4.(c)", "1.", "17).", "23.1", "a.", "(b)", "(2)": where a clause starts. Not "(Dua)", which spells out a number
 
 
 def _clause(flat: str, start: int, end: int, ends: list[int]) -> str:
@@ -125,7 +125,7 @@ def revoked(cites: dict[str, list[tuple[str, int]]]) -> list[dict]:
 # ------------------------------------------------------------------------------------------------ the safety risk level: Permen PUPR 10/2021 Pasal 34
 
 LEVELS = ("kecil", "sedang", "besar")
-LIFTING = re.compile(r"tower crane|mobile crane|crawler crane|truck crane|pesawat angkat|passenger hoist|\bcrane\b", re.I)  # blasting, ayat (5) huruf e, is left to a person: its words also mean sandblasting, or a hazard in a list
+LIFTING = re.compile(r"tower crane(?:\s*/\s*mobile? crane)?|mobile? crane|crawler crane|truck crane|pesawat angkat|passenger hoist|\bcrane\b", re.I)  # "Tower Crane/Mobil Crane" allows either, and is quoted whole. Blasting, ayat (5) huruf e, is left to a person: its words also mean sandblasting, or a hazard in a list
 STATED = re.compile(r"risiko\s+keselamatan\s+konstruksi\s+(?:[\w/]+\s+){0,3}?(kecil|sedang|besar)\b", re.I)
 STAFF = {"kecil": ("Pasal 38 ayat (1)", "Dalam hal Pekerjaan Konstruksi memiliki Risiko Keselamatan Konstruksi kecil sebagaimana dimaksud dalam Pasal 34 ayat (3), perbandingan jumlah personil Keselamatan Konstruksi dengan jumlah tenaga kerja konstruksi berupa 1:60 (satu banding enam puluh) dengan paling sedikit 1 (satu) Petugas Keselamatan Konstruksi dalam tiap Pekerjaan Konstruksi.", 60),
          "sedang": ("Pasal 38 ayat (2)", "Dalam hal Pekerjaan Konstruksi memiliki Risiko Keselamatan Konstruksi sedang sebagaimana dimaksud dalam Pasal 34 ayat (4), perbandingan jumlah personil Keselamatan Konstruksi dengan jumlah tenaga kerja konstruksi berupa 1:50 (satu banding lima puluh) dengan paling sedikit 1 (satu) ahli Keselamatan dan Kesehatan Kerja Konstruksi dan/atau ahli Keselamatan Konstruksi muda dalam tiap Pekerjaan Konstruksi", 50),
@@ -147,6 +147,26 @@ def _first(docs: list[dict], pattern: re.Pattern) -> dict | None:
 
 def _rp(value: float, decimal: str = ".") -> str:
     return f"Rp {value / 1e9:.2f}".replace(".", decimal) + (" bn" if decimal == "." else " miliar")
+
+
+WORTH = re.compile(r"senilai\s+Rp\.?\s*(\d{1,3}(?:\.\d{3})+)", re.I)
+
+
+def said_value(docs: list[dict], project: str = "") -> float | None:
+    """The owner's estimate where it is only said in a sentence, as in "senilai Rp80.000.000.000,00". A document can list several packages, so where it does, the one named most like this project, and none if that does not settle it."""
+    found: list[tuple[str, float]] = []
+    for d in docs:
+        if d.get("kind") == "estimate":
+            for page in d["pages_text"]:
+                flat, last = _flat(page), 0
+                for m in WORTH.finditer(flat):
+                    found.append((flat[last:m.start()], float(m.group(1).replace(".", ""))))
+                    last = m.end()
+    if len(found) < 2:
+        return found[0][1] if found else None
+    words = lambda t: set(re.findall(r"[a-z0-9]{3,}", t.lower()))  # noqa: E731
+    closest = sorted(((len(words(project) & words(before)), value) for before, value in found), reverse=True)
+    return closest[0][1] if closest[0][0] > closest[1][0] else None
 
 
 def safety_risk(value: float | None, from_owner: bool, docs: list[dict]) -> dict | None:
@@ -184,29 +204,46 @@ def safety_risk(value: float | None, from_owner: bool, docs: list[dict]) -> dict
 # ------------------------------------------------------------------------------------------------ work that needs a work permit: Pasal 26 and 27
 
 # Pasal 26 ayat (2), in its own words, with the words a task's procedure uses for each. Found by the task's words, so it says so
-SPECIAL = [("a", "pekerjaan panas/menimbulkan percikan api", "hot work, or work that throws sparks", r"\blas\b|pengelasan|mengelas|\bweld|gerinda|grind|percikan api|api terbuka|blander|cutting torch|hot work"),
-           ("b", "pekerjaan pengangkatan", "lifting", r"pengangkatan|mengangkat|diangkat|\bangkat\b|\bcrane\b|hoist|kerekan|chain block|takel|pesawat angkat|lifting|rigging"),
+SPECIAL = [("a", "pekerjaan panas/menimbulkan percikan api", "hot work, or work that throws sparks", r"\blas\b|pengelasan|mengelas|\bweld|(?<!debu )gerinda|grind|percikan api|api terbuka|blander|cutting torch|hot work"),
+           ("b", "pekerjaan pengangkatan", "lifting", r"pengangkatan|izin angkat|\bcrane\b|hoist|kerekan|chain block|takel|pesawat angkat|lifting|rigging"),  # "angkat" alone is mostly two people carrying a panel
            ("c", "pekerjaan di ruang terbatas", "work in a confined space", r"ruang terbatas|ruang tertutup|confined space"),
            ("d", "pekerjaan menyelam", "diving", r"menyelam|penyelam|\bdiving\b"),
            ("e", "pekerjaan di malam hari", "night work", r"malam hari|pada malam|\bnight\b"),
-           ("f", "pekerjaan di ketinggian lebih dari 1,80 (satu koma delapan puluh) meter", "work at height over 1.8 m", r"(?:di|dari) ketinggian|ketinggian lebih|1[,.]8\d? ?m|sabuk pengaman|safety belt|harness|tali pengaman|lifeline|at height|from height"),
+           ("f", "pekerjaan di ketinggian lebih dari 1,80 (satu koma delapan puluh) meter", "work at height over 1.8 m", r"(?:di|dari) ketinggian|ketinggian lebih|jatuh (?:dari )?tepi|1[,.]8\d? ?m|sabuk (?:pengaman|keselamatan)|safety belt|harness|tali (?:pengaman|keselamatan)|lifeline|at height|from height"),
            ("g", "pekerjaan menggunakan perancah", "work on scaffolding", r"perancah|scaff?old|steiger"),
            ("h", "pekerjaan dengan menggunakan radiography", "radiography", r"radiogra"),
            ("i", "pekerjaan bertegangan listrik", "live electrical work", r"bertegangan|tegangan listrik|tegangan (?:tinggi|menengah)|listrik hidup|beban penuh|energi[sz]"),
-           ("j", "pekerjaan penggalian atau kedalaman", "excavation or work in depth", r"galian|penggalian|menggali|\bgali\b|excavat|trench")]
+           ("j", "pekerjaan penggalian atau kedalaman", "excavation or work in depth", r"penggalian|menggali|\bgali\b|excavat|trench")]  # "galian" alone may only say where the work is, so it counts in a task's name: see permit_for
 _SPECIAL = [(letter, local, en, re.compile(words, re.I)) for letter, local, en, words in SPECIAL]
 PERMIT = _rule(P10, "Pasal 26 ayat (2) dan Pasal 27", "Dalam tahap pelaksanaan pekerjaan konstruksi, Rencana metode pelaksanaan kerja, AKK serta rencana pemeriksaan dan pengujian merupakan komponen yang digunakan sebagai bagian dari persyaratan izin kerja.")
 PLANNER = ("Work that Permen PUPR 10/2021 Pasal 26 ayat (2) calls special needs a work permit before it starts, and Pasal 27 makes its method statement, safety analysis (AKK) and inspection plan part of that permit: "
            "hot work or work that throws sparks, lifting, work in a confined space, diving, night work, work at height over 1.8 m, work on scaffolding, radiography, live electrical work, and excavation. For such a task, the first step of its procedure is to get that permit.")
 
 
-NOT = re.compile(r"(?:jangan|hindari|jauhkan|dilarang|tidak boleh|tanpa|bebas dari|avoid|keep away|never|\bno)\b[^.;,]{0,25}$", re.I)  # "jangan ada api terbuka" is a precaution, not hot work
+NOT = re.compile(r"(?:(?:jangan|hindari|jauhkan|dilarang|tidak boleh|tanpa|bebas dari|avoid|keep away|never|\bno)\b[^.;,]{0,25}|\btidak\b[^.;,]{0,6})$", re.I)  # "jangan ada api terbuka" is a precaution, not hot work, and "pastikan tidak bertegangan" is not live work
 
 
 def special(*texts: str) -> list[dict]:
     """Which kinds of special work a task's own words show it to be. A word in a precaution against it does not count."""
     said = " ".join(t for t in texts if t)
     return [{"letter": letter, "local": local, "what": en} for letter, local, en, pattern in _SPECIAL if any(not NOT.search(said[max(0, m.start() - 40):m.start()]) for m in pattern.finditer(said))]
+
+
+WARNING_SHOWS, ON_THE_TOOLS, A_CHECK_CAN_BE = set("cdhi"), set("afg"), set("chi")
+GETS_THE_PERMIT = re.compile(r"^(?:urus|ajukan|dapatkan|minta|siapkan|lakukan|buat)\b.*(?:i[zj]in kerja|analisis keselamatan|\bJSA\b|\bAKK\b)", re.I)
+BRINGS = re.compile(r"^(?:datangkan|terima|simpan)\b", re.I)
+
+
+def permit_for(kind: str, name: str, steps: str, equipment: str, safety: str) -> list[dict]:
+    """Which special work a task is. What it does decides: its name, steps and equipment. A safety note warns of a hazard that may only be nearby, so it counts only where the warning shows the work itself: sparks, a fall or a scaffold on a task that does the work, and live electrics, a confined space, diving or radiography on any. A check looks at work with a permit of its own, unless it is itself a live test, radiography or in a confined space. A task that gets the permit does not need one first."""
+    if GETS_THE_PERMIT.search(name):
+        return []
+    works = kind == "operation" and not BRINGS.search(name)
+    found = {x["letter"] for x in special(name, steps, equipment)} | ({"j"} if works and re.search(r"\bgalian\b", name, re.I) else set())
+    found |= {x["letter"] for x in special(safety)} & (WARNING_SHOWS | (ON_THE_TOOLS if works else set()))
+    if kind == "inspection":
+        found &= A_CHECK_CAN_BE
+    return [{"letter": letter, "local": local, "what": en} for letter, local, en, _ in _SPECIAL if letter in found]
 
 
 # ------------------------------------------------------------------------------------------------ what must be done, and when

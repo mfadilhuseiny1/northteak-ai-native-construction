@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from . import config, firm, llm, memory, operator, package, package_firm, planner, planning_case, project
+from . import config, firm, llm, memory, model3d, operator, package, package_firm, planner, planning_case, project
 from .mock_firm import MockFirmLlm
 from .mock_package import MockPackageLlm
 from .mock_plan import MockPlanLlm
@@ -71,7 +71,7 @@ def model_of(mode: str, jenis: str = "disruption"):
         if mode == "mock":
             return {"plan": MockPlanLlm, "package": MockPackageLlm}.get(jenis, MockFirmLlm)(model=f"mock/{key}", agent_key=key, delay=MOCK_DELAY)
         if jenis == "package":
-            return llm.muse(model, 16_000, effort="low")  # thinking counts against it, and a work package's tasks are long
+            return llm.muse(model, package_firm.TOKENS, effort=package_firm.EFFORT)
         return llm.muse(model, max_tokens)
     return make
 
@@ -222,7 +222,7 @@ async def start(body: Start) -> dict:
         if not project.is_blank():
             raise HTTPException(409, "the scenario has its own package: use a work plan here. To plan from your own documents, start a project of your own")
         if not package.uploads():
-            raise HTTPException(409, "upload the consultant's documents first")
+            raise HTTPException(409, "upload a document, or tell the agents what you are planning, first")
         if project.has_started():
             raise HTTPException(409, "this project already has an approved plan with work on the board")
     elif project.is_blank():
@@ -260,11 +260,22 @@ async def start(body: Start) -> dict:
             status = "failed"
         if status == "succeeded":
             try:
-                {"plan": project.record_plan, "package": project.record_package_plan}.get(body.jenis, project.record_review)(run_id, f, mode)
+                saved = {"plan": project.record_plan, "package": project.record_package_plan}.get(body.jenis, project.record_review)(run_id, f, mode)
             except Exception as e:  # noqa: BLE001 - a run must always end, or it blocks the next one
                 traceback.print_exc()
                 emit({"type": "error", "agent": None, "message": f"The plan could not be recorded. {type(e).__name__}: {str(e)[:400]}", "t": now()[:19]})
                 status = "failed"
+            else:
+                if body.jenis == "package" and saved:
+                    try:  # the last stage: the 3D timeline needs the WBS and the schedule, which exist only now
+                        f.stage("model3d", "running")
+                        note, checks = model3d.summary(model3d.build())
+                        if checks:
+                            project.patch("plan", saved["id"], {"plan": {**saved["plan"], "checks": [*saved["plan"]["checks"], *checks]}}, project.SWARM, "built the 3D timeline", note)
+                        f.stage("model3d", "done", note=note)
+                    except Exception as e:  # noqa: BLE001 - the plan stands without it, and the tab says what it can
+                        traceback.print_exc()
+                        f.stage("model3d", "failed", note=f"The 3D timeline could not be built: {type(e).__name__}: {str(e)[:200]}")
         rec["run"].update(status=status, finished_at=now(), spent_usd=round(f.spent, 4) if f else 0, agents_usage=f.usage if f else {})
         rec.pop("firm", None)
         try:

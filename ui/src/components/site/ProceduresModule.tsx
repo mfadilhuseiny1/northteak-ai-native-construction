@@ -2,24 +2,33 @@
 import { useState } from "react";
 import { Icon } from "@/components/Icon";
 import { API_URL } from "@/lib/api";
-import { Bar, dates, Empty, Kpi, Kpis, Label, Loading, num, Pill, Problem, quiet, useData, useGo, type Rec } from "./kit";
-import { openSource } from "./SourceDrawer";
+import { Bar, dates, Empty, Label, Loading, num, Pill, Problem, quiet, useData, useGo, type Rec, NotYet } from "./kit";
+import { SourceLink } from "./SourceDrawer";
 
-/* The point of it all: every task's procedure, as a foreman would follow it, with who, what and how it is checked, the words in the documents it rests on, and whether it is ready to start. First, what the contract and Indonesian regulations require before any of it. */
+/* The point of it all: every task's procedure, as a foreman would follow it, with who, what and how it is checked, the documents it rests on, and whether it is ready to start. First, what the contract and Indonesian regulations require around all of it. The words quoted stay one click away, in the source beside it, so the screen reads as the procedure. */
 
 function Rule({ r }: { r: Rec }) {
-  return <p className="mt-0.5 leading-snug text-[11.5px] text-[#abb3bf]"><a href={r.url} target="_blank" rel="noreferrer" className="text-[#9cc7f5] hover:underline">{r.name}, {r.article}</a>: “{r.quote}”</p>;
+  return <a href={r.url} target="_blank" rel="noreferrer" title={`“${r.quote}”`} className="inline-flex items-center gap-1 rounded bg-white/[.08] px-1.5 py-px text-[11.5px] text-[#9cc7f5] hover:bg-white/15">{r.name}, {r.article}</a>;
+}
+
+/** One link a page: several quotes from the same page read as one passage, not as the same link three times. */
+function Sources({ rows }: { rows: Rec[] }) {
+  const pages = new Map<string, Rec>();
+  for (const s of rows) {
+    const k = `${s.doc}:${s.page ?? ""}`, seen = pages.get(k);
+    pages.set(k, seen ? { ...seen, quote: [seen.quote, s.quote].filter(Boolean).join(" … ") } : s);
+  }
+  return <span className="flex flex-wrap gap-1">{[...pages.values()].map((s, i) => <SourceLink key={i} doc={s.doc} page={s.page} quote={s.quote} title={s.title} />)}</span>;
 }
 
 const PHASES: [string, string][] = [["before", "Before any work starts"], ["during", "While the work runs"], ["handover", "At handover"]];
 
 function Obligations({ rows, permits }: { rows: Rec[]; permits: number }) {
-  const go = useGo();
   return (
     <div className="space-y-4">
       <div>
-        <p className="text-[15px] font-semibold text-white">Before any work starts, and after</p>
-        <p className="mt-0.5 leading-snug text-[#abb3bf]">What the contract and Indonesian regulations require, with the package&apos;s own words for each. Code found these by their words: check each against the documents.</p>
+        <p className="text-[15px] font-semibold text-white">What the contract and regulations require</p>
+        <p className="mt-0.5 leading-snug text-[#abb3bf]">Code found these by their words. Open a source to check one.</p>
       </div>
       {PHASES.map(([phase, title]) => {
         const list = rows.filter((o) => o.phase === phase);
@@ -27,14 +36,15 @@ function Obligations({ rows, permits }: { rows: Rec[]; permits: number }) {
           <div key={phase} className="space-y-2">
             <p className="text-[11px] font-medium uppercase tracking-wide text-[#abb3bf]">{title}</p>
             {list.map((o) => (
-              <section key={o.key} className={`space-y-1 rounded border bg-[#1c2127] p-3 ${o.conflict ? "border-[#fab219]/50" : "border-white/10"}`}>
+              <section key={o.key} className={`space-y-1.5 rounded border bg-[#1c2733] px-3 py-2.5 ${o.conflict ? "border-[#fab219]/50" : "border-white/10"}`}>
                 <p className="text-[13px] font-medium text-white">{o.what}</p>
                 {o.note && <p className="leading-snug text-[#d3d8de]">{o.note}</p>}
                 {o.key === "permits" && <p className="leading-snug text-[#d3d8de]">{permits ? `${permits} task${permits === 1 ? "" : "s"} in this plan need${permits === 1 ? "s" : ""} one, and each says so.` : "No task in this plan reads as special work."}</p>}
                 {o.conflict && <p className="rounded bg-[#fab219]/10 px-2 py-1 leading-snug text-[#fbd38d]"><Icon name="alert" className="mr-1 inline h-3 w-3" />{o.conflict}</p>}
-                <Label>In the documents</Label>
-                {(o.found as Rec[]).length ? (o.found as Rec[]).map((f, i) => <p key={i} className="leading-snug text-[11.5px] text-[#abb3bf]"><button onClick={() => openSource({ doc: f.doc, page: f.page, quote: f.quote, title: f.title })} className="text-[#9cc7f5] hover:underline">{f.title}, page {f.page}</button>: “{f.quote}”</p>) : <p className="text-[11.5px] text-[#8f99a8]">The documents read do not say.</p>}
-                {o.rule && <><Label>The regulation</Label><Rule r={o.rule} /></>}
+                <span className="flex flex-wrap items-center gap-1">
+                  {(o.found as Rec[]).length ? <Sources rows={o.found as Rec[]} /> : <span className="text-[11.5px] text-[#8f99a8]">The documents read do not say.</span>}
+                  {o.rule && <Rule r={o.rule} />}
+                </span>
               </section>
             ))}
           </div>
@@ -49,7 +59,7 @@ function Task({ t, rule }: { t: Rec; rule: Rec }) {
   const [why, setWhy] = useState(false);
   const holds = t.holds as Rec[], sources = t.sources as Rec[], crew = t.crew as Rec[], steps = t.steps as string[], needs = t.needs as string[], equipment = t.equipment as string[], unsourced = t.unsourced as string[], permit = (t.permit ?? []) as Rec[];
   return (
-    <section className={`rounded border bg-[#1c2127] ${t.ready ? "border-[#29a383]/40" : "border-white/10"}`}>
+    <section className={`rounded border bg-[#1c2733] ${t.ready ? "border-[#29a383]/40" : "border-white/10"}`}>
       <div className="flex flex-wrap items-center gap-2 border-b border-white/5 px-3 py-2">
         <span className="font-mono text-[10.5px] text-[#8f99a8]">{t.code}</span>
         <span className="text-[10.5px] text-[#8f99a8]">{t.id}</span>
@@ -74,12 +84,7 @@ function Task({ t, rule }: { t: Rec; rule: Rec }) {
           {t.criteria && <div><Label>Passes if</Label><p className="mt-0.5 leading-snug text-[#e5e8eb]">{t.criteria}</p></div>}
           {t.safety && <div><Label>Safety</Label><p className="mt-0.5 leading-snug text-[#e5e8eb]">{t.safety}</p></div>}
           {unsourced.length > 0 && <p className="rounded bg-[#fab219]/10 px-2 py-1 leading-snug text-[#fbd38d]"><Icon name="alert" className="mr-1 inline h-3 w-3" />Check {unsourced.length === 1 ? "this figure" : "these figures"}: {unsourced.join(", ")}. The pages the agent read do not state {unsourced.length === 1 ? "it" : "them"}.</p>}
-          {sources.length ? (
-            <div>
-              <Label>Where the documents say so</Label>
-              {sources.map((s, i) => <p key={i} className="mt-0.5 leading-snug text-[11.5px] text-[#abb3bf]"><button onClick={() => openSource({ doc: s.doc, page: s.page, quote: s.quote, title: s.title })} className="text-[#9cc7f5] hover:underline">{s.title}{s.page ? `, page ${s.page}` : ""}</button>{s.quote ? `: “${s.quote}”` : ""}</p>)}
-            </div>
-          ) : <p className="rounded bg-[#fab219]/10 px-2 py-1 leading-snug text-[#fbd38d]"><Icon name="alert" className="mr-1 inline h-3 w-3" />Nothing in the documents backs this task: it rests on the agent&apos;s knowledge. Check it before use.</p>}
+          {sources.length ? <Sources rows={sources} /> :<p className="rounded bg-[#fab219]/10 px-2 py-1 leading-snug text-[#fbd38d]"><Icon name="alert" className="mr-1 inline h-3 w-3" />Nothing in the documents backs this task: it rests on the agent&apos;s knowledge. Check it before use.</p>}
         </div>
         <div className="space-y-2 text-[11.5px] text-[#d3d8de]">
           <div><Label>When</Label><p className="mt-0.5 tabular-nums">{dates(t.start, t.finish)}</p></div>
@@ -99,27 +104,22 @@ export function ProceduresModule() {
   const go = useGo();
   if (!data) return <div className="flex-1"><Problem err={err} />{!err && <Loading />}</div>;
   const groups = data.groups as Rec[], c = data.counts as Rec, plan = data.plan as Rec | null;
-  if (!plan) return <div className="flex-1 bg-[#161a1f] text-[12px]"><Problem err={err} /><Empty>No procedures yet. They come from the <button onClick={() => go("analysis")} className="underline">AI analysis</button> of the documents.</Empty></div>;
+  if (!plan) return <div className="flex-1 bg-[#111820] text-[12px]"><Problem err={err} /><NotYet>No procedures yet.</NotYet></div>;
   const duties = (data.obligations ?? []) as Rec[];
   const first = sel === "before" || (sel === null && duties.length > 0);
   const g = first ? null : groups.find((x) => x.code === sel) ?? groups[0];
   const count = (x: Rec) => (x.sections as Rec[]).reduce((n, s) => n + (s.tasks as Rec[]).length, 0);
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden text-[12px]">
-      <Bar title="Procedures" note={<span className="inline-flex items-center gap-1.5">{plan.title}<Pill tone={plan.status === "approved" ? "ok" : "warn"}>{plan.status === "pending" ? "waiting for your approval" : plan.status}</Pill>{plan.mode === "mock" && <Pill tone="violet">offline mock: scripted answers</Pill>}</span>}>
+      <Bar title="Procedures" note={<span className="inline-flex items-center gap-1.5">{plan.status === "pending" ? <Pill tone="warn">waiting for your approval</Pill> : <>{c.ready} of {c.tasks} tasks ready to work</>}{plan.mode === "mock" && <Pill tone="violet">offline mock: scripted answers</Pill>}</span>}>
         <a href={`${API_URL}/api/project/plans/${plan.id}/procedure.md`} download={`${plan.id}-procedure.md`} className={quiet}>Download all</a>
       </Bar>
       <Problem err={err} />
-      <Kpis>
-        <Kpi label="tasks with a procedure" value={c.tasks} />
-        <Kpi label="ready to work" value={c.ready} tone={c.ready ? "ok" : undefined} />
-        <Kpi label="not ready yet" value={c.not_ready} tone={c.not_ready ? "warn" : "ok"} />
-      </Kpis>
       <div className="flex min-h-0 flex-1 overflow-hidden">
-        <div className="w-[290px] shrink-0 overflow-y-auto border-r border-black/30 bg-[#1c2127] py-1">
+        <div className="w-[290px] shrink-0 overflow-y-auto border-r border-black/30 bg-[#1c2733] py-1">
           {duties.length > 0 && (
             <button onClick={() => setSel("before")} aria-current={first ? "true" : undefined} className={`flex w-full items-baseline gap-1.5 px-3 py-1 text-left hover:bg-white/5 ${first ? "bg-white/10 text-white" : "text-[#d3d8de]"}`}>
-              <Icon name="lock" className="h-3 w-3 shrink-0 self-center text-[#8f99a8]" /><span className="min-w-0 flex-1">Before any work starts</span><span className="text-[10.5px] tabular-nums text-[#8f99a8]">{duties.filter((o) => o.phase === "before").length}</span>
+              <Icon name="doc" className="h-3 w-3 shrink-0 self-center text-[#8f99a8]" /><span className="min-w-0 flex-1">Contract and regulations</span><span className="text-[10.5px] tabular-nums text-[#8f99a8]">{duties.length}</span>
             </button>
           )}
           {groups.map((x) => (
@@ -128,7 +128,7 @@ export function ProceduresModule() {
             </button>
           ))}
         </div>
-        <div className="min-w-0 flex-1 space-y-4 overflow-y-auto bg-[#161a1f] p-3">
+        <div className="min-w-0 flex-1 overflow-y-auto bg-[#111820] p-3"><div className="max-w-[1200px] space-y-4">
           {first && <Obligations rows={duties} permits={data.permit_tasks ?? 0} />}
           {g && <p className="text-[15px] font-semibold text-white"><span className="mr-2 font-mono text-[11px] font-normal text-[#8f99a8]">{g.code}</span>{g.name}</p>}
           {(g?.sections as Rec[] ?? []).map((s) => (
@@ -138,7 +138,7 @@ export function ProceduresModule() {
             </div>
           ))}
           {g && !count(g) && <Empty>No procedures for this work package: its planner&apos;s answer could not be read. Plan it again to retry.</Empty>}
-        </div>
+        </div></div>
       </div>
     </div>
   );

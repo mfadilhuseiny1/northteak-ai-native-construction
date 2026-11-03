@@ -438,6 +438,129 @@ def test_a_real_boq_gives_its_lines_and_a_recap_gives_none():
     assert K.read_boq_lines("UP-7", K.read_pages(doc("7-"))) == [], "a recap has groups, not lines"
 
 
+def test_a_boq_file_holding_two_projects_keeps_each_row_under_its_own():
+    pages = ["PEKERJAAN : PEMBANGUNAN AEC\nIX. PEKERJAAN STRUKTUR ATAP DAN BAJA\n1 Kuda-kuda baja 12.00 kg Rp - Rp -", "PEKERJAAN : REVITALISASI MASJID\nSUB PEKERJAAN : PEKERJAAN ARSITEKTUR - LANTAI 1\nC.1 PEKERJAAN ARSITEKTUR - LANTAI 1\n1 Dinding bata ringan; tebal 10 cm 1,334.21 m2 -Rp -Rp"]
+    a, b = K.read_boq_lines("UP-3", pages)
+    assert (a["work"], a["section"]) == ("PEMBANGUNAN AEC", "IX. PEKERJAAN STRUKTUR ATAP DAN BAJA")
+    assert (b["work"], b["section"]) == ("REVITALISASI MASJID", "C.1 PEKERJAAN ARSITEKTUR - LANTAI 1"), "the other building's rows are not filed under this one's last section"
+
+
+def test_the_real_unair_boq_has_the_masjid_apart_and_its_roof_in_the_outline():
+    boq = ROOT / "docs" / "unair-airlangga-edupreneur-center-2024" / "Daftar-Kuantitas-Harga-AEC-dan-Masjid-Nuruzzaman.pdf"
+    if not boq.exists():
+        pytest.skip("the example package is not here")
+    lines = K.read_boq_lines("UP-3", K.read_layout(boq))
+    works = list(dict.fromkeys(x["work"] for x in lines))
+    assert len(works) == 2 and "MASJID" in works[1], works
+    aec = [x for x in lines if x["work"] == works[0]]
+    assert all(x["page"] <= 21 for x in aec) and {x["page"] for x in lines if x["work"] == works[1]} >= {23, 24}
+    outline = K.boq_outline(aec)
+    assert "IX. PEKERJAAN STRUKTUR ATAP DAN BAJA" in outline and "X. PEKERJAAN STRUKTUR TANGGA DAN RAMP ENTRANCE" in outline, "what the engineer was cut off from"
+    assert len(outline) < 3000 and "Kolom tipe K3" not in outline, "a few groups to say what a section holds, not every type of column"
+    flagged = [g["section"] for g in K.uncovered(aec, ["Rk3k Konstruksi", "Persiapan", "Tanah dan Beton Non Struktural", "Struktur Bawah", "Struktur Lantai Ground", "Struktur Lantai 1", "Struktur Lantai 4", "Arsitektur", "Sanitair", "Tangga Beton", "Guest House"])]  # the control accounts of the real run, with two of its work packages
+    assert flagged == ["IX. PEKERJAAN STRUKTUR ATAP DAN BAJA"], "the roof the real WBS left out, and nothing that it has"
+
+
+def test_the_engineer_sees_the_whole_boq_and_code_flags_what_its_wbs_leaves_out(project_copy, monkeypatch):
+    monkeypatch.setattr(K, "read_programme", lambda path: None)
+    asked: list[str] = []
+    told: list[str] = []
+
+    async def go():
+        firm._emit.set(lambda e: None)
+        f = F.PackageFirm(firm_api.model_of("mock", "package"), 5, mock=True)
+        work = f.work
+
+        async def spy(key, text, tools, prompt, must_read=True):
+            asked.append(prompt if key == "engineer" else "")
+            told.append(text if key == "engineer" else "")
+            return await work(key, text, tools, prompt, must_read=must_read)
+
+        f.work = spy
+        f.boq_lines = [{"doc": "UP-3", "page": 20, "work": "AEC", "section": "IX. PEKERJAAN STRUKTUR ATAP DAN BAJA", "group": "Kuda-kuda", "no": "1", "name": "Kuda-kuda", "qty": 12.0, "unit": "kg", "rate": None, "amount": None}]
+        await f.engagement()
+        return f
+
+    monkeypatch.setattr(F.K, "read_layout", lambda path: [])
+    f = asyncio.run(go())
+    assert any("IX. PEKERJAAN STRUKTUR ATAP DAN BAJA" in p for p in asked) or not f.boq_lines, "the engineer is given the BoQ's outline"
+    if f.boq_lines:
+        assert any(c["rule"].startswith("boq_uncovered_") and "ATAP DAN BAJA" in c["text"] for c in f.result["checks"]), "the scripted breakdown has no roof, and code says so"
+
+
+def test_a_link_against_the_engineers_own_dates_asks_the_consultant_nothing(project_copy):
+    f = scripted_firm({"links": [{"before": "II.1", "after": "II.2", "why": "foundation after earthworks"}]})
+    f.rows_from = "the planning engineer's breakdown"
+    work = [{"no": "II.1", "name": "Galian", "start_week": 6, "finish_week": 9, "not_before": 35, "days": 28}, {"no": "II.2", "name": "Pondasi", "start_week": 3, "finish_week": 7, "not_before": 14, "days": 35}]
+    asyncio.run(f.link(work))
+    assert any(c["rule"] == "links" and "in the planning engineer's breakdown" in c["text"] and "master schedule" not in c["text"] for c in f.checks)
+    assert not f.code_questions, "they are the engineer's own estimates, so a person settles them here"
+
+
+def test_work_no_page_describes_costs_no_planner_and_goes_to_the_consultant(project_copy):
+    f = scripted_firm({"sections": []})
+    called = []
+    work = f.work
+
+    async def spy(*a, **k):
+        called.append(a[0])
+        return await work(*a, **k)
+
+    f.work = spy
+    w = {"no": "XIII.1", "name": "Sanitair", "weight": 4, "start_week": 1, "finish_week": 4, "days": 28, "not_before": 0, "value": None}
+    asyncio.run(f.write_procedure(w, {"no": "XIII", "name": "Sanitair"}, [], 1))
+    assert not called and f.failed == ["XIII.1"] and f.pageless == [w], "nothing to rest on, so no model is paid"
+    s = {"accounts": [{"no": "XIII", "name": "Sanitair", "packages": [w]}], "weeks": 4}
+    f.finish(s, [w], [])
+    assert any(c["rule"] == "failed_XIII.1" and "no page of the documents describes it" in c["text"] for c in f.checks)
+    assert any(q["subject"] == "Pekerjaan tanpa spesifikasi di dokumen" and "Sanitair" in q["question"] for q in f.rfi_drafts), "the consultant is asked for it"
+
+
+def test_the_engineer_is_told_to_cover_the_whole_boq_at_a_crews_level_of_detail(project_copy):
+    f = scripted_firm({"estimated": True, "accounts": [{"name": "Struktur", "packages": [{"name": "Kolom Lantai 1", "weight": 60, "start_week": 1, "finish_week": 4}, {"name": "Atap", "weight": 40, "start_week": 5, "finish_week": 8}]}]})
+    f.boq_lines = [{"doc": "UP-3", "page": 20, "work": "AEC", "section": "IX. PEKERJAAN STRUKTUR ATAP DAN BAJA", "group": "Struktur Kuda-kuda Atap", "no": "1", "name": "Kuda-kuda", "qty": 12.0, "unit": "kg", "rate": None, "amount": None}]
+    s = asyncio.run(f.structure_by_agent(None, 240))
+    assert "Cover every section of the BoQ outline" in f.told and "Not each type of column or beam" in f.told, "a crew's work, and every section"
+    assert "The BoQ may not be the whole job" in f.told and "such as architecture, sanitary or services" in f.told, "what the scope lists stays in, with or without BoQ rows"
+    assert "Never list types, rows or materials in its name" in f.told
+    assert "IX. PEKERJAAN STRUKTUR ATAP DAN BAJA (1 rows, pages 20 to 20), such as Struktur Kuda-kuda Atap" in f.prompted, "the outline is in what it reads"
+    assert [w["name"] for a in s["accounts"] for w in a["packages"]] == ["Kolom Lantai 1", "Atap"]
+    f.boq_lines = []
+    asyncio.run(f.structure_by_agent(None, 240))
+    assert "Cover every section" not in f.told, "no BoQ lines, no rule about them"
+
+
+def test_the_3d_timeline_says_what_the_plan_does_not_build(client):
+    analyse(client)
+    m = client.get("/api/project/model-3d").json()
+    built = {e["kind"] for e in m["elements"]}
+    assert set(m["absent"]) == {label for kind, label in (("roof", "a roof"), ("openings", "windows and doors"), ("facade", "a façade"), ("interior", "finishes")) if kind not in built}
+
+
+def test_the_swarm_builds_the_3d_timeline_as_its_last_stage(client):
+    rec = analyse(client)
+    stages = client.get("/api/aip/analysis").json()["stages"]
+    assert stages[-1]["key"] == "model3d" and stages[-1]["status"] == "done" and stages[-1]["by"] == "Code", "last, because it needs the WBS and the schedule"
+    m = client.get("/api/project/model-3d").json()
+    assert len(m["elements"]) == len(rec["plan"]["packages"]) and f"of {len(m['elements'])} work packages placed" in stages[-1]["note"]
+    if m["absent"]:
+        assert any(c["rule"] == "model3d_absent" and m["absent"][0] in c["text"] for c in rec["plan"]["checks"]), "what the plan does not build is on the plan, for Review"
+
+
+def test_a_plan_uploaded_later_gets_its_own_3d_timeline(client):
+    """Another project, another package: the same swarm gives it a 3D timeline of its own, with nothing carried over."""
+    first = client.get("/api/project/model-3d").json()
+    assert client.post("/api/projects", json={"name": "Second project", "template": False}).status_code == 200
+    assert client.get("/api/project/model-3d").json()["elements"] == [], "a new project starts with no building"
+    for prefix in ("3-", "7-", "8-"):
+        f = doc(prefix)
+        assert client.post("/api/project/documents", files={"file": (f.name, f.read_bytes(), "application/pdf")}, data={"title": f.stem, "kind": "auto"}).status_code == 200
+    rec = analyse(client)
+    m = client.get("/api/project/model-3d").json()
+    assert len(m["elements"]) == len(rec["plan"]["packages"]) > 0 and m["plan"]["id"] == rec["id"]
+    assert first["elements"] == [] or first["plan"] != m["plan"]
+
+
 def test_the_completion_milestone_follows_whatever_finishes_last(client):
     analyse(client)
     before = client.get("/api/project/critical-path").json()
@@ -512,14 +635,13 @@ def test_planning_again_replaces_a_proposal_cleanly(client):
 
 def test_the_project_cannot_change_under_a_running_review(project_copy, monkeypatch):
     monkeypatch.setattr(P, "busy", "run-x")
-    with pytest.raises(ValueError, match="a review is running"):
+    with pytest.raises(ValueError, match="agents are working"):
         P.open_project("scenario")
 
 
 def test_no_schedule_anywhere_is_said_plainly(project_copy):
     for d in K.uploads():
-        if d["kind"] in ("programme", "boq", "estimate", "spec", "scope"):
-            P.patch("document", d["id"], {"use": False}, P.PM, "left out")
+        P.patch("document", d["id"], {"use": False}, P.PM, "left out")
 
     async def go():
         firm._emit.set(lambda e: None)
@@ -946,12 +1068,51 @@ def test_the_safety_risk_level_follows_pasal_34_and_is_asked_of_the_owner():
     assert agreed["agrees"] and agreed["question"] is None and "The documents say" in agreed["text"], "when the documents already say what its criteria give, there is nothing to ask"
 
 
+def test_a_list_that_allows_either_crane_is_quoted_as_it_stands():
+    r = REG.safety_risk(None, True, [{"id": "C", "title": "Kontrak", "pages_text": ["6 Tower Crane/Mobil Crane Min. 1 unit"]}])
+    assert r["level"] == "besar" and r["lifting"]["match"] == "Tower Crane/Mobil Crane" and "tower crane/mobil crane" in r["text"]
+
+
+def test_the_owners_estimate_can_be_read_from_a_sentence_that_lists_several_packages():
+    two = {"id": "E", "kind": "estimate", "title": "HPS", "pages_text": ["Harga Perkiraan Sendiri (HPS) Paket 1 : Pembangunan Airlangga Edupreneur Center Tahap I Universitas Airlangga senilai Rp80.000.000.000,00 Link : https://lpse.unair.ac.id/hps Paket 2 : Revitalisasi Masjid Nuruzzaman Kampus B Universitas Airlangga senilai Rp55.000.000.000,00"]}
+    assert REG.said_value([two], "Airlangga Edupreneur Center Tahap 1") == 80e9
+    assert REG.said_value([two], "Revitalisasi Masjid Nuruzzaman") == 55e9
+    assert REG.said_value([two], "Universitas Airlangga") is None, "a name that fits both settles nothing"
+    one = {"id": "E", "kind": "estimate", "title": "HPS", "pages_text": ["HPS senilai Rp 12.500.000.000,00"]}
+    assert REG.said_value([one]) == 12.5e9
+    assert REG.said_value([{**one, "kind": "boq"}]) is None, "only an estimate is the owner's"
+    assert REG.safety_risk(REG.said_value([two], "Airlangga Edupreneur Center Tahap 1"), True, [two])["by_value"] == "sedang"
+
+
 @pytest.mark.parametrize("words, letters", [("Pasang perancah luar dan scaffolding", ["g"]), ("Las sambungan dengan las listrik", ["a"]), ("Gali tanah dengan lebar cukup", ["j"]),
                                             ("Angkat dan tempatkan modul GRC dengan kerekan", ["b"]), ("Jatuh dari ketinggian; pakai safety belt", ["f"]), ("Laksanakan test beban penuh 3 x 24 jam", ["i"]),
                                             ("Cat dinding dua lapis", []), ("Pasang balok separator lift kelas satu", []),
                                             ("Oles minyak pelepas; jaga ventilasi dan jangan ada api terbuka di dekat bahan minyak", []), ("Potong besi dengan api terbuka", ["a"])])
 def test_special_work_is_found_by_its_own_words(words, letters):
     assert [x["letter"] for x in REG.special(words)] == letters
+
+
+@pytest.mark.parametrize("kind, name, steps, equipment, safety, letters", [
+    ("operation", "Pasang bekisting kolom", "Rakit panel.", "panel bekisting", "Jatuh dari ketinggian; pakai sabuk keselamatan", ["f"]),
+    ("operation", "Pasang tulangan balok Lantai 04", "Ikat tulangan.", "", "Jatuh dari tepi lantai; pasang pagar tepi", ["f"]),
+    ("operation", "Kerjakan benangan", "Tarik benang.", "", "Terpeleset dan jatuh dari perancah", ["g"]),
+    ("operation", "Pasang penutup grill", "Pasang.", "", "Percikan gerinda/las", ["a"]),
+    ("operation", "Pasang modul PV", "Pasang kabel.", "", "Sengatan DC tegangan tinggi", ["i"]),
+    ("operation", "Pancang tiang", "Pancang.", "Mobile crane", "", ["b"]),
+    ("operation", "Laksanakan galian tanah pilecap", "Keruk tanah.", "", "", ["j"]),
+    ("inspection", "Uji fungsi panel", "Uji beban penuh.", "", "", ["i"]),
+    ("inspection", "Periksa sambungan", "Periksa.", "", "Sengatan saat uji bertegangan", ["i"]),
+    ("operation", "Pasang wastafel gantung dan kran", "Pasang bracket.", "", "Wastafel jatuh; angkat berdua", []),
+    ("operation", "Pasang panel distribusi", "Pasang panel.", "", "Sengatan; pastikan tidak bertegangan", []),
+    ("operation", "Cor beton pile cap", "Cor.", "", "Terjatuh ke galian; pakai APD", []),
+    ("operation", "Pasang bowplank", "Tandai as agar mudah dibaca oleh pekerjaan galian.", "", "", []),
+    ("operation", "Bongkar bekisting", "Bongkar.", "", "Kejatuhan panel dan debu gerinda", []),
+    ("operation", "Datangkan APD pelindung tubuh", "Simpan di gudang.", "", "Tumpukan sepatu/harness", []),
+    ("handling", "Muat tanah bekas galian ke alat angkut", "Muat tanah.", "", "", []),
+    ("inspection", "Periksa bekisting sebelum cor", "Periksa.", "perancah", "Jatuh dari perancah saat inspeksi", []),
+    ("operation", "Urus izin kerja di ketinggian dan perancah", "Ajukan izin.", "", "Jatuh dari ketinggian", [])])
+def test_a_task_needs_a_permit_for_what_it_does_not_what_it_warns_of(kind, name, steps, equipment, safety, letters):
+    assert [x["letter"] for x in REG.permit_for(kind, name, steps, equipment, safety)] == letters
 
 
 def test_a_sentence_starts_at_its_clause_number_and_a_heading_runs_on_into_its_clause():
@@ -961,6 +1122,9 @@ def test_a_sentence_starts_at_its_clause_number_and_a_heading_runs_on_into_its_c
     flat = "Lokasi di Jl. Flora No. 1 Bulaksumur. 3. Masa pemeliharaan 180 (serratus delapan puluh ) hari kalender atau sesuai dengan kontrak."
     i = flat.index("Masa")
     assert REG._clause(flat, i, i + 4, REG._ends(flat)).startswith("3. Masa pemeliharaan 180"), "and No. or Jl. ends no sentence"
+    flat = "2. Lift, Genset dibayar 60% dari harga satuan pekerjaan; 70.4.(c) Denda akibat Keterlambatan Untuk pekerjaan ini besar denda 1/1000 dari nilai kontrak."
+    i = flat.index("Denda")
+    assert REG._clause(flat, i, i + 5, REG._ends(flat)).startswith("70.4.(c) Denda"), "a clause numbered like this one starts there, not at the list before it"
 
 
 @needs_documents
@@ -1030,6 +1194,19 @@ def test_a_planner_is_told_what_needs_a_work_permit(project_copy):
     ("Elektrikal: LAN (Local Area Network)", "Elektrikal", "electrical", None), ("Mekanikal: Pompa, Plambing dan Peralatan Sanitari, STP (Sewage Treatment Plan)", "Mekanikal", "mechanical", None),
     ("Beton: Perkuatan Plafon dan Rumah STP", "Struktur", "stp", None),("Mekanikal, Elektrikal dan Elektronika: Mekanikal", "Mekanikal, Elektrikal dan Elektronika", "mechanical", None),
     ("Kolom Beton", "Struktur Lantai 1", "structure", 1), ("Tie Beam", "Struktur Lantai Ground", "structure", "ground"), ("Pondasi Square Pile 40x40 cm, h = 24 m", "Struktur Bawah", "foundation", None),
+    ("galian tanah pilecap dgn alat berat", "Tanah dan Beton Non Struktur", "earthworks", None), ("Pile Cap Tipe PC-1 1200x1200x700mm", "Struktur Bawah", "foundation", None),
+    # the short names a planner gives
+    ("Pondasi Pancang", "Struktur Bawah", "foundation", None), ("Pile Cap dan Pondasi", "Struktur Bawah", "foundation", None), ("Tie Beam Ground", "Struktur", "structure", "ground"), ("Kolom Ground", "Struktur", "structure", "ground"),
+    ("Balok Plat Tangga Ground", "Struktur", "structure", "ground"), ("Kolom Lantai 1", "Struktur", "structure", 1), ("Balok dan Plat Lantai 1", "Struktur", "structure", 1), ("Tangga Lantai 1", "Struktur", "structure", 1),
+    ("Kuda-kuda Atap", "Struktur Atap", "roof", None), ("Dilatasi Bangunan", "Struktur Atap", "joint", None), ("Tanah Tangga dan Ramp", "Tangga dan Ramp", "earthworks", None), ("Struktur Tangga dan Ramp", "Tangga dan Ramp", "entrance", None),
+    ("Arsitektur", "Arsitektur", "architecture", None), ("Sanitair", "Sanitair", "interior", None), ("Mekanikal Elektrikal Elektronika", "Mekanikal Elektrikal Elektronika", "services", None),
+    # the lumped ones: a lift among other parts does not make the package the lift
+    ("Pile Cap Tipe PC-1, PC-1A, PC-2, PC-3, PC-4, Pit Lift, Pondasi Lajur - Bekisting, Pembesian, Beton", "Iii. Pekerjaan Struktur Bawah", "foundation", None),
+    ("Tie Beam tipe TB1 TB2, Plat Lantai Ground Tb. 20 cm, Balok Separator Lift", "Iv. Pekerjaan Struktur Lantai Ground", "structure", "ground"),
+    ("Tangga Tipe 1, Dinding Beton Pit Lift dan Dinding Beton Retaining Wall Lantai Ground", "Iv. Pekerjaan Struktur Lantai Ground", "structure", "ground"),
+    ("Balok Separator Lift, Balok Bordes Tangga Tipe 1 dan Tangga Tipe 1 Lantai 1", "V. Pekerjaan Struktur Lantai 1", "structure", 1), ("Balok Beton Lift dan Balok Bordes Tangga Lantai 4", "Viii. Pekerjaan Struktur Lantai 4", "structure", 4),
+    ("Struktur Kuda-kuda Atap WF 300.150.6,5.9 dan Pekerjaan Dilatasi Bangunan", "Ix. Pekerjaan Struktur Atap", "roof", None), ("galian tanah, Pekerjaan urugan pasir, Pekerjaan lantai kerja Tangga dan Ramp Entrance", "X. Pekerjaan Struktur Tangga dan Ramp Entrance", "earthworks", None),
+    ("Struktur Tangga dan Ramp Entrance - Bekisting, Pembesian, Beton", "X. Pekerjaan Struktur Tangga dan Ramp Entrance", "entrance", None), ("Pit Lift", "Struktur Bawah", "lift", None), ("Pekerjaan Lift", "Mekanikal", "lift", None),
     ("Sesuatu yang lain", "Lain-lain", "other", None)])
 def test_what_each_work_package_builds_is_read_from_its_name(name, account, kind, level):
     got = model3d.classify(name, account)
@@ -1040,6 +1217,26 @@ def test_how_the_piles_go_in_is_read_from_the_words():
     assert model3d.pile_method(["Pondasi Bore Pile dia 60 cm"]) == "bored"
     assert model3d.pile_method(["Pondasi Square Pile 40x40 cm, h = 24 m", "tiang pancang"]) == "driven"
     assert model3d.pile_method(["Pondasi dan Anti Rayap"]) == "", "the name says nothing, so nothing is claimed"
+
+
+def test_a_roof_of_frames_only_is_not_a_covered_roof():
+    assert not model3d.roof_covered(["Kuda-kuda Atap"]) and not model3d.roof_covered(["Struktur Kuda-kuda Atap WF 300.150.6,5.9 dan Pekerjaan Dilatasi Bangunan"])
+    assert model3d.roof_covered(["Beton: Atap"]), "UGM's says nothing either way, and is not taken to leave the tiles out"
+    assert model3d.roof_covered(["Rangka atap baja ringan dan penutup genteng"]) and model3d.roof_covered(["Kuda-kuda Atap", "Penutup Atap Genteng"])
+
+
+def test_a_lift_is_one_the_building_has_not_one_a_load_needs():
+    for said in ("Beton: Balok Separator Lift", "b. Pekerjaan galian tanah pit lift dgn alat berat", "Passenger Elevator Mitsubishi, Schindler", "2. Lift, Genset, Trafo"):
+        assert model3d.LIFT.search(said), said
+    for said in ("atau bukan di atap, lantai, atau lubang lift, maka terali", "Sewa forklift", "lifting the panels", "lift the formwork into place"):
+        assert not model3d.LIFT.search(said), said
+
+
+def test_which_crane_is_read_from_what_is_hired_not_what_is_allowed():
+    assert model3d.crane_kind(["Sewa mobile Crane"], [], ["3. Tower Crane/Mobil Crane Min. 5 Ton"]) == "mobile", "Unair prices a mobile crane; its other words allow either"
+    assert model3d.crane_kind([], [], ["1. Tower Crane Panjang boom 60m, beban ujung 1,5 ton 1 unit", "1 (satu) unit tower crane"]) == "tower", "UGM"
+    assert model3d.crane_kind([], [], ["Tower Crane/Mobil Crane Min. 5 Ton", "Tower Crane / Mobile Crane"]) == "", "allowing either names neither"
+    assert model3d.crane_kind([], [], ["Excavator PC 75"]) == ""
 
 
 def test_floors_follow_how_the_wbs_numbers_them():
@@ -1067,7 +1264,7 @@ def test_the_3d_timeline_is_built_from_the_plan_the_schedule_and_the_drawings(cl
     assert [f["name"] for f in m["storeys"]] == ["Lantai Basement", "Lantai 01", "Lantai 02", "Lantai 03", "Lantai 04", "Lantai 05"] and m["top"] == 20
     kinds = Counter(e["kind"] for e in m["elements"])
     assert (kinds["structure"], kinds["foundation"], kinds["interior"], kinds["other"]) == (7, 1, 7, 0), kinds
-    assert len(m["elements"]) == len(client.get("/api/project/work-packages").json()["packages"]) and m["crane"] is True, "every work package, and the contract's tower crane"
+    assert len(m["elements"]) == len(client.get("/api/project/work-packages").json()["packages"]) and m["crane"] == "tower", "every work package, and the contract's tower crane"
     assert all(0 <= e["start"] < e["end"] <= m["days"] for e in m["elements"]) and m["days"] == 364
     floor1 = next(e for e in m["elements"] if e["name"] == "Beton: Lantai 01")
     assert (floor1["level"], floor1["start"]) == (0, 98), "Lantai 01 is the ground floor, and starts in week 15 of the master schedule"

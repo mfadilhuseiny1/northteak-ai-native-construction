@@ -19,7 +19,7 @@ function Decision({ d, act }: { d: Rec; act: (fn: () => Promise<unknown>) => Pro
       right={<span className="text-[10.5px] font-normal text-[#8f99a8]">{d.id} · {d.created}</span>}>
       <Table heads={pending ? ["", "Option", "Agents' ruling", "Pour", "Milestone", "Cost", "Why"] : ["Option", "Agents' ruling", "Pour", "Milestone", "Cost", "Why"]}>
         {(d.options as Rec[]).map((o) => (
-          <tr key={o.id} onClick={() => pending && setOption(o.id)} className={`${tr} ${pending ? "cursor-pointer" : ""} ${o.id === (pending ? option : d.option) ? "bg-[#5b5fd6]/15" : ""}`}>
+          <tr key={o.id} onClick={() => pending && setOption(o.id)} className={`${tr} ${pending ? "cursor-pointer" : ""} ${o.id === (pending ? option : d.option) ? "bg-[#d99a16]/15" : ""}`}>
             {pending && <td className={td}><input type="radio" name={`opt-${d.id}`} aria-label={`Choose ${o.id}`} checked={option === o.id} onChange={() => setOption(o.id)} /></td>}
             <td className={td}><span className="mr-1.5 font-medium text-white">{o.id}</span>{o.name}{o.id === d.recommended && <span className="ml-1.5 text-[10.5px] text-[#7ee2c0]">recommended</span>}</td>
             <td className={td}><Pill tone={VERDICT[o.verdict]}>{o.verdict}</Pill>{o.attack && <p className="mt-0.5 text-[10.5px] text-[#8f99a8]">red team: {o.attack.result}</p>}</td>
@@ -77,8 +77,8 @@ export function DecisionsView() {
         <Kpi label="messages to approve" value={drafts.length} tone={drafts.length ? "warn" : undefined} />
         <Kpi label="audit entries" value={audit.length} />
       </Kpis>
-      <div className="min-h-0 flex-1 space-y-3 overflow-auto bg-[#161a1f] p-3">
-        {!live.length && <p className="rounded border border-white/10 bg-[#1c2127] p-6 text-center text-[#8f99a8]">No decision yet. Run a review in the AI agent swarm, and its recovery plan arrives here.</p>}
+      <div className="min-h-0 flex-1 space-y-3 overflow-auto bg-[#111820] p-3">
+        {!live.length && <p className="rounded border border-white/10 bg-[#1c2733] p-6 text-center text-[#8f99a8]">No decision yet. Run a review in the AI agent swarm, and its recovery plan arrives here.</p>}
         {live.slice(0, 3).map((d) => <Decision key={d.id} d={d} act={act} />)}
         <Card title={`Messages (${messages.length})`} right={<span className="text-[10.5px] font-normal text-[#8f99a8]">demo connector: approving records it, nothing is really sent</span>}>
           {messages.length ? messages.map((m) => (

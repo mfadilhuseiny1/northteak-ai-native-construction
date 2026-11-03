@@ -19,11 +19,11 @@ export function DailyReportsView() {
     <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden text-[12px]">
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <Bar title="Daily log" note={`${data.reports.length} entries, ${(data.reports as Rec[]).filter((r) => !r.verified).length} waiting for verification. The swarm reads these live.`}>
-          <select aria-label="Filter by area" value={area} onChange={(e) => setArea(e.target.value)} className={`${inline} w-[130px]`}><option value="" className="bg-[#1c2127]">All areas</option>{AREAS.map((a) => <option key={a} className="bg-[#1c2127]">{a}</option>)}</select>
+          <select aria-label="Filter by area" value={area} onChange={(e) => setArea(e.target.value)} className={`${inline} w-[130px]`}><option value="" className="bg-[#1c2733]">All areas</option>{AREAS.map((a) => <option key={a} className="bg-[#1c2733]">{a}</option>)}</select>
           <button onClick={() => { setForm({ date: data.today, area: AREAS[0] ?? "", package: "", activity: focus?.activities[0] ?? "", crew: "", weather: "", author: "", text: "" }); setPhoto(null); }} className={primary}>File a report</button>
         </Bar>
         <Problem err={err} />
-        <div className="flex shrink-0 gap-1.5 overflow-x-auto border-b border-white/5 bg-[#161a1f] p-2">
+        <div className="flex shrink-0 gap-1.5 overflow-x-auto border-b border-white/5 bg-[#111820] p-2">
           {(data.photos as Rec[]).map((p) => (
             <button key={p.id} onClick={() => { setPhoto(p); setForm(null); }} title={p.caption} className="shrink-0 overflow-hidden rounded border border-white/10 hover:border-white/40">
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -31,11 +31,11 @@ export function DailyReportsView() {
             </button>
           ))}
         </div>
-        <div className="min-h-0 flex-1 overflow-auto bg-[#161a1f] p-3">
+        <div className="min-h-0 flex-1 overflow-auto bg-[#111820] p-3">
           {days.map((d) => (
             <div key={d} className="mb-3">
               <p className="mb-1 text-[11px] font-semibold text-[#d3d8de]">{d}</p>
-              <div className="rounded border border-white/10 bg-[#1c2127]">
+              <div className="rounded border border-white/10 bg-[#1c2733]">
                 {reports.filter((r) => r.date === d).map((r) => (
                   <div key={r.id} className="flex items-start gap-2 border-t border-white/5 px-3 py-1.5 first:border-t-0">
                     <span className="w-[62px] shrink-0 text-[10.5px] text-[#8f99a8]">{r.id}</span>
@@ -59,8 +59,8 @@ export function DailyReportsView() {
             <label><Label>Crew on site</Label><input type="number" value={form.crew} onChange={(e) => setForm({ ...form, crew: e.target.value })} className={field} /></label>
             <label><Label>Weather</Label><input value={form.weather} onChange={(e) => setForm({ ...form, weather: e.target.value })} className={field} /></label>
           </div>
-          <label className="block"><Label>Work package</Label><select value={form.package} onChange={(e) => setForm({ ...form, package: e.target.value })} className={field}><option value="" className="bg-[#1c2127]">None</option>{(data.packages as Rec[]).map((p) => <option key={p.id} value={p.id} className="bg-[#1c2127]">{p.name}</option>)}</select></label>
-          <label className="block"><Label>Activity</Label><select value={form.activity} onChange={(e) => setForm({ ...form, activity: e.target.value })} className={field}><option value="" className="bg-[#1c2127]">None</option>{(data.activities as Rec[]).map((a) => <option key={a.id} value={a.id} className="bg-[#1c2127]">{a.id} {a.name}</option>)}</select></label>
+          <label className="block"><Label>Work package</Label><select value={form.package} onChange={(e) => setForm({ ...form, package: e.target.value })} className={field}><option value="" className="bg-[#1c2733]">None</option>{(data.packages as Rec[]).map((p) => <option key={p.id} value={p.id} className="bg-[#1c2733]">{p.name}</option>)}</select></label>
+          <label className="block"><Label>Activity</Label><select value={form.activity} onChange={(e) => setForm({ ...form, activity: e.target.value })} className={field}><option value="" className="bg-[#1c2733]">None</option>{(data.activities as Rec[]).map((a) => <option key={a.id} value={a.id} className="bg-[#1c2733]">{a.id} {a.name}</option>)}</select></label>
           <label className="block"><Label>Filed by</Label><input value={form.author} onChange={(e) => setForm({ ...form, author: e.target.value })} placeholder="Name or role" className={field} /></label>
           <label className="block"><Label>What happened</Label><textarea value={form.text} onChange={(e) => setForm({ ...form, text: e.target.value })} rows={5} className={field} /></label>
           <button disabled={!form.text.trim()} onClick={async () => { if (await act(() => api("/api/project/daily-reports", { ...form, crew: form.crew === "" ? null : Number(form.crew) }))) setForm(null); }} className={`${primary} w-full`}>File the report</button>
@@ -86,7 +86,7 @@ export function ClaimsView() {
   const { data, err, act } = useData("/api/project/claim");
   const [sel, setSel] = useState<string | null>(null);
   if (!data) return <div className="flex-1"><Problem err={err} />{!err && <Loading />}</div>;
-  if (data.none) return <div className="flex-1 bg-[#161a1f] text-[12px]"><Empty>No progress claim on this project yet. Claims are in the scenario only for now.</Empty></div>;
+  if (data.none) return <div className="flex-1 bg-[#111820] text-[12px]"><Empty>No progress claim on this project yet. Claims are in the scenario only for now.</Empty></div>;
   const t = data.totals as Rec, c = data.certificate as Rec, lines = data.lines as Rec[];
   const open = lines.find((l) => l.code === sel);
   return (
@@ -111,7 +111,7 @@ export function ClaimsView() {
           <Kpi label="lines needing a site check" value={t.site_checks} tone={t.site_checks ? "warn" : "ok"} />
           <Kpi label="this certificate" value={money(c.this_period)} hint={`${money(c.payable)} after retention`} />
         </Kpis>
-        <div className="min-h-0 flex-1 overflow-auto bg-[#161a1f]">
+        <div className="min-h-0 flex-1 overflow-auto bg-[#111820]">
           <Table heads={["Item", "Package", "Value", "Claimed", "Photos", "Daily log", "Result", "Draft amount", "Adjusted"]}>
             {lines.map((l) => (
               <tr key={l.code} onClick={() => setSel(l.code)} className={`${tr} cursor-pointer ${sel === l.code ? "bg-white/[.07]" : ""}`}>
@@ -134,7 +134,7 @@ export function ClaimsView() {
           </div>
         </Side>
       ) : (
-        <aside className="w-[290px] shrink-0 space-y-1.5 border-l border-black/30 bg-[#1c2127] p-4 text-[12px] max-xl:hidden">
+        <aside className="w-[290px] shrink-0 space-y-1.5 border-l border-black/30 bg-[#1c2733] p-4 text-[12px] max-xl:hidden">
           <Label>Payment certificate</Label>
           {[["Cumulative value", c.cumulative], ["Previously certified", c.previous], ["This certificate", c.this_period], ["Retention, 5%", c.retention]].map(([k, v]) => (
             <p key={String(k)} className="flex justify-between gap-2 text-[#d3d8de]"><span>{k}</span><span className="tabular-nums">{full(v as number)}</span></p>

@@ -5,13 +5,14 @@ import { API_URL } from "@/lib/api";
 import { Running } from "./AnalysisView";
 import { api, Empty, field, good, Loading, money, notifyChanged, Pill, primary, Problem, quiet, useData, useGo, type Rec } from "./kit";
 import { SourceLink } from "./SourceDrawer";
+import { ContractChecklist } from "./ContractChecklist";
 
 /* Review: what the agents and code propose, sorted by what a project manager has to do about it, one item or a whole section at a time. The plan as a whole is what gets approved. Until then nothing reaches the board. Each section says what a decision there changes, because some change the plan and some only stand on the record. */
 
 type Item = { key: string; title: ReactNode; detail?: ReactNode; sources?: Rec[]; edit?: { label: string; value: string }; link?: ReactNode };
 type Section = { id: string; title: string; what: string; items: Item[] };
 
-const CONFLICT = /^(stated_|owner_|revoked_|order_|links$|time$)/;
+const CONFLICT = /^(stated_|owner_|revoked_|order_|links$|time$|boq_uncovered_|boq_other_work$|wbs_gap_|wbs_rows$|model3d_absent$)/;
 const SKIP = /^(missing_|links_open$|links_read$)/;
 const BTN = "!px-2 !py-0.5 !text-[12px]";
 
@@ -91,8 +92,8 @@ export function ReviewModule() {
   const rec = list.find((p) => p.status === "pending") ?? list.find((p) => p.status === "approved") ?? list.find((p) => p.status !== "superseded");
   const sections = useMemo(() => (rec && cpm.data ? sectionsOf(rec, cpm.data, go) : []), [rec, cpm.data, go]);
   if (run.data?.run?.status === "running") return <Running data={run.data} onStop={() => void api(`/api/aip/runs/${run.data?.run.id}/cancel`, {}).then(() => run.reload())} />;
-  if (!data || !cpm.data) return <div className="flex-1 bg-[#161a1f]"><Problem err={err || cpm.err} />{!err && !cpm.err && <Loading />}</div>;
-  if (!rec) return <div className="flex-1 bg-[#161a1f] text-[13px]"><Empty>Nothing to review yet. <button onClick={() => go("planning")} className="underline">Start from the documents</button>.</Empty></div>;
+  if (!data || !cpm.data) return <div className="flex-1 bg-[#111820]"><Problem err={err || cpm.err} />{!err && !cpm.err && <Loading />}</div>;
+  if (!rec) return <div className="min-h-0 flex-1 space-y-2 overflow-y-auto bg-[#111820] p-3 text-[13px]"><Empty>Nothing to review yet. <button onClick={() => go("home")} className="underline">Start on Home</button>.</Empty><ContractChecklist /></div>;
   const pending = rec.status === "pending";
   const reviews = (rec.reviews ?? {}) as Record<string, Rec>;
   const send = (keys: string[], verdict: string) => act(() => api(`/api/project/plans/${rec.id}/review`, { keys, verdict }));
@@ -103,9 +104,9 @@ export function ReviewModule() {
   const unread = conflicts?.items.filter((i) => !reviews[i.key]).length ?? 0;
   const toggle = (id: string) => setOpen((o) => { const n = new Set(o); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[#161a1f] text-[13px]">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[#111820] text-[13px]">
       <Problem err={err} />
-      <div className="shrink-0 border-b border-white/10 bg-[#1c2127] px-4 py-2.5">
+      <div className="shrink-0 border-b border-white/10 bg-[#1c2733] px-4 py-2.5">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <div className="min-w-[240px] flex-1">
             <p className="flex flex-wrap items-center gap-2 text-[15px] font-semibold text-white">Review the proposal <Pill tone={pending ? "warn" : rec.status === "approved" ? "ok" : "bad"}>{pending ? "waiting for you" : rec.status}</Pill></p>
@@ -122,7 +123,7 @@ export function ReviewModule() {
             <button onClick={() => act(() => api(`/api/project/plans/${rec.id}/approve`, { note })).then((ok) => { if (ok) notifyChanged(); })} title="This puts the tasks on the Kanban board and plans the inspections. The WBS, Timeline, Critical Path, Kanban and 3D Timeline all read the same work packages." className={`${good} !px-3 !py-1.5 !text-[12.5px]`}>Approve the plan</button>
           </>}
           {rec.status === "approved" && <button onClick={() => go("list")} className={`${primary} !px-3 !py-1.5 !text-[12.5px]`}>Open the workspace</button>}
-          {rec.status === "rejected" && <button onClick={() => go("planning")} className={`${primary} !px-3 !py-1.5 !text-[12.5px]`}>Back to the documents</button>}
+          {rec.status === "rejected" && <button onClick={() => go("home")} className={`${primary} !px-3 !py-1.5 !text-[12.5px]`}>Tell the agents what to change</button>}
         </div>
         {pending && (unread > 0 || rejected > 0) && <p className="mt-1.5 text-[12.5px] text-[#fbd38d]">{unread > 0 ? `${unread} conflict${unread === 1 ? "" : "s"} between the documents not yet looked at. ` : ""}{rejected > 0 ? `${rejected} work package${rejected === 1 ? "" : "s"} you rejected will get no tasks.` : ""}</p>}
         {rec.status === "approved" && <p className="mt-1.5 leading-snug text-[#7ee2c0]"><Icon name="check" className="mr-1 inline h-3.5 w-3.5" />Approved by {rec.decided_by}, {rec.decided_at}. {(rec.effects as string[]).join(" ")}</p>}
@@ -131,7 +132,7 @@ export function ReviewModule() {
         {sections.map((s) => {
           const shown = open.has(s.id), done = s.items.filter((i) => reviews[i.key]).length, keys = s.items.map((i) => i.key);
           return (
-            <section key={s.id} className="rounded-lg border border-white/10 bg-[#1c2127]">
+            <section key={s.id} className="rounded-lg border border-white/10 bg-[#1c2733]">
               <div className="flex flex-wrap items-center gap-2 px-3 py-2">
                 <button onClick={() => toggle(s.id)} aria-expanded={shown} className="flex min-w-[220px] flex-1 items-center gap-2 text-left font-semibold text-white hover:text-[#d9d3ff]">
                   <Icon name={shown ? "down" : "right"} className="h-3.5 w-3.5 shrink-0 text-[#8f99a8]" />{s.title}
@@ -152,6 +153,7 @@ export function ReviewModule() {
             </section>
           );
         })}
+        <ContractChecklist />
       </div>
     </div>
   );

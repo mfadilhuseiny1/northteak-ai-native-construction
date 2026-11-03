@@ -59,15 +59,15 @@ export const dates = (a?: string, b?: string) => (a && b && a.slice(0, 4) !== b.
 export const clean = (s?: string) => (s ?? "").replace(" (fictional)", "");
 
 export type Tone = "ok" | "warn" | "bad" | "info" | "none" | "violet";
-const PILL: Record<Tone, string> = { ok: "bg-[#29a383]/20 text-[#7ee2c0]", warn: "bg-[#fab219]/15 text-[#fbd38d]", bad: "bg-[#e5484d]/20 text-[#ffb4b4]", info: "bg-[#3987e5]/20 text-[#9cc7f5]", none: "bg-white/10 text-[#c5cbd3]", violet: "bg-[#c084fc]/20 text-[#e9d5ff]" };
+const PILL: Record<Tone, string> = { ok: "bg-[#29a383]/20 text-[#7ee2c0]", warn: "bg-[#fab219]/15 text-[#fbd38d]", bad: "bg-[#e5484d]/20 text-[#ffb4b4]", info: "bg-[#3987e5]/20 text-[#9cc7f5]", none: "bg-white/10 text-[#c5cbd3]", violet: "bg-[#e879a8]/20 text-[#f4b8d4]" };
 export function Pill({ tone = "none", children }: { tone?: Tone; children: ReactNode }) {
-  return <span className={`inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-[10.5px] ${PILL[tone]}`}>{children}</span>;
+  return <span className={`inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-[10.5px] font-medium shadow-[inset_0_0_0_1px_rgb(255_255_255/.08)] ${PILL[tone]}`}>{children}</span>;
 }
 
 export function Bar({ title, note, children }: { title: string; note?: ReactNode; children?: ReactNode }) {
   return (
-    <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-white/10 bg-[#1c2127] px-4 py-2">
-      <p className="text-[13px] font-semibold text-white">{title}</p>
+    <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-black/40 bg-[#151e28] px-4 py-2.5">
+      <p className="text-[13.5px] font-bold tracking-tight text-white">{title}</p>
       {note && <span className="text-[11px] text-[#abb3bf]">{note}</span>}
       <div className="ml-auto flex flex-wrap items-center gap-1.5">{children}</div>
     </div>
@@ -75,17 +75,17 @@ export function Bar({ title, note, children }: { title: string; note?: ReactNode
 }
 
 export function Kpis({ children }: { children: ReactNode }) {
-  return <div className="flex shrink-0 flex-wrap gap-x-7 gap-y-2 border-b border-white/5 bg-[#161a1f] px-4 py-2.5">{children}</div>;
+  return <div className="flex shrink-0 flex-wrap gap-x-8 gap-y-2 border-b border-black/40 bg-[#111820] px-4 py-3">{children}</div>;
 }
 export function Kpi({ label, value, hint, tone }: { label: string; value: ReactNode; hint?: string; tone?: Tone }) {
   const color = tone === "bad" ? "text-[#ffb4b4]" : tone === "warn" ? "text-[#fbd38d]" : tone === "ok" ? "text-[#7ee2c0]" : "text-white";
-  return <div><p className={`text-[16px] font-semibold tabular-nums ${color}`}>{value}</p><p className="text-[10.5px] text-[#8f99a8]">{label}{hint ? ` · ${hint}` : ""}</p></div>;
+  return <div><p className={`text-[20px] font-bold leading-none tabular-nums ${color}`}>{value}</p><p className="mt-1 text-[10px] font-medium uppercase tracking-[.08em] text-[#7d8b9b]">{label}{hint ? ` · ${hint}` : ""}</p></div>;
 }
 
 export function Card({ title, right, children }: { title: ReactNode; right?: ReactNode; children: ReactNode }) {
   return (
-    <section className="rounded border border-white/10 bg-[#1c2127]">
-      <div className="flex items-center gap-2 border-b border-white/5 px-3 py-2"><div className="text-[12px] font-semibold text-white">{title}</div><div className="ml-auto flex items-center gap-1.5">{right}</div></div>
+    <section className="rise overflow-hidden rounded-lg border border-white/10 bg-[#1c2733] shadow-[0_4px_16px_rgb(0_0_0/.25)]">
+      <div className="flex items-center gap-2 border-b border-white/[.06] bg-white/[.02] px-3 py-2"><div className="text-[12px] font-bold tracking-tight text-white">{title}</div><div className="ml-auto flex items-center gap-1.5">{right}</div></div>
       {children}
     </section>
   );
@@ -94,7 +94,7 @@ export function Card({ title, right, children }: { title: ReactNode; right?: Rea
 export function Table({ heads, children }: { heads: string[]; children: ReactNode }) {
   return (
     <table className="w-full text-left text-[12px]">
-      <thead className="sticky top-0 z-[1] bg-[#1c2127] text-[10.5px] uppercase tracking-wide text-[#8f99a8]"><tr>{heads.map((h) => <th key={h} className="whitespace-nowrap px-3 py-2 font-medium">{h}</th>)}</tr></thead>
+      <thead className="sticky top-0 z-[1] bg-[#151e28] text-[10.5px] uppercase tracking-wide text-[#7d8b9b]"><tr>{heads.map((h) => <th key={h} className="whitespace-nowrap px-3 py-2 font-medium">{h}</th>)}</tr></thead>
       <tbody>{children}</tbody>
     </table>
   );
@@ -104,9 +104,9 @@ export const td = "px-3 py-1.5 align-top text-[#d3d8de]";
 
 export function Side({ eyebrow, title, onClose, children }: { eyebrow?: ReactNode; title: ReactNode; onClose: () => void; children: ReactNode }) {
   return (
-    <aside className="w-[360px] shrink-0 space-y-3 overflow-y-auto border-l border-black/30 bg-[#1c2127] p-4 text-[12px] max-lg:w-[290px]">
+    <aside className="rise w-[370px] shrink-0 space-y-3 overflow-y-auto border-l border-black/50 bg-[#151e28] p-4 text-[12px] shadow-[-12px_0_32px_rgb(0_0_0/.35)] max-lg:w-[300px]">
       <div className="flex items-start gap-2">
-        <div className="min-w-0">{eyebrow && <p className="text-[11px] text-[#8f99a8]">{eyebrow}</p>}<p className="text-[14px] font-semibold text-white">{title}</p></div>
+        <div className="min-w-0">{eyebrow && <p className="text-[10.5px] font-medium uppercase tracking-[.08em] text-[#f5b82e]">{eyebrow}</p>}<p className="mt-0.5 text-[15px] font-bold leading-snug tracking-tight text-white">{title}</p></div>
         <button onClick={onClose} aria-label="Close" className="ml-auto rounded p-1 text-[#8f99a8] hover:bg-white/10"><Icon name="x" className="h-3.5 w-3.5" /></button>
       </div>
       {children}
@@ -117,11 +117,11 @@ export function Label({ children }: { children: ReactNode }) {
   return <p className="text-[10.5px] uppercase tracking-wide text-[#8f99a8]">{children}</p>;
 }
 
-export const inline = "rounded border border-white/15 bg-black/20 px-2 py-1 text-[12px] text-white placeholder:text-[#6b7480]";
+export const inline = "rounded-md border border-white/15 bg-black/25 px-2 py-1.5 text-[12px] text-white placeholder:text-[#6b7480] focus:border-[#f5b82e]/60 focus:outline-none";
 export const field = `w-full ${inline}`;
-export const primary = "rounded bg-[#5b5fd6] px-2.5 py-1 text-[11.5px] font-medium text-white hover:bg-[#6a6ee0] disabled:opacity-40";
-export const good = "rounded bg-[#29a383] px-2.5 py-1 text-[11.5px] font-medium text-white hover:brightness-110 disabled:opacity-40";
-export const quiet = "rounded border border-white/15 px-2 py-0.5 text-[11px] text-[#d3d8de] hover:bg-white/5 disabled:opacity-40";
+export const primary = "rounded-md bg-[#f5b82e] px-3 py-1.5 text-[11.5px] font-semibold text-[#171106] shadow-[0_2px_8px_rgb(245_184_46/.25)] hover:bg-[#ffc94d] disabled:opacity-40 disabled:shadow-none";
+export const good = "rounded-md bg-[#29a383] px-3 py-1.5 text-[11.5px] font-semibold text-white shadow-[0_2px_8px_rgb(41_163_131/.25)] hover:brightness-110 disabled:opacity-40";
+export const quiet = "rounded-md border border-white/15 px-2 py-1 text-[11px] text-[#d3d8de] hover:border-white/30 hover:bg-white/[.07] hover:text-white disabled:opacity-40";
 
 /** A link to a record in another module. */
 export function Ref({ to, tone = "none", children }: { to: string; tone?: Tone; children: ReactNode }) {
@@ -133,9 +133,9 @@ export function Ref({ to, tone = "none", children }: { to: string; tone?: Tone; 
 export function SubTabs({ base, tabs, sub, right }: { base: string; tabs: [string, string, (number | string)?][]; sub: string; right?: ReactNode }) {
   const go = useGo();
   return (
-    <div className="flex shrink-0 flex-wrap items-center gap-1 border-b border-white/10 bg-[#1c2127] px-3 pt-1.5" role="tablist">
+    <div className="flex shrink-0 flex-wrap items-center gap-1 border-b border-black/40 bg-[#151e28] px-3 pt-1.5" role="tablist">
       {tabs.map(([k, label, n]) => (
-        <button key={k} role="tab" aria-selected={sub === k} onClick={() => go(`${base}/${k}`)} className={`rounded-t px-2.5 py-1 text-[11.5px] ${sub === k ? "bg-[#161a1f] font-medium text-white" : "text-[#abb3bf] hover:text-white"}`}>
+        <button key={k} role="tab" aria-selected={sub === k} onClick={() => go(`${base}/${k}`)} className={`rounded-t-md px-2.5 py-1.5 text-[11.5px] ${sub === k ? "bg-[#111820] font-semibold text-[#f5b82e] shadow-[inset_0_2px_0_#f5b82e]" : "text-[#abb3bf] hover:bg-white/[.04] hover:text-white"}`}>
           {label}{n ? <span className="ml-1 rounded-full bg-[#fab219] px-1.5 text-[10px] font-semibold text-black">{n}</span> : null}
         </button>
       ))}
@@ -145,12 +145,18 @@ export function SubTabs({ base, tabs, sub, right }: { base: string; tabs: [strin
 }
 
 export function Empty({ children }: { children: ReactNode }) {
-  return <p className="p-6 text-center text-[#8f99a8]">{children}</p>;
+  return <div className="m-4 rounded-lg border border-dashed border-white/15 p-8 text-center text-[12px] text-[#8f99a8]">{children}</div>;
+}
+
+/** A tab with nothing in it yet: it fills in when the agents have planned the project, and that starts on Home. */
+export function NotYet({ children }: { children: ReactNode }) {
+  const go = useGo();
+  return <Empty>{children} This tab fills in when the agents have planned the project. <button onClick={() => go("home")} className="underline">Start on Home</button>.</Empty>;
 }
 
 export function Problem({ err }: { err: string }) {
   return err ? <p className="shrink-0 bg-[#e5484d]/10 px-4 py-1 text-[11px] text-[#ffb4b4]">{err[0].toUpperCase() + err.slice(1)}</p> : null;
 }
 export function Loading() {
-  return <p className="p-6 text-[#abb3bf]">Loading…</p>;
+  return <p className="animate-pulse p-6 text-[12px] text-[#abb3bf]">Loading…</p>;
 }

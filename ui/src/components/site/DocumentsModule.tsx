@@ -42,7 +42,7 @@ function Viewer({ d, activities, act, onClose }: { d: Rec; activities: Rec[]; ac
           {(d.cited_by as string[]).map((x) => <Pill key={x} tone="info">{x}</Pill>)}
           {!(d.activities as string[]).length && !(d.cited_by as string[]).length && !(d.rfis as string[]).length && <span className="text-[#8f99a8]">Nothing yet</span>}
         </div>
-        {d.source === "upload" && <select aria-label="Link to an activity" value="" onChange={(e) => e.target.value && act(() => api(`/api/project/documents/${d.id}/link`, { activity: e.target.value }))} className={field}><option value="" className="bg-[#1c2127]">Link to an activity…</option>{activities.map((a) => <option key={a.id} value={a.id} className="bg-[#1c2127]">{a.id} {a.name}</option>)}</select>}
+        {d.source === "upload" && <select aria-label="Link to an activity" value="" onChange={(e) => e.target.value && act(() => api(`/api/project/documents/${d.id}/link`, { activity: e.target.value }))} className={field}><option value="" className="bg-[#1c2733]">Link to an activity…</option>{activities.map((a) => <option key={a.id} value={a.id} className="bg-[#1c2733]">{a.id} {a.name}</option>)}</select>}
       </div>
       {(d.findings as Rec[]).length > 0 && <div><Label>What the agents found in it</Label>{(d.findings as Rec[]).map((f, i) => <p key={i} className="mt-0.5 rounded bg-[#fab219]/10 p-1.5 leading-snug text-[#fbd38d]">{f.note}</p>)}</div>}
       <div className="space-y-1">
@@ -65,11 +65,11 @@ function Viewer({ d, activities, act, onClose }: { d: Rec; activities: Rec[]; ac
         )}
       </div>
       {draft ? (
-        <div className="space-y-1 rounded border border-[#c084fc]/30 p-2">
+        <div className="space-y-1 rounded border border-[#e879a8]/30 p-2">
           <Label>Draft an RFI</Label>
           <input value={draft.subject} onChange={(e) => setDraft({ ...draft, subject: e.target.value })} placeholder="Subject" className={field} />
           <textarea value={draft.question} onChange={(e) => setDraft({ ...draft, question: e.target.value })} rows={3} placeholder="Question" className={field} />
-          <div className="grid grid-cols-2 gap-1"><input value={draft.to} onChange={(e) => setDraft({ ...draft, to: e.target.value })} placeholder="To" className={field} /><select aria-label="Activity it holds" value={draft.activity} onChange={(e) => setDraft({ ...draft, activity: e.target.value })} className={field}><option value="" className="bg-[#1c2127]">No activity</option>{activities.map((a) => <option key={a.id} value={a.id} className="bg-[#1c2127]">{a.id}</option>)}</select></div>
+          <div className="grid grid-cols-2 gap-1"><input value={draft.to} onChange={(e) => setDraft({ ...draft, to: e.target.value })} placeholder="To" className={field} /><select aria-label="Activity it holds" value={draft.activity} onChange={(e) => setDraft({ ...draft, activity: e.target.value })} className={field}><option value="" className="bg-[#1c2733]">No activity</option>{activities.map((a) => <option key={a.id} value={a.id} className="bg-[#1c2733]">{a.id}</option>)}</select></div>
           <span className="flex gap-1"><button disabled={!draft.subject.trim() || !draft.question.trim()} onClick={async () => { if (await act(() => api("/api/project/rfi-drafts", draft))) setDraft(null); }} className={`${primary} flex-1`}>Save the draft</button><button onClick={() => setDraft(null)} className={quiet}>Cancel</button></span>
           <p className="text-[10.5px] text-[#8f99a8]">It waits in the register for a person to issue it.</p>
         </div>
@@ -95,14 +95,14 @@ function Register({ target }: { target: string }) {
     <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden text-[12px]">
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <Bar title="Document register" note="what each states, whether it is in force, and who approved it">
-          <select aria-label="Filter" value={filter} onChange={(e) => setFilter(e.target.value)} className="rounded border border-white/15 bg-black/20 px-1.5 py-0.5 text-[11px] text-white"><option value="" className="bg-[#1c2127]">All documents</option>{["superseded", "received", "approved", "rejected", "drawing", "spec", "boq"].map((k) => <option key={k} value={k} className="bg-[#1c2127]">{k === "superseded" ? "Replaced" : KINDS[k] ?? k[0].toUpperCase() + k.slice(1)}</option>)}</select>
+          <select aria-label="Filter" value={filter} onChange={(e) => setFilter(e.target.value)} className="rounded border border-white/15 bg-black/20 px-1.5 py-0.5 text-[11px] text-white"><option value="" className="bg-[#1c2733]">All documents</option>{["superseded", "received", "approved", "rejected", "drawing", "spec", "boq"].map((k) => <option key={k} value={k} className="bg-[#1c2733]">{k === "superseded" ? "Replaced" : KINDS[k] ?? k[0].toUpperCase() + k.slice(1)}</option>)}</select>
           <button onClick={() => { setSel(null); setUpload(true); }} className={primary}><Icon name="upload" className="mr-1 inline h-3 w-3" />Upload documents</button>
         </Bar>
         <Problem err={err} />
         <Kpis>
           <Kpi label="documents" value={(data.documents as Rec[]).length} /><Kpi label="in force" value={c.current + c.approved} /><Kpi label="waiting for approval" value={c.received} tone={c.received ? "warn" : undefined} /><Kpi label="replaced" value={c.superseded} tone={c.superseded ? "warn" : undefined} /><Kpi label="rejected" value={c.rejected} tone={c.rejected ? "bad" : undefined} />
         </Kpis>
-        <div className="min-h-0 flex-1 overflow-auto bg-[#161a1f]">
+        <div className="min-h-0 flex-1 overflow-auto bg-[#111820]">
           <Table heads={["Document", "Kind", "From", "Date", "Status", "Activities", "Cited by", "Found in it"]}>
             {rows.map((d) => (
               <tr key={d.id} onClick={() => { setUpload(false); setSel(d.id); }} className={`${tr} cursor-pointer ${sel === d.id ? "bg-white/[.07]" : ""}`}>
@@ -136,7 +136,7 @@ function Readiness() {
       <Bar title="Is the technical information ready?" note="an activity is not ready while an RFI on it is open or still a draft, or a task on it cites a replaced drawing" />
       <Problem err={err} />
       <Kpis><Kpi label="activities ready" value={`${data.ready} of ${data.of}`} tone={data.ready < data.of ? "warn" : "ok"} /><Kpi label="not ready, and critical" value={rows.filter((a) => !a.ready && a.critical).length} tone={rows.some((a) => !a.ready && a.critical) ? "bad" : "ok"} /></Kpis>
-      <div className="min-h-0 flex-1 overflow-auto bg-[#161a1f]">
+      <div className="min-h-0 flex-1 overflow-auto bg-[#111820]">
         <Table heads={["WBS", "Activity", "Starts", "Documents", "Ready", "What is missing"]}>
           {rows.map((a) => (
             <tr key={a.id} className={tr}>

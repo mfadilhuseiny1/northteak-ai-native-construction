@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { Bar, dates, Empty, Kpi, Kpis, Label, Loading, money, num, Pill, Problem, Table, td, tr, useData, useGo, type Rec } from "./kit";
+import { Bar, dates, Kpi, Kpis, Label, Loading, money, num, Pill, Problem, Table, td, tr, useData, useGo, type Rec, NotYet } from "./kit";
 import { openSource } from "./SourceDrawer";
 
 /* The WBS as a contractor reads it: the work packages, the control accounts above them, and the dictionary saying what each one is. Code lays these out from what the agents wrote and the records hold. */
@@ -21,7 +21,7 @@ export function WorkPackages() {
         <Kpi label="no float" value={rows.filter((w) => w.critical).length} tone={rows.some((w) => w.critical) ? "warn" : "ok"} />
         <Kpi label="information not ready" value={rows.filter((w) => !w.ready.ready).length} tone={rows.some((w) => !w.ready.ready) ? "warn" : "ok"} />
       </Kpis>
-      <div className="min-h-0 flex-1 overflow-auto bg-[#161a1f]">
+      <div className="min-h-0 flex-1 overflow-auto bg-[#111820]">
         <Table heads={["WBS", "Work package", "Control account", "Responsible", "Dates", "Days", "Float", "Worth", "Tasks", "Man-hours"]}>
           {rows.map((w) => (
             <tr key={w.id} onClick={() => go(`wbs/tree:${w.code}`)} className={`${tr} cursor-pointer`}>
@@ -38,7 +38,7 @@ export function WorkPackages() {
             </tr>
           ))}
         </Table>
-        {!rows.length && <Empty>No work packages yet. They come from the AI analysis of the documents.</Empty>}
+        {!rows.length && <NotYet>No work packages yet.</NotYet>}
       </div>
     </div>
   );
@@ -65,7 +65,7 @@ export function ControlAccounts() {
           <Kpi label="CPI · SPI" value={`${Number(t.cpi).toFixed(2)} · ${Number(t.spi).toFixed(2)}`} tone={t.cpi < 1 || t.spi < 1 ? "warn" : "ok"} />
         </>}
       </Kpis>
-      <div className="min-h-0 flex-1 overflow-auto bg-[#161a1f]">
+      <div className="min-h-0 flex-1 overflow-auto bg-[#111820]">
         <Table heads={["WBS", "Control account", "Responsible", "Work packages", "Dates", "Budget", ...(owner ? ["Against the owner's estimate"] : []), ...(going ? ["Earned", "Actual", "Forecast", "CPI", "SPI"] : [])]}>
           {rows.map((a) => (
             <tr key={a.id} onClick={() => go(`wbs/tree:${a.code}`)} className={`${tr} cursor-pointer`}>
@@ -83,7 +83,7 @@ export function ControlAccounts() {
             </tr>
           ))}
         </Table>
-        {!rows.length && <Empty>No control accounts yet. They come from the AI analysis of the documents.</Empty>}
+        {!rows.length && <NotYet>No control accounts yet.</NotYet>}
       </div>
     </div>
   );
@@ -102,15 +102,15 @@ export function Dictionary() {
   const e = rows.find((x) => x.code === sel) ?? rows.find((x) => x.level === "Work package") ?? rows[0];
   return (
     <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden text-[12px]">
-      <div className="w-[300px] shrink-0 overflow-y-auto border-r border-black/30 bg-[#1c2127] py-1">
+      <div className="w-[300px] shrink-0 overflow-y-auto border-r border-black/30 bg-[#1c2733] py-1">
         {rows.map((x) => (
           <button key={x.code} onClick={() => setSel(x.code)} aria-current={e?.code === x.code ? "true" : undefined} className={`block w-full px-3 py-1 text-left hover:bg-white/5 ${e?.code === x.code ? "bg-white/10" : ""} ${x.level === "Control account" ? "mt-1 font-semibold text-white" : "pl-5 text-[#d3d8de]"}`}>
             <span className="mr-1.5 font-mono text-[10.5px] font-normal text-[#8f99a8]">{x.code}</span>{x.name}
           </button>
         ))}
-        {!rows.length && <Empty>Nothing to describe yet.</Empty>}
+        {!rows.length && <NotYet>Nothing to describe yet.</NotYet>}
       </div>
-      <div className="min-w-0 flex-1 overflow-y-auto bg-[#161a1f] p-4">
+      <div className="min-w-0 flex-1 overflow-y-auto bg-[#111820] p-4">
         <Problem err={err} />
         {e && (
           <div className="mx-auto max-w-[820px] space-y-3">
@@ -121,7 +121,7 @@ export function Dictionary() {
             {e.scope && <Field label="Scope of work">{e.scope}</Field>}
             {e.deliverable && <Field label="Deliverable">{e.deliverable}</Field>}
             {e.acceptance && <Field label="How it is accepted">{e.acceptance}</Field>}
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(170px,1fr))] gap-3 rounded border border-white/10 bg-[#1c2127] p-3">
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(170px,1fr))] gap-3 rounded border border-white/10 bg-[#1c2733] p-3">
               <Field label="Responsible">{e.responsible || "–"}</Field>
               <Field label="Dates">{e.start ? `${e.start} to ${e.finish}` : "–"}</Field>
               <Field label="Duration">{e.duration ? `${e.duration} days` : "–"}</Field>

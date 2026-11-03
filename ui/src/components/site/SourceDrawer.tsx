@@ -43,7 +43,7 @@ export function SourceDrawer() {
   const url = `${API_URL}/api/project/documents/${src.doc}/file`;
   const shown = doc?.file && IN_PLACE.test(String(doc.file));
   return (
-    <div className="fixed inset-y-0 right-0 z-40 flex w-[min(760px,92vw)] flex-col border-l border-white/15 bg-[#1c2127] text-[13px] shadow-2xl" role="dialog" aria-label="Source document">
+    <div className="fixed inset-y-0 right-0 z-40 flex w-[min(760px,92vw)] flex-col border-l border-white/15 bg-[#1c2733] text-[13px] shadow-2xl" role="dialog" aria-label="Source document">
       <div className="flex shrink-0 items-start gap-2 border-b border-white/10 px-4 py-2.5">
         <div className="min-w-0 flex-1">
           <p className="truncate font-semibold text-white">{doc?.title ?? src.title ?? src.doc}</p>

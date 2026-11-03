@@ -20,6 +20,7 @@ if not exist ui\.next\BUILD_ID (
     exit /b 1
   )
   popd
+  set BUILT=1
 )
 
 call :up 8300 api/project/overview counts && (
@@ -36,6 +37,9 @@ call :up 8300 api/project/overview counts && (
     exit /b 1
   )
 )
+
+rem A server left running from before the build points at files the build replaced, which breaks its pages
+if defined BUILT call restart-screens.bat --no-build
 
 call :up 8310 "" SiteSwarm && (
   echo Screens already running on port 8310.

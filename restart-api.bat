@@ -16,6 +16,9 @@ if errorlevel 1 (
   exit /b 1
 )
 
+rem Each restart opens a new window and leaves the last one empty, so close the ones that run nothing now
+powershell -NoProfile -Command "$all = Get-CimInstance Win32_Process; foreach ($w in $all) { if ($w.Name -eq 'cmd.exe' -and $w.CommandLine -match '/k\s+.*swarm\.firm_api' -and -not ($all | Where-Object { $_.ParentProcessId -eq $w.ProcessId -and $_.Name -ne 'conhost.exe' })) { Stop-Process -Id $w.ProcessId -Force -ErrorAction SilentlyContinue } }" >nul 2>&1
+
 echo Starting the API...
 start "SiteSwarm API" cmd /k .venv\Scripts\python.exe -W ignore -m swarm.firm_api
 powershell -NoProfile -Command "$ok=$false; foreach ($i in 1..60) { try { (Invoke-WebRequest -UseBasicParsing 'http://127.0.0.1:8300/api/project/overview' -TimeoutSec 2).StatusCode | Out-Null; $ok=$true; break } catch { Start-Sleep 1 } }; if ($ok) { exit 0 } else { exit 1 }" >nul 2>&1

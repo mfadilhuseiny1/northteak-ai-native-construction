@@ -307,6 +307,28 @@ def projects() -> dict:
     return {"projects": [scenario, *created], "active": active}
 
 
+def _standing(path: Path) -> dict:
+    """How far a project has got, read from its own file, so that listing projects opens none of them."""
+    if not path.exists():
+        return {"documents": 0, "work_packages": 0, "plan": ""}
+    conn = sqlite3.connect(f"{path.as_uri()}?mode=ro", uri=True)
+    try:
+        documents = conn.execute("select count(*) from records where kind = 'document' and json_extract(body, '$.source') = 'upload'").fetchone()[0]
+        work = conn.execute("select count(*) from records where kind = 'activity'").fetchone()[0]
+        plans = [s for (s,) in conn.execute("select json_extract(body, '$.status') from records where kind = 'plan' order by rowid")]
+    except sqlite3.OperationalError:  # a file being created, which has no tables yet
+        return {"documents": 0, "work_packages": 0, "plan": ""}
+    finally:
+        conn.close()
+    return {"documents": documents, "work_packages": work, "plan": next((s for s in ("approved", "pending") if s in plans), next((s for s in reversed(plans) if s != "superseded"), ""))}
+
+
+def project_list() -> dict:
+    """Every project as the Home tab shows it: how far each has got, and which one the agents are working on."""
+    known = projects()
+    return {**known, "projects": [{**p, **_standing(SCENARIO_DB if p.get("scenario") else SCENARIO_DB.parent / "projects" / f"{p['id']}.db"), "running": bool(busy) and p["id"] == known["active"]} for p in known["projects"]]}
+
+
 def upload_folder() -> Path:
     """Where a project's uploads live, beside its records."""
     folder = DB.parent / "uploads" / DB.stem
@@ -328,7 +350,7 @@ def _use(path: Path) -> None:
 def open_project(pid: str) -> dict:
     """The app works on one project at a time, on one machine."""
     if busy:
-        raise ValueError("a review is running on this project: wait for it, or stop it, before changing project")
+        raise ValueError("the agents are working on the open project: wait for them, or stop them, before changing project")
     if pid == "scenario":
         _use(SCENARIO_DB)
     else:
@@ -353,6 +375,8 @@ def create_project(name: str, owner: str = "", contractor: str = "", location: s
     """A new project: its own file of records, empty but for a starter breakdown if asked for. Nothing in it comes from the scenario."""
     if not name.strip():
         raise ValueError("a project needs a name")
+    if busy:
+        raise ValueError("the agents are working on the open project: wait for them, or stop them, before starting a new one")
     pid = "pj-" + hashlib.sha1(f"{name}{time.time()}".encode()).hexdigest()[:8]
     start = start or date.today().isoformat()
     info = {"name": name.strip(), "owner": owner, "contractor": contractor or "Main contractor", "location": location, "start": start, "finish": finish, "region": location, "currency": "IDR", "notice": ""}
@@ -421,6 +445,31 @@ def task_progress() -> dict[str, int]:
     return out
 
 
+def contract_starts() -> set[str]:
+    """The activities that start when the consultant's master schedule says, as code read it: contract dates, which a person cannot move. An agent's estimate, a row it split and work a person added can be moved. A plan recorded before activities were marked says which in its checks."""
+    own = all_of("activity")
+    out = {a["id"] for a in own if a.get("contract_weeks")}
+    old = [a for a in own if "contract_weeks" not in a and a.get("no")]
+    for p in all_of("plan") if old else []:
+        checks = p["plan"].get("checks") or []
+        if any(c["rule"] == "schedule_read" and c["ok"] for c in checks):
+            split = tuple(f"{c['rule'][6:]}." for c in checks if c["rule"].startswith("split_"))
+            out |= {a["id"] for a in old if a["id"] in p["plan"].get("activities", []) and not a["no"].startswith(split)}
+    return out
+
+
+def _as_changed(fixed: dict, state: dict) -> dict:
+    """The schedule's own ties with what a person changed: an earliest start moved or taken away, and days set between a piece of work and what it waits for, which make it follow that work instead of running beside it."""
+    not_before = {k: v for k, v in {**fixed["not_before"], **(state.get("not_before") or {})}.items() if v}
+    leads = {k: dict(v) for k, v in fixed["leads"].items()}
+    overlaps = {k: dict(v) for k, v in fixed["overlaps"].items()}
+    for aid, lags in (state.get("lags") or {}).items():
+        leads.setdefault(aid, {}).update(lags)
+        for p in lags:
+            overlaps.get(aid, {}).pop(p, None)
+    return {"not_before": not_before, "leads": leads, "overlaps": overlaps}
+
+
 def schedule(extra_delay: int = 0) -> dict:
     """The live schedule, worked out by code, beside its baseline, with each activity's links to the other records."""
     state = schedule_state()
@@ -428,17 +477,21 @@ def schedule(extra_delay: int = 0) -> dict:
     own = all_of("activity")
     answers = {a["id"]: a["responsible"] for a in own if a.get("responsible")}
     fixed = {"not_before": {a["id"]: a["not_before"] for a in own if a.get("not_before")}, "leads": {a["id"]: a["leads"] for a in own if a.get("leads")}, "overlaps": {a["id"]: a["overlaps"] for a in own if a.get("overlaps")}}
-    plan = C.schedule(state["pour_delay_days"] + extra_delay, state["compress"], rows, state.get("links"), start, **fixed)
+    live = _as_changed(fixed, state)
+    plan = C.schedule(state["pour_delay_days"] + extra_delay, state["compress"], rows, state.get("links"), start, **live)
     base = {a["id"]: a for a in C.schedule(0, {}, rows, None, start, **fixed)["activities"]}
     manual, from_tasks = meta("progress", {}), task_progress()
     rfis, ncrs, pos = all_of("rfi"), all_of("ncr"), all_of("po")
     packages = all_of("package")
     subs = {s["id"]: s["name"] for s in all_of("subcontractor")}
-    codes, assigned = wbs_codes(), state.get("by") or {}
+    codes, assigned, contract = wbs_codes(), state.get("by") or {}, contract_starts()
     for a in plan["activities"]:
         b = base[a["id"]]
         a["by"] = assigned.get(a["id"], a["by"])
+        earliest, beside = live["not_before"].get(a["id"]), live["overlaps"].get(a["id"]) or {}
         a.update(baseline_start=b["start"], baseline_finish=b["finish"], progress=from_tasks.get(a["id"], manual.get(a["id"], 0)), progress_from="tasks" if a["id"] in from_tasks else "manual", by_name=subs.get(a["by"]) or answers.get(a["id"]) or "Own crew",
+                 earliest=(date.fromisoformat(start) + timedelta(days=earliest)).isoformat() if earliest else "", start_fixed=a["id"] in contract,
+                 lags={p: (live["leads"].get(a["id"]) or {}).get(p, 0) for p in a["predecessors"] if p not in beside}, alongside=[p for p in a["predecessors"] if p in beside],
                  package=next((p["id"] for p in packages if a["id"] in p["activities"]), ""), code=codes.get(a["id"], ""),
                  rfis=[r["id"] for r in rfis if r.get("activity") == a["id"] and r["status"] == "open"], ncrs=[n["id"] for n in ncrs if n.get("activity") == a["id"] and n["status"] == "open"],
                  pos=[p["id"] for p in pos if p.get("activity") == a["id"] and p["status"] not in ("received", "cancelled")])
@@ -476,7 +529,8 @@ def _would_loop(aid: str, predecessors: list[str], links: dict[str, list[str]]) 
     return False
 
 
-def update_activity(aid: str, progress: int | None, duration: int | None, predecessors: list[str] | None = None, by: str | None = None, who: str = PM) -> dict:
+def update_activity(aid: str, progress: int | None, duration: int | None, predecessors: list[str] | None = None, by: str | None = None, who: str = PM, earliest: str | None = None, lags: dict[str, int] | None = None) -> dict:
+    """A person's change to one activity. earliest is the day it may start at the soonest, or "" for as soon as what it waits for allows. lags are the days between it and what it waits for: below zero, it starts that many days before the other finishes."""
     known = {a[0]: a for a in activity_rows()}
     if aid not in known:
         raise KeyError(aid)
@@ -502,11 +556,32 @@ def update_activity(aid: str, progress: int | None, duration: int | None, predec
         if _would_loop(aid, predecessors, links):
             raise ValueError(f"that would make a loop: {aid} would end up waiting for itself")
         state.setdefault("links", {})[aid] = list(predecessors)
+        if aid in (state.get("lags") or {}):
+            state["lags"][aid] = {p: n for p, n in state["lags"][aid].items() if p in predecessors}
         details.append(f"depends on {', '.join(predecessors) or 'nothing'}")
     if by is not None:
         state.setdefault("by", {})[aid] = by
         details.append(f"by {by}")
-    if duration is not None or predecessors is not None or by is not None:
+    if earliest is not None:
+        if aid in contract_starts():
+            raise ValueError("it starts when the consultant's master schedule says, which is a contract date")
+        try:
+            day = days_between(project_start(), earliest) if earliest else None
+        except ValueError as e:
+            raise ValueError("an earliest start is a date like 2027-03-01") from e
+        if day is not None and day < 0:
+            raise ValueError(f"it cannot start before the project does, on {project_start()}")
+        state.setdefault("not_before", {})[aid] = day
+        details.append(f"earliest start {earliest}" if earliest else "no earliest start")
+    if lags is not None:
+        waits = (state.get("links") or {}).get(aid, known[aid][3])
+        bad = [p for p in lags if p not in waits]
+        if bad:
+            raise ValueError(f"{aid} does not wait for {', '.join(bad)}")
+        mine = state.setdefault("lags", {})
+        mine[aid] = {**mine.get(aid, {}), **{p: int(n) for p, n in lags.items()}}
+        details.append(", ".join(f"{n:+d} days after {p}" for p, n in lags.items()))
+    if duration is not None or predecessors is not None or by is not None or earliest is not None or lags is not None:
         set_meta("schedule_state", state)
     log(who, "updated activity", "activity", aid, ", ".join(details))
     return next(a for a in schedule()["activities"] if a["id"] == aid)
@@ -544,6 +619,188 @@ def add_milestone(name: str, activity: str, contract_date: str, who: str = PM, w
         raise ValueError("a milestone needs a contract date like 2027-03-01") from e
     rid = next_id("milestone")
     return put("milestone", rid, {"id": rid, "name": name, "activity": activity, "contract_date": contract_date, **({"whole_job": True} if whole_job else {})}, who, "added a milestone", name)
+
+
+SHAPE_KEPT = "a plan is approved, and its tasks and inspections carry their WBS codes, so the breakdown keeps its shape: new work takes the next number"
+
+
+def plan_approved() -> bool:
+    """Once a plan is approved, the breakdown keeps its shape: what is added takes the next number, and nothing already there moves or goes."""
+    return any(p["status"] == "approved" for p in all_of("plan"))
+
+
+def package_of(aid: str) -> dict | None:
+    return next((p for p in all_of("package") if aid in p["activities"]), None)
+
+
+def _shares(total: float, weights: list[float], places: int = 0) -> list[float]:
+    """total split in proportion to weights, or equally where they are all nothing. The last takes what rounding leaves, so the parts add up."""
+    whole, out = sum(weights), []
+    for i, w in enumerate(weights):
+        out.append(round(total - sum(out), places) if i == len(weights) - 1 else round(total * (w / whole if whole else 1 / len(weights)), places))
+    return out
+
+
+def _held(aid: str) -> str:
+    """What still hangs on a work package and would be left pointing at nothing if it went, said as the reason it cannot go yet. Empty when nothing does."""
+    held = ([r["id"] for r in all_of("rfi") if r.get("activity") == aid and r["status"] != "draft"] + [n["id"] for n in all_of("ncr") if n.get("activity") == aid] + [o["id"] for o in all_of("po") if o.get("activity") == aid and o["status"] != "cancelled"]
+            + [w["id"] for w in all_of("work_item") if w.get("activity") == aid and w["status"] not in ("rejected", "superseded")] + [i["id"] for i in all_of("inspection") if i.get("activity") == aid] + [m["id"] for m in all_of("milestone") if m["activity"] == aid and not m.get("whole_job")])
+    return f"{', '.join(held[:6])}{' and more' if len(held) > 6 else ''} {'is' if len(held) == 1 else 'are'} tied to it: move or close {'it' if len(held) == 1 else 'them'} first" if held else ""
+
+
+def changes_allowed(kind: str, rid: str) -> dict:
+    """What a person can change about a control account or a work package, and why not where they cannot: the screen offers only what will work."""
+    approved = plan_approved()
+    accounts = [{"id": p["id"], "name": p["name"]} for p in all_of("package")]
+    if kind == "package":
+        p = get("package", rid)
+        empty = bool(p) and not p["activities"] and not p["boq"]
+        return {"rename": bool(p), "move": False, "remove": empty and not approved, "why": SHAPE_KEPT if approved else "" if empty else "it can be removed once its work packages are moved or removed", "accounts": accounts}
+    if not get("activity", rid):
+        return {"rename": False, "move": False, "remove": False, "why": "it is part of the sample project, which stays as it is", "accounts": accounts}
+    fixed, held = rid in contract_starts(), _held(rid)
+    why = SHAPE_KEPT if approved else "it is a row of the consultant's master schedule, so it stays: reject it in the plan if it should get no tasks" if fixed else held
+    return {"rename": True, "move": not approved, "remove": not (approved or fixed or held), "why": why, "accounts": accounts}
+
+
+def change_activity(aid: str, name: str | None = None, package: str | None = None, who: str = PM) -> dict:
+    """A person renames a work package, or moves it to another control account. A name can change at any time. A move renumbers the WBS, so it is for before a plan is approved. Its BoQ lines go with it, and what they add to the budget."""
+    with _lock:
+        a = get("activity", aid)
+        if not a:
+            raise KeyError(aid)
+        if name is not None:
+            name = name.strip()
+            if not name:
+                raise ValueError("a work package needs a name")
+            if name != a["name"]:
+                patch("activity", aid, {"name": name}, who, "renamed a work package", f"{a['name']} to {name}")
+        here = package_of(aid)
+        if package is not None and package != (here or {}).get("id"):
+            there = get("package", package)
+            if not there:
+                raise KeyError(package)
+            if plan_approved():
+                raise ValueError(SHAPE_KEPT)
+            lines = [b for b in all_of("boq") if b.get("activity") == aid and here and b["id"] in here["boq"]]
+            ids, value = [b["id"] for b in lines], sum(b["value"] for b in lines)
+            budget = sum(round(b["value"] * b.get("share", 1.0)) for b in lines)  # a line from before its share was kept is the plan's own, at its full value
+            if here:
+                patch("package", here["id"], {"activities": [x for x in here["activities"] if x != aid], "boq": [x for x in here["boq"] if x not in ids], "boq_value": here["boq_value"] - value, "budget": here["budget"] - budget}, who, "moved a work package out of a control account", aid)
+            patch("package", package, {"activities": [*there["activities"], aid], "boq": [*there["boq"], *ids], "boq_value": there["boq_value"] + value, "budget": there["budget"] + budget}, who, "moved a work package into a control account", aid)
+            for b in lines:
+                patch("boq", b["id"], {"package": package}, who, "moved a BoQ line with its work package", aid)
+        return {"id": aid, "code": wbs_codes().get(aid, "")}
+
+
+def remove_activity(aid: str, who: str = PM) -> dict:
+    """A person takes a work package out of the proposal: an agent's guess at work that is not there, a part of a row it split, or work a person added by mistake. A row of the consultant's master schedule stays, and so does everything once a plan is approved.
+
+    Its share of the value goes to the other work packages of its control account, the other parts of its row first, so the account still adds up to what the BoQ says. Links to it go, and so do its tasks in the proposal."""
+    with _lock:
+        a = get("activity", aid)
+        if not a:
+            raise KeyError(aid)
+        if plan_approved():
+            raise ValueError(SHAPE_KEPT)
+        if aid in contract_starts():
+            raise ValueError("it is a row of the consultant's master schedule, so it stays: reject it in the plan if it should get no tasks")
+        if _held(aid):
+            raise ValueError(_held(aid))
+        p = package_of(aid)
+        own = {x["id"]: x for x in all_of("activity")}
+        kin = [x for x in (p or {}).get("activities", []) if x != aid and x in own]
+        row = a.get("no", "").rpartition(".")[0]
+        kin = [x for x in kin if row and own[x].get("no", "").rpartition(".")[0] == row] or kin
+        lines = [b for b in all_of("boq") if b.get("activity") == aid]
+        priced = [b["id"] for b in lines if (b["unit"], b["qty"]) != ("ls", 1.0)]
+        if priced:
+            raise ValueError(f"{', '.join(priced)} {'prices' if len(priced) == 1 else 'price'} it by quantity, and a person has to say where that goes")
+        gone, weight = sum(b["value"] for b in lines), a.get("weight") or 0
+        into = [b for b in all_of("boq") if b.get("activity") in kin and (b["unit"], b["qty"]) == ("ls", 1.0)]
+        if gone and not into:
+            raise ValueError(f"it is the only work package in {p['name'] if p else 'its control account'} with a value, so its Rp {gone:,} has nowhere to go: rename it instead")
+        for b, extra in zip(into, _shares(gone, [b["value"] for b in into]) if gone else []):
+            patch("boq", b["id"], {"unit_price": b["unit_price"] + int(extra), "value": b["value"] + int(extra)}, who, "took on the value of a removed work package", f"{aid}: Rp {int(extra):,}")
+        for x, extra in zip(kin, _shares(weight, [own[x].get("weight") or 0 for x in kin], 2) if weight else []):
+            patch("activity", x, {"weight": round((own[x].get("weight") or 0) + extra, 2)}, who, "took on the weight of a removed work package", aid)
+        gone_ids = {b["id"] for b in lines}
+        for b in lines:
+            drop("boq", b["id"])
+        for q in all_of("package"):
+            if aid in q["activities"] or gone_ids & set(q["boq"]):
+                patch("package", q["id"], {"activities": [x for x in q["activities"] if x != aid], "boq": [x for x in q["boq"] if x not in gone_ids]}, who, "took a removed work package out of its control account", aid)
+        for x in own.values():
+            if aid in x["predecessors"] or aid in (x.get("leads") or {}) or aid in (x.get("overlaps") or {}):
+                patch("activity", x["id"], {"predecessors": [y for y in x["predecessors"] if y != aid], "leads": {k: v for k, v in (x.get("leads") or {}).items() if k != aid}, "overlaps": {k: v for k, v in (x.get("overlaps") or {}).items() if k != aid}}, who, "lost a link to a removed work package", aid)
+        state = schedule_state()
+        state["links"] = {k: [y for y in v if y != aid] for k, v in (state.get("links") or {}).items() if k != aid}
+        state["lags"] = {k: {y: n for y, n in v.items() if y != aid} for k, v in (state.get("lags") or {}).items() if k != aid}
+        for key in ("compress", "not_before", "by"):
+            (state.get(key) or {}).pop(aid, None)
+        set_meta("schedule_state", state)
+        set_meta("progress", {k: v for k, v in meta("progress", {}).items() if k != aid})
+        rest = [x for x in own if x != aid]
+        for m in all_of("milestone"):
+            if m["activity"] != aid:
+                continue
+            if rest:  # only one that follows the whole job is left here, and it finds its last work for itself
+                patch("milestone", m["id"], {"activity": rest[-1]}, who, "followed the job past a removed work package", aid)
+            else:
+                drop("milestone", m["id"])
+        for r in all_of("rfi"):
+            if r.get("activity") == aid:
+                patch("rfi", r["id"], {"activity": ""}, who, "kept a drafted question for the whole project", f"{aid} was removed")
+        for rec in all_of("plan"):
+            if rec["status"] == "pending" and aid in rec["plan"].get("activities", []):
+                plan = rec["plan"]
+                steps = [s for s in plan["steps"] if s["activity"] != aid]
+                kept = {s["id"] for s in steps}
+                steps = [{**s, "after": [x for x in s["after"] if x in kept]} for s in steps]
+                totals = {**plan["totals"], "steps": len(steps), "operations": sum(s["kind"] == "operation" for s in steps), "inspections": sum(s["kind"] == "inspection" for s in steps), "handling": sum(s["kind"] == "handling" for s in steps), "man_hours": round(sum(s["man_hours"] for s in steps), 1)}
+                plan = {**plan, "activities": [x for x in plan["activities"] if x != aid], "sections": [s for s in plan["sections"] if s.get("activity") != aid], "steps": steps, "packages": {k: v for k, v in (plan.get("packages") or {}).items() if k != aid}, "totals": totals}
+                patch("plan", rec["id"], {"plan": plan, "rfi_drafts": [{**q, "activity": ""} if q.get("activity") == aid else q for q in rec.get("rfi_drafts") or []], "reviews": {k: v for k, v in (rec.get("reviews") or {}).items() if k != f"wp:{aid}"}}, who, "took a removed work package out of the work plan", aid)
+        drop("activity", aid)
+        log(who, "removed a work package", "activity", aid, a["name"])
+        return {"removed": aid}
+
+
+def change_package(pid: str, name: str, who: str = PM) -> dict:
+    """A person renames a control account. The plan's own reading of it follows, so what it was priced at in the owner's estimate stays beside it."""
+    with _lock:
+        p = get("package", pid)
+        if not p:
+            raise KeyError(pid)
+        name = (name or "").strip()
+        if not name:
+            raise ValueError("a control account needs a name")
+        if name != p["name"]:
+            patch("package", pid, {"name": name}, who, "renamed a control account", f"{p['name']} to {name}")
+            for rec in all_of("plan"):
+                if rec["status"] in ("pending", "approved") and any(x.get("name") == p["name"] for x in rec["plan"].get("accounts") or []):
+                    patch("plan", rec["id"], {"plan": {**rec["plan"], "accounts": [{**x, "name": name} if x.get("name") == p["name"] else x for x in rec["plan"]["accounts"]]}}, who, "followed a renamed control account", name)
+        return {"id": pid, "code": wbs_codes().get(pid, "")}
+
+
+def remove_package(pid: str, who: str = PM) -> dict:
+    """A person removes an empty control account, before a plan is approved: removing one renumbers the ones after it."""
+    with _lock:
+        p = get("package", pid)
+        if not p:
+            raise KeyError(pid)
+        if plan_approved():
+            raise ValueError(SHAPE_KEPT)
+        if p["activities"] or p["boq"] or any(i["package"] == pid and i["status"] != "removed" for i in all_of("cost_item")):
+            raise ValueError("move or remove its work packages and costs first")
+        drop("package", pid)
+        log(who, "removed a control account", "package", pid, p["name"])
+        return {"removed": pid}
+
+
+def changed_by_hand(since: str) -> int:
+    """How many changes people made to the breakdown, the schedule and a plan's items since a time: what analysing the documents again would replace. One change can write many records, all in the same second, so it counts once."""
+    with _lock:
+        return _db().execute("select count(distinct t) from audit where t >= ? and who != ? and kind in ('activity', 'package', 'milestone', 'boq', 'plan')", (since, SWARM)).fetchone()[0]
 
 
 # ------------------------------------------------------------------------------------------------ budget
@@ -602,7 +859,7 @@ def add_boq_line(name: str, unit: str, qty: float, unit_price: int, package: str
         raise ValueError("a BoQ line needs a quantity and a price above zero")
     value = round(float(qty) * int(unit_price))
     rid = next_id("boq")
-    rec = put("boq", rid, {"id": rid, "code": rid, "name": name, "area": area, "unit": unit, "qty": float(qty), "unit_price": int(unit_price), "value": value, "planned_pct": 0, "verified_pct": 0, "activity": activity, "package": package}, who, "added a BoQ line", f"{name}: Rp {value:,}")
+    rec = put("boq", rid, {"id": rid, "code": rid, "name": name, "area": area, "unit": unit, "qty": float(qty), "unit_price": int(unit_price), "value": value, "planned_pct": 0, "verified_pct": 0, "activity": activity, "package": package, "share": share}, who, "added a BoQ line", f"{name}: Rp {value:,}")
     patch("package", package, {"boq": [*p["boq"], rid], "boq_value": p["boq_value"] + value, "budget": p["budget"] + round(value * share)}, who, "raised a package's budget", f"{rid}: Rp {round(value * share):,}")
     return rec
 
@@ -637,10 +894,69 @@ def subcontractor_detail(sid: str) -> dict:
     return {k: s[k] for k in ("id", "name", "trade", "scope", "crew", "status", "package", "activities", "open_ncrs", "open_rfis", "expired", "expiring", "rating")}
 
 
-def add_subcontractor(name: str, trade: str, scope: str, crew: int, who: str = PM) -> dict:
+def add_subcontractor(name: str, trade: str, scope: str, crew: int, who: str = PM, contact: str = "", phone: str = "") -> dict:
     rid = "sub-" + hashlib.sha1(name.encode()).hexdigest()[:6]
-    return put("subcontractor", rid, {"id": rid, "name": name, "trade": trade, "scope": scope, "crew": int(crew), "activities": [], "status": "onboarding", "package": "", "contract_value": 0, "retention_pct": 5, "documents": []},
+    return put("subcontractor", rid, {"id": rid, "name": name, "trade": trade, "scope": scope, "crew": int(crew), "contact": contact, "phone": phone, "activities": [], "status": "onboarding", "package": "", "contract_value": 0, "retention_pct": 5, "documents": []},
                who, "started onboarding", name)
+
+
+def set_subcontractor(sid: str, name: str | None = None, trade: str | None = None, scope: str | None = None, crew: int | None = None, contact: str | None = None, phone: str | None = None, who: str = PM) -> dict:
+    """Correct a partner's details in the database. Work already given to them, and its history, does not move."""
+    if not get("subcontractor", sid):
+        raise KeyError(sid)
+    changes = {k: v for k, v in (("name", name), ("trade", trade), ("scope", scope), ("contact", contact), ("phone", phone)) if v is not None}
+    if "name" in changes and not changes["name"].strip():
+        raise ValueError("a subcontractor needs a company name")
+    if "trade" in changes and not changes["trade"].strip():
+        raise ValueError("a subcontractor needs a trade")
+    if crew is not None:
+        if int(crew) < 0:
+            raise ValueError("a crew cannot be negative")
+        changes["crew"] = int(crew)
+    if not changes:
+        raise ValueError("nothing to change")
+    return patch("subcontractor", sid, changes, who, "corrected a subcontractor", ", ".join(sorted(changes)))
+
+
+SAMPLE_SUBCONTRACTORS = [
+    ("PT Beton Karya (fictional)", "Concrete and structure", "Columns, beams and slabs", 24, "Andi Saputra", "0812-1001-2201", "active"),
+    ("CV Bekisting Jaya (fictional)", "Formwork", "Formwork and scaffolding", 18, "Rina Marlina", "0812-1001-2202", "active"),
+    ("PT Baja Nusantara (fictional)", "Steel and rebar", "Reinforcement cutting, bending and fixing", 16, "Joko Prasetyo", "0812-1001-2203", "active"),
+    ("PT Arus Listrik (fictional)", "MEP", "Electrical, plumbing and HVAC first fix", 11, "Dewi Anggraini", "0812-1001-2204", "active"),
+    ("CV Finishing Prima (fictional)", "Architecture and finishing", "Masonry, plaster, paint and ceilings", 14, "Bambang Sutrisno", "0812-1001-2205", "onboarding"),
+]
+
+
+def seed_sample_subcontractors(who: str = PM) -> list[dict]:
+    """Sample partner companies so a new project has someone to give work to. Synthetic, marked in their names, and a person can edit or remove every one. Ones already in the database (same name) are left alone."""
+    have = {x["name"] for x in all_of("subcontractor")}
+    made = []
+    for name, trade, scope, crew, contact, phone, status in SAMPLE_SUBCONTRACTORS:
+        if name in have:
+            continue
+        docs = [{"name": d, "expires": "2027-12-31"} for d in REQUIRED_DOCS] if status == "active" else []
+        row = add_subcontractor(name, trade, scope, crew, who, contact, phone)
+        made.append(patch("subcontractor", row["id"], {"status": status, "documents": docs}, who, "loaded a sample partner", name))
+    return made
+
+
+def remove_subcontractor(sid: str, who: str = PM) -> dict:
+    """Take a partner out of the database. Not while work is programmed to them, or money is on their record: reassign the work first, so nothing is left pointing at a company that is no longer there."""
+    s = get("subcontractor", sid)
+    if not s:
+        raise KeyError(sid)
+    busy = [a["id"] for a in schedule()["activities"] if a["by"] == sid]
+    if busy:
+        raise ValueError(f"cannot remove: work is programmed to them ({', '.join(busy)}). Give that work to someone else first")
+    if any(i["sub"] == sid for i in all_of("invoice")):
+        raise ValueError("cannot remove: invoices are recorded against them")
+    if any(w.get("by") == sid and w["status"] not in ("done", "rejected", "superseded") for w in all_of("work_item")):
+        raise ValueError("cannot remove: open cards on the board are theirs. Move them first")
+    with _lock:
+        _db().execute("delete from records where kind = 'subcontractor' and id = ?", (sid,))
+        _db().commit()
+    log(who, "removed a subcontractor", "subcontractor", sid, s["name"])
+    return {"removed": sid, "name": s["name"]}
 
 
 def add_sub_document(sid: str, name: str, expires: str, who: str = PM) -> dict:
@@ -1156,6 +1472,29 @@ def stops_of(w: dict) -> list[dict]:
     return out
 
 
+def unfinished_prerequisites(w: dict) -> list[dict]:
+    """The steps this card directly waits for that are not done yet. The board shows them as a warning; moving the card is where they bite. An inspection step counts as done when its result is passed, whether or not its card was dragged."""
+    rec = get("plan", w.get("plan") or "")
+    if not rec or not w.get("step"):
+        return []
+    steps = {s["id"]: s for s in rec["plan"]["steps"]}
+    step = steps.get(w["step"]) or {}
+    cards = {(x.get("plan"), x.get("step")): x for x in all_of("work_item")}
+    out = []
+    for sid in step.get("after") or []:
+        s = steps.get(sid) or {}
+        card = cards.get((w["plan"], sid))
+        insp = get("inspection", s.get("itp") or sid) if s.get("kind") == "inspection" else None
+        if insp and insp["status"] == "passed":
+            continue
+        if card and card["status"] == "done":
+            continue
+        if card is None and insp is None:
+            continue  # the step it waits for is not on the board: nothing here to wait for
+        out.append({"step": sid, "card": card["id"] if card else "", "title": card["title"] if card else s.get("name", sid)})
+    return out
+
+
 def set_work_item(wid: str, status: str = "", owner: str | None = None, due: str | None = None, progress: int | None = None, by: str | None = None, who: str = PM) -> dict:
     """A person moves or assigns a card. Dragging cannot sign anything: an inspection closes when its result is recorded, and a hold point stops what follows it."""
     w = get("work_item", wid)
@@ -1172,6 +1511,9 @@ def set_work_item(wid: str, status: str = "", owner: str | None = None, due: str
             raise ValueError("record the result in QA/QC: that is what closes an inspection")
         if status != "open" and (stops := stops_of(w)):
             raise ValueError(stops[0]["text"])
+        if status in ("doing", "review", "done") and (prereq := unfinished_prerequisites(w)):
+            first = prereq[0]
+            raise ValueError(f"cannot start: {first['step']} must be done first: {first['title']}" + (f" (and {len(prereq) - 1} more)" if len(prereq) > 1 else ""))
         changes.update(status=status, done_on=TODAY if status == "done" else "")
         changes["progress"] = 100 if status in ("review", "done") else 0 if status == "open" else w.get("progress") or 0
         notes.append(f"to {status}")
@@ -1310,7 +1652,7 @@ def record_package_plan(run_id: str, firm: Any, mode: str) -> dict | None:
         for w in account["packages"]:
             aid = next_id("activity")
             ids[w["no"]] = aid
-            put("activity", aid, {"id": aid, "name": w["name"], "duration": max(1, int(w["days"])), "predecessors": [], "by": "self", "not_before": int(w["not_before"]), "no": w["no"], "weight": w["weight"], "value": w["value"], "responsible": (result["packages"].get(w["no"]) or {}).get("responsible") or ""}, SWARM, "proposed a work package", w["name"])
+            put("activity", aid, {"id": aid, "name": w["name"], "duration": max(1, int(w["days"])), "predecessors": [], "by": "self", "not_before": int(w["not_before"]), "contract_weeks": bool(w.get("contract_weeks")), "no": w["no"], "weight": w["weight"], "value": w["value"], "responsible": (result["packages"].get(w["no"]) or {}).get("responsible") or ""}, SWARM, "proposed a work package", w["name"])
             p = patch("package", p["id"], {"activities": [*p["activities"], aid]}, SWARM, "proposed a work package under a control account", aid)
             if w["value"]:
                 add_boq_line(w["name"], "ls", 1, int(w["value"]), p["id"], aid, "", SWARM, share=1.0)
@@ -1368,7 +1710,7 @@ def plan_view(rec: dict) -> dict:
     sections = [{**x, "activity": x.get("activity") or under.get(x["id"], "")} for x in rec["plan"]["sections"]]
     tree = W.code_tasks(steps, sections, rec["plan"]["activities"], activity_heads(rec["plan"]["activities"]))
     plan = {**rec["plan"], "steps": steps, "sections": sections, "tree": tree}
-    return {**rec, "plan": plan, "work_items": [w for w in all_of("work_item") if w.get("decision") == rec["id"]], "progress": {"done": done, "of": len(steps), "planned_waste": planned_waste, "actual_waste": actual_waste, "planned_man_hours": round(planned_hours, 1), "actual_man_hours": round(actual_hours, 1)}}
+    return {**rec, "plan": plan, "edits": changed_by_hand(rec.get("created") or "") if rec["status"] == "pending" else 0, "work_items": [w for w in all_of("work_item") if w.get("decision") == rec["id"]], "progress": {"done": done, "of": len(steps), "planned_waste": planned_waste, "actual_waste": actual_waste, "planned_man_hours": round(planned_hours, 1), "actual_man_hours": round(actual_hours, 1)}}
 
 
 def plans() -> list[dict]:

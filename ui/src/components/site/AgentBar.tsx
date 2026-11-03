@@ -23,10 +23,10 @@ export function AgentBar({ module }: { module: string }) {
     setOpen(true);
   };
   return (
-    <div className="shrink-0 border-b border-[#9d8cff]/20 bg-[#9d8cff]/[.05] text-[11.5px]">
+    <div className="shrink-0 border-b border-[#f5b82e]/20 bg-[#f5b82e]/[.05] text-[11.5px]">
       <div className="flex flex-wrap items-center gap-2 px-3 py-1">
         <button onClick={() => setOpen(!open)} aria-expanded={open} className="flex min-w-0 items-center gap-1.5 text-left text-[#d9d3ff] hover:text-white">
-          <Icon name="sparkle" className="h-3.5 w-3.5 shrink-0 text-[#9d8cff]" />
+          <Icon name="sparkle" className="h-3.5 w-3.5 shrink-0 text-[#f5b82e]" />
           <b className="font-semibold">{data.name}</b>
           <span className="truncate text-[#abb3bf] max-lg:hidden">{data.does}</span>
           {waiting.length > 0 && <Pill tone="violet">{waiting.length} to decide</Pill>}
@@ -40,13 +40,13 @@ export function AgentBar({ module }: { module: string }) {
       </div>
       {err && <p className="px-3 pb-1 text-[11px] text-[#ffb4b4]">{err}</p>}
       {open && (
-        <div className="max-h-[38vh] space-y-2 overflow-y-auto border-t border-white/5 bg-[#161a1f] p-3">
+        <div className="max-h-[38vh] space-y-2 overflow-y-auto border-t border-white/5 bg-[#111820] p-3">
           <p className="text-[10.5px] text-[#8f99a8]">Works with: {(data.team as string[]).join(", ")}. Agents propose, people decide: nothing changes until you accept it.</p>
           {advice ? (
             <div className="space-y-1">
               <p className="text-[#d3d8de]"><b className="font-medium text-white">{advice.summary}</b> <span className="text-[10.5px] text-[#8f99a8]">{advice.mode === "mock" ? "Offline: code, no model" : `Muse Spark, $${advice.usd}`} · {advice.at}{advice.dropped ? ` · code dropped ${advice.dropped} that cited what the records do not hold` : ""}</span></p>
               {(advice.items as Rec[]).map((x, i) => (
-                <div key={i} className={`flex flex-wrap items-start gap-2 rounded border border-white/10 px-2 py-1.5 ${x.state === "open" ? "bg-[#1c2127]" : "opacity-60"}`}>
+                <div key={i} className={`flex flex-wrap items-start gap-2 rounded border border-white/10 px-2 py-1.5 ${x.state === "open" ? "bg-[#1c2733]" : "opacity-60"}`}>
                   <div className="min-w-[240px] flex-1">
                     <p className="font-medium leading-snug text-white">{x.title}</p>
                     <p className="leading-snug text-[#abb3bf]">{x.why}</p>

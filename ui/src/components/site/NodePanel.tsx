@@ -37,18 +37,88 @@ function Actuals({ plan, s, onDone }: { plan: string; s: Rec; onDone: (fn: () =>
   );
 }
 
+/** A control account's or work package's name, where it sits, and taking it out: only what the records allow, and why not where they do not. */
+function Change({ n, change, act, onMoved, onClose }: { n: Rec; change: Rec; act: (fn: () => Promise<unknown>) => Promise<boolean>; onMoved?: (code: string) => void; onClose: () => void }) {
+  const [name, setName] = useState(n.name as string);
+  const [account, setAccount] = useState(n.package as string);
+  const kind = n.type === "package" ? "packages" : "activities";
+  const save = async () => {
+    let code = n.code as string;
+    const ok = await act(async () => { code = (await api(`/api/project/${kind}/${n.ref}`, { name, ...(account !== n.package ? { package: account } : {}) })).code; });
+    if (ok && code !== n.code) onMoved?.(code);
+  };
+  const remove = async () => {
+    const what = n.type === "package" ? `the control account ${n.name}` : `${n.name}: its tasks in the proposal go with it, and its share of the value goes to the rest of its control account`;
+    if (window.confirm(`Remove ${what}?`) && (await act(() => api(`/api/project/${kind}/${n.ref}/remove`, {})))) onClose();
+  };
+  if (!change.rename) return null;
+  return (
+    <div className="space-y-1.5 rounded border border-white/10 p-2">
+      <label className="block"><Label>Name</Label><input value={name} onChange={(e) => setName(e.target.value)} className={field} /></label>
+      {change.move && n.type === "activity" && <label className="block"><Label>Control account</Label><select value={account} onChange={(e) => setAccount(e.target.value)} className={field}>{(change.accounts as Rec[]).map((a) => <option key={a.id} value={a.id} className="bg-[#1c2733]">{a.name}</option>)}</select></label>}
+      <div className="flex gap-1.5">
+        <button disabled={!name.trim() || (name === n.name && account === n.package)} onClick={() => void save()} className={`${primary} flex-1`}>Save</button>
+        {change.remove && <button onClick={() => void remove()} className={quiet}>Remove</button>}
+      </div>
+      {change.why && <p className="text-[10.5px] leading-snug text-[#8f99a8]">{change.why[0].toUpperCase()}{change.why.slice(1)}.</p>}
+    </div>
+  );
+}
+
 export function nodeFocus(n: Rec, kids: Rec[] = []): NonNullable<ReturnType<typeof useFocus>["focus"]> {
   const activities = n.type === "activity" ? [n.ref] : n.activity ? [n.activity] : kids.filter((k) => k.type === "activity").map((k) => k.ref);
   return { code: n.code, name: n.name, type: n.type, package: n.package, activities };
 }
 
-export function NodePanel({ code, onClose }: { code: string; onClose: () => void }) {
+/** Who does this work package: our own crew, or a partner from the subcontractor database. The choice programmes the activity and moves its open task cards to that crew; work already done, and its history, stays where it was. A partner can be added here on the spot; the full database (documents, approval, payments) is one link away. */
+function WhoDoesIt({ n, act }: { n: Rec; act: (fn: () => Promise<unknown>) => Promise<boolean> }) {
+  const { data } = useData("/api/project/assignments");
+  const go = useGo();
+  const [choice, setChoice] = useState<string | null>(null);
+  const [saved, setSaved] = useState("");
+  if (!data) return null;
+  const rows = (data.rows as Rec[]).filter((r) => r.activity === n.ref);
+  const sections = [...new Set(rows.flatMap((r) => (r.sections as string[])))];
+  const subs = data.subs as Rec[];
+  const current = (rows[0]?.programmed as string) || "self";
+  const by = choice ?? current;
+  const nameOf = (id: string) => (id === "self" ? "Own crew" : subs.find((s) => s.id === id)?.name ?? id);
+  const give = async () => {
+    setSaved("");
+    const ok = await act(async () => {
+      await api(`/api/project/schedule/${n.ref}`, { by });
+      for (const section of sections) await api("/api/project/assignments", { activity: n.ref, section, by });
+    });
+    if (ok) setSaved(`Given to ${nameOf(by)}: the programme and its open cards on the board follow.`);
+  };
+  return (
+    <Block title="Who does this work">
+      <p className="text-[#d3d8de]">Programmed: <b className="font-medium text-white">{n.by_name || nameOf(current)}</b>{rows.length > 0 && <span className="text-[#8f99a8]"> · the plan needs {[...new Set(rows.map((r) => r.by_name))].join(", ")}</span>}</p>
+      <div className="flex gap-1.5">
+        <select aria-label="Who does this work" value={by} onChange={(e) => setChoice(e.target.value)} className={`${field} min-w-0 flex-1`}>
+          <option value="self" className="bg-[#1c2733]">Own crew — we do it ourselves</option>
+          {subs.map((s) => <option key={s.id} value={s.id} className="bg-[#1c2733]">Subcontract: {s.name}{s.trade ? ` — ${s.trade}` : ""}{s.crew ? ` · crew ${s.crew}` : ""}{s.status === "onboarding" ? " · onboarding" : ""}</option>)}
+        </select>
+        <button disabled={by === current && !sections.length} onClick={give} className={`${primary} shrink-0`}>Give it to them</button>
+      </div>
+      {sections.length > 0 && <p className="text-[10.5px] text-[#8f99a8]">Its open task cards in {sections.join(", ")} move to that crew on the board. Cards already done stay as they are.</p>}
+      {saved && <p className="text-[#7ee2c0]">{saved}</p>}
+      <div className="flex flex-wrap items-center gap-2 pt-0.5">
+        <span className="text-[10.5px] text-[#8f99a8]">{subs.length ? "Every partner in the database is in the list above." : "No partner subcontractors in the database yet."}</span>
+        <button onClick={() => go("procurement/subs")} className="ml-auto text-[11px] text-[#9cc7f5] hover:underline">Open the subcontractor database</button>
+      </div>
+    </Block>
+  );
+}
+
+export function NodePanel({ code, onClose, onMoved }: { code: string; onClose: () => void; onMoved?: (code: string) => void }) {
   const { data, err, act } = useData(`/api/project/wbs/node?code=${encodeURIComponent(code)}`);
   const { setFocus } = useFocus();
   const go = useGo();
   const [fail, setFail] = useState("");
   useEffect(() => setFail(""), [code]);
-  if (!data) return <Side title={code} onClose={onClose}><p className="text-[#abb3bf]">{err || "Loading…"}</p></Side>;
+  const why = err.replace(/^no such record: (.+)$/, "“$1” is not in this project’s WBS. It may come from an older plan or another project — pick the work from the tree instead.");
+  if (!data) return <Side title={code} onClose={onClose}><p className="text-[#abb3bf]">{why || "Loading…"}</p></Side>;
   const n = data.node as Rec, s = data.step as Rec | undefined, cards = data.cards as Rec[], kids = data.children as Rec[];
   const card = n.type === "task" ? cards.find((c) => c.step === n.ref || c.id === n.ref) : null;
   const doit = async (fn: () => Promise<unknown>) => { setFail(""); if (!(await act(fn))) setFail("Refused."); };
@@ -67,7 +137,9 @@ export function NodePanel({ code, onClose }: { code: string; onClose: () => void
         <button onClick={() => { setFocus(nodeFocus(n, kids)); }} className={`${quiet} flex-1`}>Show only this in every tab</button>
         {card && <button onClick={() => go(`kanban/board:${card.id}`)} className={quiet}>Open its card</button>}
       </div>
-      {(err || fail) && <p className="text-[#ffb4b4]">{err}</p>}
+      {(err || fail) && <p className="text-[#ffb4b4]">{why || fail}</p>}
+      {data.change && <Change n={n} change={data.change} act={act} onMoved={onMoved} onClose={onClose} />}
+      {n.type === "activity" && <WhoDoesIt n={n} act={act} />}
       {(n.start || n.finish) && <p className="text-[#d3d8de]">{dates(n.start, n.finish)}{typeof n.progress === "number" ? `, ${n.progress}% done` : ""}{n.progress_from === "tasks" ? ", from its tasks on the board" : ""}</p>}
       {n.ready && !n.ready.ready && <div className="rounded bg-[#fab219]/10 p-2 text-[#fbd38d]">{(n.ready.reasons as Rec[]).map((x) => <p key={x.ref + x.text}><button onClick={() => go(x.go)} className="text-left hover:underline">{x.text}</button></p>)}</div>}
       {(n.milestones ?? []).map((m: Rec) => <p key={m.id} className={m.days_late ? "text-[#ffb4b4]" : "text-[#d3d8de]"}>◆ {m.id} {m.name}: due {short(m.contract_date)}, forecast {short(m.forecast)}{m.days_late ? `, ${m.days_late} days late` : ""}</p>)}

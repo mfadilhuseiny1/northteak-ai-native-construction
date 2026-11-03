@@ -55,6 +55,17 @@ class ActivityIn(BaseModel):
     duration: Whole | None = None
     predecessors: list[str] | None = None
     by: str | None = None
+    earliest: str | None = None
+    lags: dict[str, Whole] | None = None
+
+
+class ActivityChange(BaseModel):
+    name: str | None = None
+    package: str | None = None
+
+
+class PackageChange(BaseModel):
+    name: str
 
 
 class NewActivity(BaseModel):
@@ -167,6 +178,17 @@ class SubIn(BaseModel):
     trade: str
     scope: str = ""
     crew: Whole = 0
+    contact: str = ""
+    phone: str = ""
+
+
+class SubEdit(BaseModel):
+    name: str | None = None
+    trade: str | None = None
+    scope: str | None = None
+    crew: Whole | None = None
+    contact: str | None = None
+    phone: str | None = None
 
 
 class DocIn(BaseModel):
@@ -270,7 +292,7 @@ def schedule() -> dict:
 
 @router.post("/api/project/schedule/{aid}")
 def update_activity(aid: str, body: ActivityIn) -> dict:
-    return guarded(P.update_activity, aid, body.progress, body.duration, body.predecessors, body.by)
+    return guarded(P.update_activity, aid, body.progress, body.duration, body.predecessors, body.by, earliest=body.earliest, lags=body.lags)
 
 
 @router.get("/api/project/budget")
@@ -290,7 +312,22 @@ def subcontractors() -> dict:
 
 @router.post("/api/project/subcontractors")
 def add_subcontractor(body: SubIn) -> dict:
-    return guarded(P.add_subcontractor, body.name, body.trade, body.scope, body.crew)
+    return guarded(P.add_subcontractor, body.name, body.trade, body.scope, body.crew, contact=body.contact, phone=body.phone)
+
+
+@router.post("/api/project/subcontractors/sample")
+def seed_sample_subcontractors() -> dict:
+    return {"added": guarded(P.seed_sample_subcontractors)}
+
+
+@router.post("/api/project/subcontractors/{sid}/remove")
+def remove_subcontractor(sid: str) -> dict:
+    return guarded(P.remove_subcontractor, sid)
+
+
+@router.post("/api/project/subcontractors/{sid}")
+def set_subcontractor(sid: str, body: SubEdit) -> dict:
+    return guarded(P.set_subcontractor, sid, body.name, body.trade, body.scope, body.crew, body.contact, body.phone)
 
 
 @router.post("/api/project/subcontractors/{sid}/documents")
@@ -487,9 +524,29 @@ def add_package(body: NewPackage) -> dict:
     return guarded(P.add_package, body.name, body.sub, body.budget)
 
 
+@router.post("/api/project/packages/{pid}")
+def change_package(pid: str, body: PackageChange) -> dict:
+    return guarded(P.change_package, pid, body.name)
+
+
+@router.post("/api/project/packages/{pid}/remove")
+def remove_package(pid: str) -> dict:
+    return guarded(P.remove_package, pid)
+
+
 @router.post("/api/project/activities")
 def add_activity(body: NewActivity) -> dict:
     return guarded(P.add_activity, body.name, body.package, body.duration, body.predecessors, body.by)
+
+
+@router.post("/api/project/activities/{aid}")
+def change_activity(aid: str, body: ActivityChange) -> dict:
+    return guarded(P.change_activity, aid, body.name, body.package)
+
+
+@router.post("/api/project/activities/{aid}/remove")
+def remove_activity(aid: str) -> dict:
+    return guarded(P.remove_activity, aid)
 
 
 @router.post("/api/project/milestones")
@@ -502,7 +559,7 @@ def add_milestone(body: NewMilestone) -> dict:
 
 @router.get("/api/projects")
 def projects() -> dict:
-    return P.projects()
+    return P.project_list()
 
 
 @router.post("/api/projects")
@@ -587,6 +644,33 @@ async def upload_document(file: UploadFile = File(...), title: str = Form(""), k
     kind = sorted_kind if kind in ("auto", "") else kind
     sorting = {"use": use, "why": why, "pages": len(pages), "words": sum(len(p.split()) for p in pages), "digest": K.digest_of(target)}
     return P.put("document", rid, {"id": rid, "source": "upload", "kind": kind, "title": title.strip() or clean, "from": issued_by, "date": issued_on or time.strftime("%Y-%m-%d"), **sorting, "text": text, "how_read": how, "file": saved, "filename": clean, "activities": [activity] if activity else [], "status": "received", "facts": extract.facts(text)}, P.PM, "uploaded a document", clean)
+
+
+class BriefIn(BaseModel):
+    text: str
+
+
+MOST_BRIEF = 20_000  # about ten pages. Every planner reads it, so anything longer goes in as a file, and only its pages are sent
+
+
+@router.post("/api/project/brief")
+def add_brief(body: BriefIn) -> dict:
+    """What a person told the agents about the job, in their own words. It is kept as a document of theirs, so the agents can cite it and it can be opened beside what cites it, and each agent is also told it as their instruction."""
+    text = body.text.strip()
+    if not text:
+        raise HTTPException(400, "say what you are planning first")
+    if len(text) > MOST_BRIEF:
+        raise HTTPException(413, f"that is {len(text):,} characters, and the most here is {MOST_BRIEF:,}. Save it as a file and attach it instead")
+    if not P.is_blank():
+        raise HTTPException(409, "the scenario has its own package: start a project of your own")
+    if P.busy:
+        raise HTTPException(409, "the agents are working: wait for them, or stop them, first")
+    rid = P.next_id("document")
+    saved = f"{rid}.txt"
+    target = A.upload_folder() / saved
+    target.write_text(text, encoding="utf-8")
+    K.keep_pages(rid, [text])
+    return P.put("document", rid, {"id": rid, "source": "upload", "typed": True, "kind": "scope", "title": f"You told the agents: {text[:48].strip()}{'…' if len(text) > 48 else ''}", "from": P.PM, "date": time.strftime("%Y-%m-%d"), "use": True, "why": "You wrote it for the agents", "pages": 1, "words": len(text.split()), "digest": K.digest_of(target), "text": text, "how_read": "", "file": saved, "filename": saved, "activities": [], "status": "received", "facts": extract.facts(text)}, P.PM, "told the agents about the plan", text[:120])
 
 
 @router.get("/api/project/documents/{did}/text")
@@ -840,6 +924,11 @@ def model_3d() -> dict:
     return model3d.build()
 
 
+@router.get("/api/project/executive")
+def executive() -> dict:
+    return M.executive()
+
+
 @router.get("/api/project/cost-estimate")
 def cost_estimate() -> dict:
     return M.cost_estimate()
@@ -868,3 +957,8 @@ async def agent_ask(module: str, body: Mode) -> dict:
 @router.post("/api/project/agents/{module}/{index}/{verdict}")
 def agent_decide(module: str, index: int, verdict: str) -> dict:
     return guarded(A.decide, module, index, verdict)
+
+
+from . import contract_admin  # noqa: E402 - its routes join these, and it imports the modules above
+
+router.include_router(contract_admin.router)

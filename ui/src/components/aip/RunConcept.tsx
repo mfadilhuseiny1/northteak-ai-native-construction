@@ -16,7 +16,7 @@ export function ContractCard({ contract, judged }: { contract: Contract; judged?
   const rated = (judged ?? []).filter((c) => typeof c.ok === "boolean").length;
   const open = (judged?.length ?? 0) - rated;
   return (
-    <div className="mt-2 rounded border border-[#9d8cff]/25 bg-black/20 p-2">
+    <div className="mt-2 rounded border border-[#f5b82e]/25 bg-black/20 p-2">
       <p className="flex items-center text-[11px] font-semibold text-[#c9c0ff]">Validation contract
         <span className="ml-auto font-normal text-[#8f99a8]">
           {!judged?.length ? "written before analysts start" : !rated ? "not judged yet"
@@ -96,7 +96,7 @@ export function Lessons({ events }: { events: AipEvent[] }) {
   const refused = events.filter((e) => e.type === "pelajaran_ditolak");
   if (!kept.length && !refused.length) return null;
   return (
-    <div className="rounded-md border border-[#9d8cff]/25 bg-[#9d8cff]/5 p-2 text-[11px]">
+    <div className="rounded-md border border-[#f5b82e]/25 bg-[#f5b82e]/5 p-2 text-[11px]">
       <p className="font-semibold text-[#c9c0ff]">Lessons encoded into skills</p>
       <p className="text-[10.5px] text-[#8f99a8]">From this run's validator findings: new task → do → observe → learn → encode into a skill.</p>
       {kept.map((e) => <p key={e.seq} className="mt-1 text-[#d3d8de]"><span className="rounded bg-white/[.06] px-1 text-[10px]">{e.skill}</span> {e.teks} <span className="text-[10.5px] text-[#8f99a8]">({e.status})</span></p>)}

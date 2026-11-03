@@ -89,11 +89,11 @@ function Dashboard() {
         <Kpi label="high risks" value={(data.attention as Rec[]).filter((a) => a.level === "high").length} tone={(data.attention as Rec[]).some((a) => a.level === "high") ? "bad" : "ok"} />
         <Kpi label="open RFIs · NCRs · to do" value={`${c.open_rfis} · ${c.open_ncrs} · ${c.open_work_items}`} />
       </Kpis>
-      <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_370px] items-start gap-3 overflow-y-auto bg-[#161a1f] p-3 max-xl:grid-cols-1">
+      <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_370px] items-start gap-3 overflow-y-auto bg-[#111820] p-3 max-xl:grid-cols-1">
         <div className="min-w-0 space-y-3">
           <div className="grid grid-cols-[repeat(auto-fill,minmax(205px,1fr))] gap-2">
             {(data.health as Rec[]).map((h) => (
-              <button key={h.key} onClick={() => go(h.key)} className="rounded border border-white/10 bg-[#1c2127] p-2 text-left hover:border-white/30">
+              <button key={h.key} onClick={() => go(h.key)} className="rounded border border-white/10 bg-[#1c2733] p-2 text-left hover:border-white/30">
                 <span className="flex items-center gap-1.5 text-[11px] font-medium text-[#d3d8de]"><i className={`h-2 w-2 shrink-0 rounded-full ${DOT[h.tone]}`} />{h.name}<span className="ml-auto text-[10px] font-normal text-[#8f99a8]">{WORD[h.tone]}</span></span>
                 <span className="mt-0.5 block text-[14px] font-semibold tabular-nums text-white">{h.value}</span>
                 <span className="block text-[10.5px] leading-tight text-[#8f99a8]">{h.note}</span>
@@ -157,12 +157,12 @@ function Agents() {
   const [cat, setCat] = useState<{ agents: Agent[]; roles: Record<string, string>; links?: ObjectLink[] } | null>(null);
   useEffect(() => { aip.agents().then(setCat).catch(() => {}); }, []);
   return (
-    <div className="min-h-0 flex-1 space-y-3 overflow-auto bg-[#161a1f] p-3 text-[12px]">
+    <div className="min-h-0 flex-1 space-y-3 overflow-auto bg-[#111820] p-3 text-[12px]">
       <Card title="An agent on each module" right={<span className="text-[10.5px] font-normal text-[#8f99a8]">agents propose, people decide. Built on CAMEL-AI, running on Muse through the Meta Model API</span>}>
         <div className="grid grid-cols-[repeat(auto-fill,minmax(270px,1fr))] gap-2 p-2">
           {((data?.modules ?? []) as Rec[]).map((m) => (
             <button key={m.key} onClick={() => go(m.key)} className="rounded border border-white/10 bg-black/10 p-2 text-left hover:border-white/30">
-              <span className="flex items-center gap-1.5 font-medium text-white"><Icon name="sparkle" className="h-3.5 w-3.5 text-[#9d8cff]" />{m.name}<span className="ml-auto text-[10px] font-normal text-[#8f99a8]">{m.module}</span></span>
+              <span className="flex items-center gap-1.5 font-medium text-white"><Icon name="sparkle" className="h-3.5 w-3.5 text-[#f5b82e]" />{m.name}<span className="ml-auto text-[10px] font-normal text-[#8f99a8]">{m.module}</span></span>
               <span className="mt-0.5 block leading-snug text-[#d3d8de]">{m.does}</span>
               <span className="mt-0.5 block text-[10.5px] text-[#8f99a8]">Works with {(m.team as string[]).join(", ")}</span>
               <span className="mt-1 flex gap-1">{m.findings > 0 && <Pill tone="warn">{m.findings} from the swarm</Pill>}{m.advice ? <Pill tone="info">last looked {m.advice}</Pill> : <Pill>has not looked yet</Pill>}</span>
@@ -188,7 +188,7 @@ export function TowerModule({ sub }: { sub: string }) {
       {tab === "dashboard" && <Dashboard />}
       {tab === "decisions" && <DecisionsView />}
       {tab === "swarm" && (data && !data.project?.notice
-        ? <div className="flex-1 bg-[#161a1f] text-[12px]"><Empty>A swarm review reads the scenario&apos;s documents and records, so it runs on the scenario for now. On your own project, ask the agent on each module.</Empty></div>
+        ? <div className="flex-1 bg-[#111820] text-[12px]"><Empty>A swarm review reads the scenario&apos;s documents and records, so it runs on the scenario for now. On your own project, ask the agent on each module.</Empty></div>
         : <div className="flex min-h-0 flex-1"><SwarmView /></div>)}
       {tab === "agents" && <Agents />}
     </div>
