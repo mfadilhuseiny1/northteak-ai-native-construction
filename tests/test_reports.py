@@ -146,3 +146,22 @@ def test_a_person_records_a_weeks_actuals_and_every_screen_follows():
     after = c.get("/api/project/kurva-s").json()
     assert after["site_recorded"] is False and not after["recorded"] and P.budget()["total"]["ac"] == spent_before, "clearing a week takes its cost back out"
     assert "site_progress" not in c.get("/api/project/budget").json(), "and the cards are the measure again"
+
+
+def test_variations_and_contingency_are_entered_under_cost_and_only_shown_on_the_report():
+    c = _client()
+    c.post("/api/project/variations", json={"title": "Extra waterproofing", "reason": "Site condition", "value": 5_000_000})
+    c.post("/api/project/contingency", json={"amount": 100_000_000})
+    entered = c.get("/api/project/changes").json()
+    assert entered["variations"]["variations"][0]["title"] == "Extra waterproofing" and entered["contingency_detail"]["amount"] == 100_000_000 and entered["packages"]
+    assert not P.all_of("snapshot"), "the screen they are entered on saves no month, as opening a report does"
+    r = c.get("/api/project/report").json()
+    assert r["variations"] == entered["variations"] and r["contingency_detail"] == entered["contingency_detail"], "the report shows the same"
+    assert any(d["go"] == "cost/control:variations" for d in r["decisions"]), "and what waits on a person leads to where it is entered"
+
+
+def test_cost_control_gives_no_schedule_index_on_a_sliver_of_planned_value():
+    b = P.budget()["total"]
+    shown = R.cost_control()["total"]["spi"]
+    assert (shown is None) == (b["pv"] < 0.01 * b["budget"]), "as the report does"
+

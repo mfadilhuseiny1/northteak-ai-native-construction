@@ -343,6 +343,8 @@ def cost_control() -> dict:
     if rec:
         b["total"].update({k: rec[k] for k in ("ev", "cpi", "eac", "variance", "spi")})
         b["site_progress"] = rec["site"]
+    elif b["total"]["pv"] < 0.01 * b["total"]["budget"]:
+        b["total"]["spi"] = None  # a day into the job, a sliver of planned value would make any progress look a thousand times ahead
     return b
 
 
@@ -388,7 +390,7 @@ def needed() -> list[dict]:
             out.append({"text": f"Decide: {d['title']}", "go": "tower/decisions", "tone": "warn"})
     vo = [v for v in P.all_of("variation") if v["status"] == "proposed"]
     if vo:
-        out.append({"text": f"Send {len(vo)} variation{'s' if len(vo) != 1 else ''} to the owner, worth {rp(sum(v['value'] for v in vo))}", "go": "reports/project:variations", "tone": "info"})
+        out.append({"text": f"Send {len(vo)} variation{'s' if len(vo) != 1 else ''} to the owner, worth {rp(sum(v['value'] for v in vo))}", "go": "cost/control:variations", "tone": "info"})
     drafts = sum(1 for r in P.all_of("rfi") if r["status"] == "draft")
     if drafts:
         out.append({"text": f"Issue or drop {drafts} draft RFI{'s' if drafts != 1 else ''} the agents wrote", "go": "documents/rfis", "tone": "info"})
@@ -399,7 +401,7 @@ def needed() -> list[dict]:
     if orphans:
         out.append({"text": f"Give {orphans} high risk{'s' if orphans != 1 else ''} an owner", "go": "risks", "tone": "warn"})
     if P.all_of("activity") and not (P.meta("contingency") or {}).get("amount"):
-        out.append({"text": "Set the contingency held against the risks", "go": "reports/project:contingency", "tone": "info"})
+        out.append({"text": "Set the contingency held against the risks", "go": "cost/control:contingency", "tone": "info"})
     return out
 
 
@@ -548,13 +550,19 @@ def events(days: int = 30) -> list[dict]:
     return sorted(groups.values(), key=lambda g: g["last"], reverse=True)[:10]
 
 
+def changes_to_contract() -> dict:
+    """The variations and the contingency, with what entering them can point at. Reading them saves nothing, unlike opening a report."""
+    vo = variations()
+    return {"variations": vo, "contingency_detail": contingency(), "days_approved": vo["days_approved"],
+            "risk_ids": [{"id": r["id"], "title": r["title"]} for r in M._risks() if r["status"] not in OPEN_RISK][:40],
+            "packages": [{"id": a["id"], "code": a["code"], "name": a["name"]} for a in P.schedule()["activities"]]}
+
+
 def report() -> dict:
     photos = M.photos()["photos"]
     now = month()
     this = [p for p in photos if (p.get("date") or "").startswith(now["period"])]
-    return {**now, "variations": variations(), "contingency_detail": contingency(), "photos": (this or photos)[:12], "photos_this_month": bool(this), "events": events(),
-            "risk_ids": [{"id": r["id"], "title": r["title"]} for r in M._risks() if r["status"] not in OPEN_RISK][:40],
-            "packages": [{"id": a["id"], "code": a["code"], "name": a["name"]} for a in P.schedule()["activities"]]}
+    return {**now, **changes_to_contract(), "photos": (this or photos)[:12], "photos_this_month": bool(this), "events": events()}
 
 
 # ------------------------------------------------------------------------------------------------ the portfolio: every project, read beside the open one
@@ -647,6 +655,11 @@ class UseIn(BaseModel):
 @router.get("/api/project/report")
 def project_report() -> dict:
     return report()
+
+
+@router.get("/api/project/changes")
+def contract_changes() -> dict:
+    return changes_to_contract()
 
 
 @router.post("/api/project/variations")

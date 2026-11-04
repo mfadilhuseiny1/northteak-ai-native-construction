@@ -55,9 +55,8 @@ export function ReportsModule({ sub, target }: { sub: string; target: string }) 
 // ------------------------------------------------------------------------------------------------ the project's month
 
 function ProjectReport({ target }: { target: string }) {
-  const { data, err, act } = useData("/api/project/report");
+  const { data, err } = useData("/api/project/report");
   const go = useGo();
-  const [adding, setAdding] = useState(false);
   useEffect(() => { if (target && data) document.getElementById(`report-${target}`)?.scrollIntoView({ behavior: "smooth", block: "start" }); }, [target, data]);
   if (!data) return <div className="flex-1"><Problem err={err} />{!err && <Loading />}</div>;
   const r = data;
@@ -72,15 +71,14 @@ function ProjectReport({ target }: { target: string }) {
           <MoneyCard r={r} />
           <div className="xl:col-span-2"><Programme r={r} /></div>
           <Changes r={r} />
-          <div id="report-variations" className="scroll-mt-4 xl:col-span-2"><Variations r={r} act={act} onAdd={() => setAdding(true)} /></div>
-          <div id="report-contingency" className="scroll-mt-4"><Contingency r={r} act={act} /></div>
+          <div id="report-variations" className="scroll-mt-4 xl:col-span-2"><Variations r={r} /></div>
+          <div id="report-contingency" className="scroll-mt-4"><Contingency r={r} /></div>
           <Decisions items={r.decisions} />
           <Risks r={r} />
           <Activity rows={r.events} />
           <div className="xl:col-span-3"><Photos r={r} /></div>
         </div>
       </div>
-      {adding && <VariationForm r={r} act={act} onClose={() => setAdding(false)} />}
     </div>
   );
 }
@@ -179,15 +177,17 @@ function Changes({ r }: { r: Rec }) {
 
 const VO_STATUS: Record<string, [string, Tone]> = { proposed: ["Draft", "none"], submitted: ["With the owner", "info"], approved: ["Approved", "ok"], rejected: ["Rejected", "bad"] };
 
-function Variations({ r, act, onAdd }: { r: Rec; act: (fn: () => Promise<unknown>) => Promise<boolean>; onAdd: () => void }) {
+/** Entered under Cost, and only shown on the report: without act and onAdd the register has nothing to press but the way there. */
+export function Variations({ r, act, onAdd }: { r: Rec; act?: (fn: () => Promise<unknown>) => Promise<boolean>; onAdd?: () => void }) {
+  const go = useGo();
   const v = r.variations as Rec, rows = v.variations as Rec[], t = v.totals as Rec;
-  const move = (id: string, status: string) => act(() => api(`/api/project/variations/${id}`, { status }));
+  const move = (id: string, status: string) => act?.(() => api(`/api/project/variations/${id}`, { status }));
   const tile = (label: string, key: string, hint: string) => {
     const n = rows.filter((x) => x.status === key).length;
     return <div className="rounded-lg bg-white/[.03] p-2.5 shadow-[inset_0_0_0_1px_rgb(255_255_255/.06)]"><p className="text-[10px] font-medium uppercase tracking-[.08em] text-[#7d8b9b]">{label}</p><p className="mt-1 text-[16px] font-bold tabular-nums text-white">{n ? money(t[key]) : "–"}</p><p className="text-[10.5px] text-[#8f99a8]">{n} · {hint}</p></div>;
   };
   return (
-    <Card className="h-full" title="Variation register" right={<button onClick={onAdd} className={`${quiet} flex items-center gap-1`}><span className="text-[13px] leading-none">+</span>Variation</button>}>
+    <Card className="h-full" title="Variation register" right={onAdd ? <button onClick={onAdd} className={`${quiet} flex items-center gap-1`}><span className="text-[13px] leading-none">+</span>Variation</button> : <button onClick={() => go("cost/control:variations")} className={quiet}>Manage in Cost</button>}>
       <div className="space-y-3 p-3">
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           {tile("Draft", "proposed", "ours to send")}
@@ -195,7 +195,7 @@ function Variations({ r, act, onAdd }: { r: Rec; act: (fn: () => Promise<unknown
           {tile("Approved", "approved", r.days_approved ? `+${r.days_approved} days granted` : "in the revised contract")}
           {tile("Rejected", "rejected", "not paid")}
         </div>
-        {!rows.length && <div className="rounded-lg border border-dashed border-white/15 p-4 text-center text-[11.5px] text-[#abb3bf]">No variations yet. Add one when the owner instructs a change, or when the site turns out different from the drawings.</div>}
+        {!rows.length && <div className="rounded-lg border border-dashed border-white/15 p-4 text-center text-[11.5px] text-[#abb3bf]">No variations yet. {onAdd ? "Add one" : "They are added under Cost"} when the owner instructs a change, or when the site turns out different from the drawings.</div>}
         <ul className="space-y-1.5">
           {rows.map((x) => (
             <li key={x.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-white/[.025] px-3 py-2 shadow-[inset_0_0_0_1px_rgb(255_255_255/.05)]">
@@ -204,11 +204,11 @@ function Variations({ r, act, onAdd }: { r: Rec; act: (fn: () => Promise<unknown
               <span className="whitespace-nowrap font-semibold tabular-nums text-white">{x.value < 0 ? "−" : "+"}{money(Math.abs(x.value))}</span>
               {x.days > 0 && <span className="whitespace-nowrap text-[11px] text-[#abb3bf]">+{x.days} days</span>}
               <Pill tone={VO_STATUS[x.status][1]}>{VO_STATUS[x.status][0]}</Pill>
-              <span className="flex gap-1">
+              {act && <span className="flex gap-1">
                 {x.status === "proposed" && <button onClick={() => move(x.id, "submitted")} className={quiet}>Send to owner</button>}
                 {x.status === "submitted" && <><button onClick={() => move(x.id, "approved")} className={quiet}>Owner approved</button><button onClick={() => move(x.id, "rejected")} className={quiet}>Owner rejected</button></>}
                 {x.status === "rejected" && <button onClick={() => move(x.id, "proposed")} className={quiet}>Reopen</button>}
-              </span>
+              </span>}
             </li>
           ))}
         </ul>
@@ -217,7 +217,7 @@ function Variations({ r, act, onAdd }: { r: Rec; act: (fn: () => Promise<unknown
   );
 }
 
-function VariationForm({ r, act, onClose }: { r: Rec; act: (fn: () => Promise<unknown>) => Promise<boolean>; onClose: () => void }) {
+export function VariationForm({ r, act, onClose }: { r: Rec; act: (fn: () => Promise<unknown>) => Promise<boolean>; onClose: () => void }) {
   const [f, setF] = useState<Rec>({ title: "", reason: (r.variations.reasons as string[])[0], value: "", days: 0, wbs: "", ref: "", note: "" });
   const save = async () => { if (await act(() => api("/api/project/variations", { ...f, value: Number(f.value) || 0, days: Number(f.days) || 0 }))) onClose(); };
   return (
@@ -238,16 +238,17 @@ function VariationForm({ r, act, onClose }: { r: Rec; act: (fn: () => Promise<un
   );
 }
 
-function Contingency({ r, act }: { r: Rec; act: (fn: () => Promise<unknown>) => Promise<boolean> }) {
+export function Contingency({ r, act }: { r: Rec; act?: (fn: () => Promise<unknown>) => Promise<boolean> }) {
+  const go = useGo();
   const c = r.contingency_detail as Rec;
-  const [mode, setMode] = useState<"" | "set" | "draw">(c.amount ? "" : "set");
+  const [mode, setMode] = useState<"" | "set" | "draw">(c.amount || !act ? "" : "set");
   const [amount, setAmount] = useState("");
   const [reason, setReason] = useState("");
   const [risk, setRisk] = useState("");
   const done = (ok: boolean) => { if (ok) { setMode(""); setAmount(""); setReason(""); setRisk(""); } };
   const left = c.left as number, share = c.amount ? left / c.amount : 1;
   return (
-    <Card className="h-full" title="Contingency" right={c.amount ? <span className="flex gap-1">{mode !== "draw" && <button onClick={() => setMode("draw")} className={quiet}>Draw</button>}{mode !== "set" && <button onClick={() => { setMode("set"); setAmount(String(c.amount)); }} className={quiet}>Change amount</button>}</span> : null}>
+    <Card className="h-full" title="Contingency" right={!act ? <button onClick={() => go("cost/control:contingency")} className={quiet}>Manage in Cost</button> : c.amount ? <span className="flex gap-1">{mode !== "draw" && <button onClick={() => setMode("draw")} className={quiet}>Draw</button>}{mode !== "set" && <button onClick={() => { setMode("set"); setAmount(String(c.amount)); }} className={quiet}>Change amount</button>}</span> : null}>
       <div className="space-y-3 p-3">
         {c.amount > 0 && (
           <div>
@@ -256,14 +257,15 @@ function Contingency({ r, act }: { r: Rec; act: (fn: () => Promise<unknown>) => 
             {left < 0 && <p className="mt-1.5 text-[11px] text-[#ffb4b4]">Overdrawn by {money(-left)}.</p>}
           </div>
         )}
-        {mode === "set" && (
+        {!act && !c.amount && <p className="text-[11.5px] text-[#abb3bf]">Not set yet. The money held back for what may go wrong: the risks on the register.</p>}
+        {act && mode === "set" && (
           <div className="space-y-2 rounded-lg bg-white/[.03] p-2.5">
             {!c.amount && <p className="text-[11.5px] text-[#abb3bf]">The money held back for what may go wrong: the risks on the register. Set it once, then draw on it as things happen.</p>}
             <label className="block"><Label>Contingency, Rp</Label><input type="number" min={0} value={amount} onChange={(e) => setAmount(e.target.value)} className={field} /></label>
             <div className="flex gap-1.5"><button disabled={amount === ""} onClick={async () => done(await act(() => api("/api/project/contingency", { amount: Number(amount) })))} className={primary}>Set it</button>{c.amount > 0 && <button onClick={() => setMode("")} className={quiet}>Cancel</button>}</div>
           </div>
         )}
-        {mode === "draw" && (
+        {act && mode === "draw" && (
           <div className="space-y-2 rounded-lg bg-white/[.03] p-2.5">
             <label className="block"><Label>Amount drawn, Rp</Label><input autoFocus type="number" min={1} value={amount} onChange={(e) => setAmount(e.target.value)} className={field} /></label>
             <label className="block"><Label>What for</Label><input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Dewatering after the flood" className={field} /></label>

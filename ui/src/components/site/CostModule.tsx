@@ -1,9 +1,10 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api, Bar, Card, Empty, field, full, inFocus, Kpi, Kpis, Loading, money, num, Pill, primary, Problem, quiet, Ref, SubTabs, useData, useFocus, useGo, type Rec, NotYet } from "./kit";
 import { KurvaS } from "./KurvaS";
 import { ClaimsView } from "./RecordsViews";
 import { ACTUAL, PLAN } from "./ReportCharts";
+import { Contingency, VariationForm, Variations } from "./ReportsModule";
 import { Diverge, Group, hue, Item, Legend, Progress, SERIES, ShareStrip, SizeBar, SplitBar } from "./Visual";
 
 /* Cost estimation: what is the work worth? By control account and work package, spread over time as a Kurva-S, and the contract BoQ and the take-off beside it. It says which kind of estimate it is, because a top-down figure must not read like a measured one. */
@@ -65,8 +66,12 @@ function Estimate() {
 
 function Control({ target }: { target: string }) {
   const { data, err, act } = useData("/api/project/budget");
+  const changes = useData("/api/project/changes");
   const { focus } = useFocus();
   const [form, setForm] = useState<typeof EMPTY | null>(null);
+  const [adding, setAdding] = useState(false);
+  const shown = Boolean(data && changes.data);
+  useEffect(() => { if (target && shown) document.getElementById(`control-${target}`)?.scrollIntoView({ behavior: "smooth", block: "start" }); }, [target, shown]);
   if (!data) return <div className="flex-1"><Problem err={err} />{!err && <Loading />}</div>;
   const t = data.total as Rec;
   const packages = (data.packages as Rec[]).filter((p) => !focus || focus.type === "project" || p.id === focus.package);
@@ -89,6 +94,8 @@ function Control({ target }: { target: string }) {
         <Kpi label="CPI" value={Number(t.cpi).toFixed(2)} tone={t.cpi < 1 ? "warn" : "ok"} />
         <Kpi label="SPI" value={t.spi == null ? "–" : Number(t.spi).toFixed(2)} tone={t.spi == null ? undefined : t.spi < 1 ? "warn" : "ok"} />
       </Kpis>
+      <Problem err={changes.err} />
+      <div className="flex min-h-0 flex-1 overflow-hidden">
       <div className="min-h-0 flex-1 space-y-3 overflow-auto bg-[#111820] p-3">
         <Card title="Control accounts" right={<Legend items={site == null ? [{ label: "budget", color: PLAN }, { label: "earned", color: ACTUAL }, { label: "spent", color: "#8f99a8" }, { label: "forecast at completion", color: ACTUAL, hatched: true }] : [{ label: "budget", color: PLAN }, { label: "spent", color: "#8f99a8" }]} />}>
           <div className="grid gap-px bg-white/[.04] md:grid-cols-2">
@@ -125,8 +132,16 @@ function Control({ target }: { target: string }) {
                 return <Item key={i.id} code={i.id} title={i.description} meta={`${i.package} · ${i.source || "added by hand"}${i.recoverable_from ? ` · recoverable from ${i.recoverable_from}` : ""}`} visual={<SizeBar value={i.amount} max={max} color={i.actual ? "#8f99a8" : ACTUAL} />} value={<span className="flex items-center justify-end gap-2"><Pill tone={i.actual ? "info" : "none"}>{i.actual ? "spent" : "forecast"}</Pill><b className="font-semibold">{full(i.amount)}</b></span>} />;
               })}
             </div>
-          ) : <Empty>Nothing yet. A recovery plan&apos;s cost lands here when it is approved.</Empty>}
+          ) : <Empty>Nothing yet. A week recorded in the Kurva-S lands here, and a recovery plan&apos;s cost when it is approved.</Empty>}
         </Card>
+        {changes.data && (
+          <div className="grid gap-3 xl:grid-cols-3">
+            <div id="control-variations" className="scroll-mt-3 xl:col-span-2"><Variations r={changes.data} act={changes.act} onAdd={() => setAdding(true)} /></div>
+            <div id="control-contingency" className="scroll-mt-3"><Contingency r={changes.data} act={changes.act} /></div>
+          </div>
+        )}
+      </div>
+      {adding && changes.data && <VariationForm r={changes.data} act={changes.act} onClose={() => setAdding(false)} />}
       </div>
     </div>
   );
@@ -259,7 +274,7 @@ export function CostModule({ sub, target }: { sub: string; target: string }) {
   const tab = ["boq", "takeoff", "control", "claims"].includes(sub) ? sub : "estimate";
   return (
     <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-      <SubTabs base="cost" sub={tab} tabs={[["estimate", "Estimate"], ["boq", "BOQ"], ["takeoff", "Take-off and BoM"]]} />
+      <SubTabs base="cost" sub={tab} tabs={[["estimate", "Estimate"], ["control", "Budget and cost"], ["boq", "BOQ"], ["takeoff", "Take-off and BoM"]]} />
       {tab === "estimate" && <Estimate />}
       {tab === "control" && <Control target={target} />}
       {tab === "boq" && <Boq />}
