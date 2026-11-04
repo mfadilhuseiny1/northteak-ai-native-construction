@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
-import { api, Bar, clean, field, full, good, Kpi, Kpis, Label, Loading, money, Pill, primary, Problem, quiet, short, Side, Table, td, tr, useData, type Rec, type Tone } from "./kit";
+import { SizeBar } from "./Visual";
+import { api, Bar, clean, field, full, good, Kpi, Kpis, Label, Loading, money, Pill, primary, Problem, quiet, short, Side, useData, type Rec, type Tone } from "./kit";
 
 /* Subcontractors: onboarding, documents and their expiry, packages, invoices and what each one owes. A subcontractor cannot be approved with a document missing or expired, and an invoice cannot be certified past the work verified. */
 
@@ -39,20 +40,27 @@ export function SubcontractorsView({ target }: { target?: string }) {
           <Kpi label="invoices to certify" value={rows.flatMap((s) => s.invoices as Rec[]).filter((i) => i.status === "submitted").length} />
         </Kpis>
         <div className="min-h-0 flex-1 overflow-auto bg-[#111820]">
-          <Table heads={["Subcontractor", "Trade", "Standing", "Crew", "Contract", "Paid", "Next activity", "Open NCRs", "Documents"]}>
-            {rows.map((s) => {
-              const next = (s.activities as Rec[]).filter((a) => a.progress < 100).sort((a, b) => (a.start < b.start ? -1 : 1))[0];
+          <div className="grid gap-3 p-3 lg:grid-cols-2 2xl:grid-cols-3">
+            {rows.map((x) => {
+              const next = (x.activities as Rec[]).filter((a) => a.progress < 100).sort((a, b) => (a.start < b.start ? -1 : 1))[0];
               return (
-                <tr key={s.id} onClick={() => { setSel(s.id); setForm(null); }} className={`${tr} cursor-pointer ${sel === s.id ? "bg-white/[.07]" : ""}`}>
-                  <td className={`${td} font-medium text-white`}>{clean(s.name)}{s.contact ? <span className="block text-[10.5px] font-normal text-[#8f99a8]">{s.contact}{s.phone ? ` · ${s.phone}` : ""}</span> : null}</td><td className={td}>{s.trade}</td><td className={td}><Pill tone={RATING[s.rating]}>{s.rating}</Pill></td><td className={td}>{s.crew}</td>
-                  <td className={td}>{money(s.contract_value)}</td><td className={td}>{money(s.paid_to_date)}</td>
-                  <td className={td}>{next ? <>{next.id} on {short(next.start)}{next.critical && <span className="ml-1 text-[10px] text-[#fbd38d]">critical</span>}</> : "–"}</td>
-                  <td className={td}>{s.open_ncrs.length ? <Pill tone="bad">{s.open_ncrs.join(", ")}</Pill> : "none"}</td>
-                  <td className={td}>{s.expired.length ? <Pill tone="bad">{s.expired.length} expired</Pill> : s.missing.length ? <Pill tone="warn">{s.missing.length} missing</Pill> : s.expiring.length ? <Pill tone="warn">{s.expiring.length} expiring</Pill> : <Pill tone="ok">valid</Pill>}</td>
-                </tr>
+                <button key={x.id} type="button" onClick={() => { setSel(x.id); setForm(null); }} className={`rise rounded-lg border bg-[#1c2733] p-3 text-left shadow-[0_4px_16px_rgb(0_0_0/.25)] transition hover:border-white/25 ${sel === x.id ? "border-[#f5b82e]/60" : "border-white/10"}`}>
+                  <span className="flex items-start gap-2">
+                    <span className="min-w-0 flex-1"><span className="block truncate text-[13px] font-semibold text-white">{clean(x.name)}</span><span className="block truncate text-[10.5px] text-[#8f99a8]">{x.trade} · crew {x.crew}{x.contact ? ` · ${x.contact}` : ""}{x.phone ? ` · ${x.phone}` : ""}</span></span>
+                    <Pill tone={RATING[x.rating]}>{x.rating}</Pill>
+                  </span>
+                  <span className="mt-3 block">
+                    <span className="flex justify-between text-[10.5px] text-[#8f99a8]"><span>paid {money(x.paid_to_date)}</span><span>of {money(x.contract_value)}</span></span>
+                    <span className="mt-1 block"><SizeBar value={x.paid_to_date} max={Math.max(x.contract_value, 1)} color="#c08414" /></span>
+                  </span>
+                  <span className="mt-2.5 flex flex-wrap items-center gap-1.5 text-[10.5px]">
+                    <span className="text-[#abb3bf]">{next ? <>next: <b className="text-white">{next.id}</b> on {short(next.start)}{next.critical && <span className="ml-1 text-[#fbd38d]">critical</span>}</> : "no work left"}</span>
+                    <span className="ml-auto flex gap-1">{x.open_ncrs.length ? <Pill tone="bad">{x.open_ncrs.join(", ")}</Pill> : null}{x.expired.length ? <Pill tone="bad">{x.expired.length} papers expired</Pill> : x.missing.length ? <Pill tone="warn">{x.missing.length} papers missing</Pill> : x.expiring.length ? <Pill tone="warn">{x.expiring.length} expiring</Pill> : <Pill tone="ok">papers valid</Pill>}</span>
+                  </span>
+                </button>
               );
             })}
-          </Table>
+          </div>
         </div>
       </div>
       {form && (

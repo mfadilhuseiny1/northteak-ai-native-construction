@@ -43,3 +43,9 @@ button, a, select, input, textarea { transition: background-color .15s ease, bor
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
+
+/* paper: a report printed or saved as PDF flows over as many A4 pages as it needs, on white */
+@media print {
+  @page { size: A4; margin: 0; }
+  html, body { height: auto !important; overflow: visible !important; background: #fff !important; }
+}

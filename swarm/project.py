@@ -13,9 +13,10 @@ import re
 import sqlite3
 import threading
 import time
+from contextlib import contextmanager
 from datetime import date, timedelta
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Iterator
 
 from . import config, generator, planning_case as PC, reconcile, site_case as C, wbs as W
 from .data import ProjectData
@@ -69,7 +70,7 @@ CREW = {"2026-10-05": 30, "2026-10-06": 18, "2026-10-07": 30, "2026-10-08": 30}
 WEATHER = {"2026-10-05": "dry", "2026-10-06": "dry until 15:00, then heavy rain", "2026-10-07": "dry", "2026-10-08": "showers after 13:00"}
 RAINY = {"2026-10-06", "2026-10-08"}
 PREVIOUS_CERTIFIED = 3_200_000_000
-PREFIX = {"package": "WP", "work_item": "WI", "rfi": "RFI", "daily_report": "DR", "ncr": "NCR", "message": "MG", "cost_item": "CI", "invoice": "INV", "activity": "AC", "milestone": "M", "boq": "BQ", "po": "PO", "inspection": "IN", "document": "UP", "photo": "PH", "risk": "RSK"}
+PREFIX = {"package": "WP", "work_item": "WI", "rfi": "RFI", "daily_report": "DR", "ncr": "NCR", "message": "MG", "cost_item": "CI", "invoice": "INV", "activity": "AC", "milestone": "M", "boq": "BQ", "po": "PO", "inspection": "IN", "document": "UP", "photo": "PH", "risk": "RSK", "variation": "VO", "contingency_use": "CU"}
 TASK_STATUS = ("open", "doing", "review", "done")  # a card on the Kanban board; proposed, rejected and superseded are not on it as work
 
 SEED_VERSION = "2"  # raise when the seeded records change shape
@@ -345,6 +346,26 @@ def _use(path: Path) -> None:
         DB = path
         _db()
         TODAY = date.today().isoformat() if is_blank() else C.TODAY
+
+
+@contextmanager
+def visiting(path: Path) -> Iterator[None]:
+    """Another project's records for a moment, read beside the open one's, as the portfolio does. The lock is held throughout, so no other request reads or writes while the app points elsewhere."""
+    global DB, TODAY, _conn, _conn_path
+    with _lock:
+        if path == DB:
+            yield
+            return
+        saved = DB, TODAY, _conn, _conn_path
+        DB, _conn, _conn_path = path, None, None
+        try:
+            _db()
+            TODAY = date.today().isoformat() if is_blank() else C.TODAY
+            yield
+        finally:
+            if _conn is not None:
+                _conn.close()
+            DB, TODAY, _conn, _conn_path = saved
 
 
 def open_project(pid: str) -> dict:

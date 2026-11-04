@@ -3,7 +3,8 @@ import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { API_URL } from "@/lib/api";
 import { AgentBar } from "./AgentBar";
-import { api, Bar, clean, Empty, field, good, inFocus, inline, Kpi, Kpis, Label, Loading, notifyChanged, Pill, primary, Problem, quiet, Ref, short, Side, SubTabs, Table, td, tr, useData, useFocus, useGo, type Rec, type Tone } from "./kit";
+import { Item } from "./Visual";
+import { api, Bar, clean, Empty, field, good, inFocus, inline, Kpi, Kpis, Label, Loading, notifyChanged, Pill, primary, Problem, quiet, Ref, short, Side, SubTabs, useData, useFocus, useGo, type Rec, type Tone } from "./kit";
 
 /* Module 7, QA/QC: was the work done right? An inspection's result is what closes its task on the board: a pass lets what waits for it go on, and a fail raises an NCR and stops it until that closes. Photos are the evidence, and an agent can look for defects in them, but a person raises the NCR. */
 
@@ -95,14 +96,19 @@ function Inspections({ target }: { target: string }) {
           <Kpi label="hold points not signed" value={ins.filter((i) => i.hold_point && i.status !== "passed").length} tone={ins.some((i) => i.hold_point && i.status !== "passed") ? "warn" : "ok"} />
         </Kpis>
         <div className="min-h-0 flex-1 overflow-auto bg-[#111820]">
-          <Table heads={["ID", "What", "By", "Holds", "Last inspected", "Next", "Checklist", "Result"]}>
-            {rows.map((i) => (
-              <tr key={i.id} onClick={() => { setForm(null); setSel(i.id); }} className={`${tr} cursor-pointer ${sel === i.id ? "bg-white/[.07]" : ""}`}>
-                <td className={`${td} font-medium text-white`}>{i.id}{i.hold_point && <Icon name="lock" className="ml-1 inline h-3 w-3 text-[#ffb4b4]" />}</td><td className={td}>{i.title}</td><td className={td}>{clean(i.by_name)}</td><td className={td}>{i.activity ? <Ref to={`schedule/gantt:${i.activity}`}>{i.activity}</Ref> : "–"}</td><td className={`${td} whitespace-nowrap`}>{short(i.date)}</td><td className={`${td} whitespace-nowrap`}>{short(i.next)}</td>
-                <td className={td}>{(i.checklist as Rec[]).length ? `${(i.checklist as Rec[]).filter((c) => c.ok === true).length}/${(i.checklist as Rec[]).length}` : "–"}</td><td className={td}><Pill tone={INSPECTION[i.status] ?? "none"}>{i.status}</Pill></td>
-              </tr>
-            ))}
-          </Table>
+          <div className="divide-y divide-white/[.05]">
+            {rows.map((i) => {
+              const list = i.checklist as Rec[], ok = list.filter((c) => c.ok === true).length;
+              return (
+                <Item key={i.id} selected={sel === i.id} onClick={() => { setForm(null); setSel(i.id); }}
+                  code={<span className="flex items-center gap-1">{i.id}{i.hold_point && <Icon name="lock" className="h-3 w-3 text-[#ffb4b4]" />}</span>}
+                  title={<span className="text-white">{i.title}</span>}
+                  meta={<>{clean(i.by_name)}{i.activity ? <> · on <Ref to={`schedule/gantt:${i.activity}`}>{i.activity}</Ref></> : null} · last {short(i.date)}{i.next ? ` · next ${short(i.next)}` : ""}{i.hold_point ? " · hold point: work waits for it" : ""}</>}
+                  visual={list.length ? <span className="block"><span className="flex h-2 gap-[2px]">{list.map((c, k) => <span key={k} className="h-full flex-1 rounded-[2px]" title={c.item ?? c.text ?? ""} style={{ background: c.ok === true ? "#29a383" : c.ok === false ? "#f87171" : "#ffffff1a" }} />)}</span><span className="mt-0.5 block text-[10.5px] text-[#8f99a8]">checklist {ok} of {list.length} passed</span></span> : <span className="text-[10.5px] text-[#5c6b7a]">no checklist</span>}
+                  value={<Pill tone={INSPECTION[i.status] ?? "none"}>{i.status}</Pill>} />
+              );
+            })}
+          </div>
           {!rows.length && <Empty>No inspections here. Approving a work plan plans its inspections, or plan one yourself.</Empty>}
         </div>
       </div>
@@ -147,24 +153,30 @@ function Ncrs({ target }: { target: string }) {
         </div>
       )}
       <div className="min-h-0 flex-1 overflow-auto bg-[#111820]">
-        <Table heads={["NCR", "What", "Responsible", "Holds", "Raised", "Due", "Status", ""]}>
-          {ncrs.map((n) => (
-            <tr key={n.id} className={`${tr} ${target === n.id ? "bg-white/[.07]" : ""}`}>
-              <td className={`${td} font-medium text-white`}>{n.id}</td><td className={td}>{n.title}{n.action && <p className="text-[10.5px] text-[#8f99a8]">{n.action}</p>}{n.inspection && <p className="mt-0.5"><Ref to={`quality/inspections:${n.inspection}`}>{n.inspection}</Ref></p>}</td>
-              <td className={td}>{clean(n.by_name)}</td><td className={td}>{n.activity ? <Ref to={`schedule/gantt:${n.activity}`}>{n.activity}</Ref> : "–"}</td><td className={`${td} whitespace-nowrap`}>{short(n.raised)}</td><td className={`${td} whitespace-nowrap`}>{short(n.due)}</td>
-              <td className={td}><Pill tone={n.status === "open" ? "bad" : "ok"}>{n.status}{n.closed_on ? ` ${short(n.closed_on)}` : ""}</Pill></td>
-              <td className={td}>
-                {n.status === "open" && (closing === n.id ? (
-                  <span className="flex items-center gap-1">
-                    <input autoFocus value={action} onChange={(e) => setAction(e.target.value)} placeholder="What was done" className={`${inline} w-[170px]`} />
-                    <button disabled={!action.trim()} onClick={async () => { if (await act(() => api(`/api/project/ncrs/${n.id}/close`, { action }))) { setClosing(null); setAction(""); } }} className={good}>Close</button>
-                    <button onClick={() => setClosing(null)} className={quiet}>Cancel</button>
-                  </span>
-                ) : <button onClick={() => setClosing(n.id)} className={quiet}>Close…</button>)}
-              </td>
-            </tr>
-          ))}
-        </Table>
+        <div className="divide-y divide-white/[.05]">
+          {ncrs.map((n) => {
+            const open = n.status === "open", over = open && n.due && n.due < (data.today ?? "");
+            return (
+              <div key={n.id} className={target === n.id ? "bg-white/[.07]" : ""} style={{ boxShadow: `inset 3px 0 0 ${open ? "#f87171" : "#29a383"}` }}>
+                <Item code={n.id} title={<span className="text-white">{n.title}</span>}
+                  meta={<>{clean(n.by_name)}{n.activity ? <> · holds <Ref to={`schedule/gantt:${n.activity}`}>{n.activity}</Ref></> : null}{n.inspection ? <> · from <Ref to={`quality/inspections:${n.inspection}`}>{n.inspection}</Ref></> : null}{n.action ? <span className="block">Done: {n.action}</span> : null}</>}
+                  visual={<span className="block text-[10.5px]"><span className="flex items-center gap-1.5 text-[#abb3bf]"><span>raised {short(n.raised)}</span><span className="h-px flex-1 bg-white/15" /><span className={over ? "font-semibold text-[#ffb4b4]" : ""}>due {short(n.due)}</span></span>{over && <span className="mt-0.5 block text-[#ffb4b4]">past its due date</span>}</span>}
+                  value={<Pill tone={open ? "bad" : "ok"}>{n.status}{n.closed_on ? ` ${short(n.closed_on)}` : ""}</Pill>} />
+                {open && (
+                  <div className="flex flex-wrap items-center gap-1 px-3 pb-2 pl-[76px]">
+                    {closing === n.id ? (
+                      <>
+                        <input autoFocus value={action} onChange={(e) => setAction(e.target.value)} placeholder="What was done" className={`${inline} w-[220px]`} />
+                        <button disabled={!action.trim()} onClick={async () => { if (await act(() => api(`/api/project/ncrs/${n.id}/close`, { action }))) { setClosing(null); setAction(""); } }} className={good}>Close</button>
+                        <button onClick={() => setClosing(null)} className={quiet}>Cancel</button>
+                      </>
+                    ) : <button onClick={() => setClosing(n.id)} className={quiet}>Close…</button>}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
         {!ncrs.length && <Empty>No NCRs.</Empty>}
       </div>
     </div>

@@ -13,7 +13,10 @@ import { Dictionary } from "./WbsViews";
 
 /* Home: every project, and the way a new one starts. A new project is empty. A person tells the agents what is being planned, in words, documents or both, in one box, and the other tabs fill in from what the agents make of it. Under their reply are the proposal's executive summary, scope and BOQ, and beside the conversation the project's documents. What comes back is a proposal until a person approves it on the Review tab. */
 
-const TYPES = ".pdf,.txt,.md,.csv,.png,.jpg,.jpeg,.dwg,.dxf,.xlsx,.docx";
+const TYPES = ".pdf,.txt,.md,.csv,.png,.jpg,.jpeg,.dwg,.dxf,.xlsx,.docx,.zip";
+const isZip = (f: File) => f.name.toLowerCase().endsWith(".zip");
+/** What a zip gave: how many documents came out, and what was set aside. */
+const unpacked = (out: Rec) => `${many((out.documents as Rec[]).length, "document")} from the zip${(out.skipped as Rec[]).length ? `, ${(out.skipped as Rec[]).length} set aside: ${(out.skipped as Rec[]).map((x) => `${x.name} (${x.why})`).join("; ")}` : ""}`;
 const sizeOf = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1e3))} KB`);
 const many = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
 const reopen = () => { window.location.hash = "home"; window.location.reload(); };
@@ -68,8 +71,8 @@ function Composer({ used, proposal, hero }: { used: number; proposal: Rec | null
         if (rows[i].state === "done") continue;
         change(i, { state: "uploading", pct: 0, note: "" });
         try {
-          await send(rows[i], (pct) => change(i, pct >= 100 ? { state: "reading", pct } : { pct }));
-          change(i, { state: "done" });
+          const out = await send(rows[i], (pct) => change(i, pct >= 100 ? { state: "reading", pct } : { pct }));
+          change(i, { state: "done", note: out.documents ? unpacked(out) : "" });
         } catch (e) { failed++; change(i, { state: "failed", note: (e as Error).message }); }
       }
       notifyChanged();
@@ -95,17 +98,18 @@ function Composer({ used, proposal, hero }: { used: number; proposal: Rec | null
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-[12.5px] text-white" title={r.file.name}>{titleOf(r.file.name)}<span className="ml-1.5 text-[11.5px] text-[#8f99a8]">{sizeOf(r.file.size)}</span></p>
                   {r.state === "uploading" && <span className="mt-1 block h-1 overflow-hidden rounded-full bg-white/10"><span className="block h-full bg-[#8083e8] transition-all" style={{ width: `${r.pct}%` }} /></span>}
-                  {r.state === "reading" && <p className="animate-pulse text-[11.5px] text-[#d9d3ff]">Reading and sorting it…</p>}
+                  {r.state === "reading" && <p className="animate-pulse text-[11.5px] text-[#d9d3ff]">{isZip(r.file) ? "Unpacking it, then reading and sorting each document…" : "Reading and sorting it…"}</p>}
+                  {r.state === "done" && r.note && <p className="truncate text-[11.5px] text-[#7ee2c0]" title={r.note}>{r.note}</p>}
                   {r.state === "failed" && <p className="truncate text-[11.5px] text-[#ffb4b4]" title={r.note}>Failed: {r.note}</p>}
                 </div>
-                {r.state !== "done" && <span className="w-[210px] shrink-0 max-md:hidden"><CategorySelect auto kind={r.kind} onChange={(kind) => change(i, { kind })} /></span>}
+                {r.state !== "done" && (isZip(r.file) ? <span className="w-[210px] shrink-0 text-[11.5px] text-[#8f99a8] max-md:hidden">each file in it sorted on its own</span> : <span className="w-[210px] shrink-0 max-md:hidden"><CategorySelect auto kind={r.kind} onChange={(kind) => change(i, { kind })} /></span>)}
                 {r.state !== "done" && <button disabled={busy} aria-label={`Remove ${r.file.name}`} onClick={() => setRows((old) => old.filter((_, n) => n !== i))} className="rounded p-0.5 text-[#8f99a8] hover:bg-white/10 hover:text-white disabled:opacity-30"><Icon name="x" className="h-3.5 w-3.5" /></button>}
               </div>
             ))}
           </div>
         )}
         <div className="flex items-center gap-2 border-t border-white/10 px-3 py-2">
-          <button type="button" disabled={busy} onClick={() => input.current?.click()} title="Schedule, WBS, BOQ, drawings, specifications, procedures. PDF, Word, Excel, CAD, images or text, up to 64 MB each." className={`${quiet} flex items-center gap-1.5 !px-2.5 !py-1.5 !text-[12.5px]`}><Icon name="upload" className="h-3.5 w-3.5" />Add documents</button>
+          <button type="button" disabled={busy} onClick={() => input.current?.click()} title="Schedule, WBS, BOQ, drawings, specifications, procedures. PDF, Word, Excel, CAD, images or text, up to 64 MB each, or the whole package in one ZIP." className={`${quiet} flex items-center gap-1.5 !px-2.5 !py-1.5 !text-[12.5px]`}><Icon name="upload" className="h-3.5 w-3.5" />Add documents</button>
           <span className="min-w-0 truncate text-[11.5px] text-[#8f99a8] max-md:hidden">or drop them here. You do not need every kind.</span>
           <button disabled={busy || !(fresh || (!proposal && used > 0))} onClick={() => void start()} className={`${primary} ml-auto flex shrink-0 items-center gap-1.5 !px-4 !py-2 !text-[13.5px]`}><Icon name="sparkle" className="h-3.5 w-3.5" />{busy ? "Sending…" : "Send to the agents"}</button>
         </div>

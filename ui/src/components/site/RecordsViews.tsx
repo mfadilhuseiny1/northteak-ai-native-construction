@@ -1,7 +1,8 @@
 "use client";
 import { useState } from "react";
 import { API_URL } from "@/lib/api";
-import { api, Bar, Empty, field, full, good, inFocus, inline, Kpi, Kpis, Label, Loading, money, Pill, primary, Problem, quiet, Ref, Side, Table, td, tr, useData, useFocus, type Rec, type Tone } from "./kit";
+import { Item, Legend, SERIES, SizeBar } from "./Visual";
+import { api, Bar, Empty, field, full, good, inFocus, inline, Kpi, Kpis, Label, Loading, money, Pill, primary, Problem, quiet, Ref, Side, useData, useFocus, type Rec, type Tone } from "./kit";
 
 /* The daily log, under Kanban: what happened on site each day. And claims with their payments, under BOQ & Cost. */
 
@@ -112,16 +113,16 @@ export function ClaimsView() {
           <Kpi label="this certificate" value={money(c.this_period)} hint={`${money(c.payable)} after retention`} />
         </Kpis>
         <div className="min-h-0 flex-1 overflow-auto bg-[#111820]">
-          <Table heads={["Item", "Package", "Value", "Claimed", "Photos", "Daily log", "Result", "Draft amount", "Adjusted"]}>
+          <div className="flex flex-wrap items-center gap-3 border-b border-white/[.05] px-3 py-1.5"><Legend items={[{ label: "claimed", color: SERIES[1] }, { label: "seen in photos", color: SERIES[0] }, { label: "in the daily log", color: SERIES[2] }]} /><span className="text-[10.5px] text-[#8f99a8]">each bar is % of the line done</span></div>
+          <div className="divide-y divide-white/[.05]">
             {lines.map((l) => (
-              <tr key={l.code} onClick={() => setSel(l.code)} className={`${tr} cursor-pointer ${sel === l.code ? "bg-white/[.07]" : ""}`}>
-                <td className={td}><span className="mr-1.5 text-[10.5px] text-[#8f99a8]">{l.code}</span><span className="text-white">{l.name}</span></td>
-                <td className={td}>{l.package}</td><td className={td}>{money(l.value)}</td><td className={td}>{l.claimed_pct}%</td><td className={td}>{pct(l.photo_pct)}</td><td className={td}>{pct(l.log_pct)}</td>
-                <td className={td}><Pill tone={LINE[l.status][1]}>{LINE[l.status][0]}</Pill></td><td className={td}>{money(l.amount)}</td>
-                <td className={`${td} ${l.recommended !== l.amount ? "font-medium text-[#fbd38d]" : ""}`}>{money(l.recommended)}</td>
-              </tr>
+              <Item key={l.code} wide code={l.code} selected={sel === l.code} onClick={() => setSel(l.code)}
+                title={<span className="text-white">{l.name}</span>}
+                meta={`${l.package} · worth ${money(l.value)}`}
+                visual={<span className="block space-y-[3px]">{[["claimed", l.claimed_pct, SERIES[1]], ["photos", l.photo_pct, SERIES[0]], ["daily log", l.log_pct, SERIES[2]]].map(([label, v, color]) => <span key={label as string} className="flex items-center gap-2"><span className="w-[52px] shrink-0 text-[10px] text-[#8f99a8]">{label as string}</span><SizeBar value={(v as number | null) ?? 0} max={100} color={color as string} /><span className="w-[34px] shrink-0 text-right text-[10px] tabular-nums text-[#d3d8de]">{v == null ? "–" : `${v}%`}</span></span>)}</span>}
+                value={<span className="block text-right"><Pill tone={LINE[l.status][1]}>{LINE[l.status][0]}</Pill><span className="mt-1 block text-[11px] font-normal text-[#8f99a8]">draft {money(l.amount)}</span>{l.recommended !== l.amount && <span className="block text-[11px] font-semibold text-[#fbd38d]">adjusted {money(l.recommended)}</span>}</span>} />
             ))}
-          </Table>
+          </div>
         </div>
       </div>
       {open ? (

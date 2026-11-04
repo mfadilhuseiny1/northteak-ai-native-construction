@@ -4,7 +4,8 @@ import { Icon } from "@/components/Icon";
 import { RfiView } from "@/components/aip/RfiView";
 import { API_URL } from "@/lib/api";
 import { UploadForm } from "./UploadForm";
-import { api, Bar, Empty, field, good, inFocus, Kpi, Kpis, Label, Loading, notifyChanged, Pill, primary, Problem, quiet, Ref, Side, SubTabs, Table, td, tr, useData, useFocus, useGo, type Rec, type Tone } from "./kit";
+import { Item } from "./Visual";
+import { api, Bar, Empty, field, good, inFocus, Kpi, Kpis, Label, Loading, notifyChanged, Pill, primary, Problem, quiet, Ref, Side, SubTabs, useData, useFocus, useGo, type Rec, type Tone } from "./kit";
 
 /* Module 5, Documents & RFI: is the technical information ready? Every drawing and specification in one register: what each states, whether it is still in force, who approved it and which tasks rest on it. Upload your own; rules read the facts for free, and a real model reads it only when a person asks. */
 
@@ -103,14 +104,19 @@ function Register({ target }: { target: string }) {
           <Kpi label="documents" value={(data.documents as Rec[]).length} /><Kpi label="in force" value={c.current + c.approved} /><Kpi label="waiting for approval" value={c.received} tone={c.received ? "warn" : undefined} /><Kpi label="replaced" value={c.superseded} tone={c.superseded ? "warn" : undefined} /><Kpi label="rejected" value={c.rejected} tone={c.rejected ? "bad" : undefined} />
         </Kpis>
         <div className="min-h-0 flex-1 overflow-auto bg-[#111820]">
-          <Table heads={["Document", "Kind", "From", "Date", "Status", "Activities", "Cited by", "Found in it"]}>
-            {rows.map((d) => (
-              <tr key={d.id} onClick={() => { setUpload(false); setSel(d.id); }} className={`${tr} cursor-pointer ${sel === d.id ? "bg-white/[.07]" : ""}`}>
-                <td className={td}><span className="text-white">{d.title}</span><p className="text-[10.5px] text-[#8f99a8]">{d.id}{d.source === "upload" ? " · uploaded" : ""}</p></td><td className={td}>{KINDS[d.kind] ?? d.kind}</td><td className={td}>{d.from || "–"}</td><td className={`${td} whitespace-nowrap`}>{d.date || "–"}</td>
-                <td className={td}><Pill tone={STATUS[d.status]}>{d.status === "superseded" ? "replaced" : d.status}</Pill></td><td className={td}>{(d.activities as string[]).join(", ") || "–"}</td><td className={td}>{(d.cited_by as string[]).length ? `${(d.cited_by as string[]).length} tasks` : "–"}</td><td className={td}>{(d.findings as Rec[]).length ? <Pill tone="warn">{(d.findings as Rec[]).length}</Pill> : "–"}</td>
-              </tr>
-            ))}
-          </Table>
+          <div className="divide-y divide-white/[.05]">
+            {rows.map((d) => {
+              const cited = (d.cited_by as string[]).length, found = (d.findings as Rec[]).length;
+              return (
+                <Item key={d.id} selected={sel === d.id} onClick={() => { setUpload(false); setSel(d.id); }}
+                  code={<span className="flex items-center gap-1"><Icon name="doc" className="h-3.5 w-3.5 text-[#8f99a8]" />{d.id}</span>}
+                  title={<span className="text-white">{d.title}</span>}
+                  meta={<>{KINDS[d.kind] ?? d.kind}{d.from ? ` · from ${d.from}` : ""}{d.date ? ` · ${d.date}` : ""}{d.source === "upload" ? " · uploaded" : ""}{(d.activities as string[]).length ? ` · for ${(d.activities as string[]).join(", ")}` : ""}</>}
+                  visual={<span className="flex flex-wrap items-center gap-1.5 text-[10.5px]">{cited > 0 && <span className="rounded-full bg-white/[.06] px-2 py-0.5 text-[#d3d8de]"><b className="text-white">{cited}</b> task{cited === 1 ? "" : "s"} cite it</span>}{found > 0 && <span className="rounded-full bg-[#fab219]/15 px-2 py-0.5 text-[#fbd38d]"><b>{found}</b> finding{found === 1 ? "" : "s"} in it</span>}{!cited && !found && <span className="text-[#5c6b7a]">not cited yet</span>}</span>}
+                  value={<Pill tone={STATUS[d.status]}>{d.status === "superseded" ? "replaced" : d.status}</Pill>} />
+              );
+            })}
+          </div>
           {!rows.length && <Empty>No documents here. Upload drawings and technical documents, and rules read what they state.</Empty>}
         </div>
       </div>
@@ -137,15 +143,16 @@ function Readiness() {
       <Problem err={err} />
       <Kpis><Kpi label="activities ready" value={`${data.ready} of ${data.of}`} tone={data.ready < data.of ? "warn" : "ok"} /><Kpi label="not ready, and critical" value={rows.filter((a) => !a.ready && a.critical).length} tone={rows.some((a) => !a.ready && a.critical) ? "bad" : "ok"} /></Kpis>
       <div className="min-h-0 flex-1 overflow-auto bg-[#111820]">
-        <Table heads={["WBS", "Activity", "Starts", "Documents", "Ready", "What is missing"]}>
+        <div className="divide-y divide-white/[.05]">
           {rows.map((a) => (
-            <tr key={a.id} className={tr}>
-              <td className={`${td} whitespace-nowrap font-mono text-[10.5px] text-[#8f99a8]`}>{a.code}</td><td className={td}><button onClick={() => go(`wbs/tree:${a.code}`)} className="text-left text-white hover:underline">{a.id} {a.name}</button>{a.critical && <span className="ml-1 text-[10px] text-[#fbd38d]">critical</span>}</td><td className={`${td} whitespace-nowrap`}>{a.start}</td><td className={td}>{a.documents}</td>
-              <td className={td}><Pill tone={a.ready ? "ok" : "warn"}>{a.ready ? "ready" : "not ready"}</Pill></td>
-              <td className={td}>{(a.reasons as Rec[]).map((r, i) => <button key={i} onClick={() => go(r.go)} className="block text-left text-[#fbd38d] hover:underline">{r.text}</button>)}</td>
-            </tr>
+            <div key={a.id} style={{ boxShadow: `inset 3px 0 0 ${a.ready ? "#29a383" : a.critical ? "#f87171" : "#fab219"}` }}>
+              <Item code={a.code} onClick={() => go(`wbs/tree:${a.code}`)}
+                title={<span className="flex flex-wrap items-center gap-1.5"><span className="text-white">{a.id} {a.name}</span>{a.critical && <span className="text-[10px] font-semibold text-[#fbd38d]">critical</span>}</span>}
+                meta={<>starts {a.start} · {a.documents} document{a.documents === 1 ? "" : "s"}{(a.reasons as Rec[]).map((r, i) => <button key={i} onClick={(e) => { e.stopPropagation(); go(r.go); }} className="block text-left text-[#fbd38d] hover:underline">{r.text}</button>)}</>}
+                value={<Pill tone={a.ready ? "ok" : "warn"}>{a.ready ? "ready" : "not ready"}</Pill>} />
+            </div>
           ))}
-        </Table>
+        </div>
         {!rows.length && <Empty>No activities yet.</Empty>}
       </div>
     </div>

@@ -1,12 +1,14 @@
 "use client";
 import { useState } from "react";
 import { AgentBar } from "./AgentBar";
-import { api, Bar, clean, Empty, field, inFocus, inline, Kpi, Kpis, Label, Loading, money, num, Pill, primary, Problem, quiet, Ref, short, Side, SubTabs, Table, td, tr, useData, useFocus, useGo, type Rec, type Tone } from "./kit";
+import { api, Bar, clean, Empty, field, inFocus, inline, Kpi, Kpis, Label, Loading, money, num, Pill, primary, Problem, quiet, Ref, short, Side, SubTabs, useData, useFocus, useGo, type Rec, type Tone } from "./kit";
 import { SubcontractorsView } from "./SubcontractorsView";
+import { Item, SizeBar, SplitBar } from "./Visual";
 
 /* Module 6, Procurement & Subcontractors: is the material and the crew there? Orders against the dates the schedule needs them, what the work plan needs against what is ordered, who supplies it, and who is programmed on what. */
 
 const PO_TONE: Record<string, Tone> = { "delay reported": "bad", confirmed: "info", ordered: "info", received: "ok", requested: "warn" };
+const STATE_COLOR: Record<string, string> = { available: "#29a383", on_order: "#3987e5", late: "#f87171", not_ordered: "#fab219", not_requested: "#8f99a8" };
 const STATE: Record<string, [string, Tone]> = { available: ["on site", "ok"], on_order: ["on order", "info"], late: ["arrives late", "bad"], not_ordered: ["not ordered", "warn"], not_requested: ["waiting for the plan's approval", "none"] };
 
 function Orders({ target }: { target: string }) {
@@ -45,35 +47,37 @@ function Orders({ target }: { target: string }) {
         </div>
       )}
       <div className="min-h-0 flex-1 overflow-auto bg-[#111820]">
-        <Table heads={["Order", "Item", "Supplier", "Holds", "Needed", "Promised", "Status", "Value", ""]}>
+        <div className="divide-y divide-white/[.05]">
           {rows.map((p) => {
             const isLate = p.status !== "received" && p.promised > p.needed;
+            const gap = p.promised && p.needed ? Math.round((Date.parse(p.promised) - Date.parse(p.needed)) / 86400000) : 0;
             return (
-              <tr key={p.id} className={`${tr} ${target === p.id ? "bg-white/[.07]" : ""}`}>
-                <td className={`${td} font-medium text-white`}>{p.id}</td>
-                <td className={td}>{p.item}{p.note && <p className="text-[10.5px] text-[#8f99a8]">{p.note}</p>}</td>
-                <td className={td}>{clean(p.supplier)}</td><td className={td}>{p.activity ? <Ref to={`schedule/gantt:${p.activity}`}>{p.activity}</Ref> : "–"}</td><td className={`${td} whitespace-nowrap`}>{short(p.needed)}</td>
-                <td className={`${td} whitespace-nowrap ${isLate ? "font-medium text-[#ffb4b4]" : ""}`}>{short(p.promised)}</td>
-                <td className={td}><Pill tone={PO_TONE[p.status] ?? "none"}>{p.status}</Pill></td><td className={`${td} whitespace-nowrap`}>{money(p.value)}</td>
-                <td className={td}>
-                  {p.status === "requested" ? (
-                    <span className="flex items-center gap-1">
-                      <input value={names[p.id] ?? ""} onChange={(e) => setNames({ ...names, [p.id]: e.target.value })} placeholder="Supplier" aria-label={`Supplier for ${p.id}`} className={`${inline} w-[120px]`} />
-                      <input type="date" aria-label={`Promised date for ${p.id}`} value={dates[p.id] ?? ""} onChange={(e) => setDates({ ...dates, [p.id]: e.target.value })} className={`${inline} w-[126px]`} />
-                      <button disabled={!names[p.id]?.trim()} onClick={() => act(() => api(`/api/project/orders/${p.id}/assign`, { supplier: names[p.id], promised: dates[p.id] ?? "" }))} className={quiet}>Place</button>
-                    </span>
-                  ) : p.status !== "received" && (
-                    <span className="flex items-center gap-1">
-                      <input type="date" aria-label={`New promised date for ${p.id}`} value={dates[p.id] ?? ""} onChange={(e) => setDates({ ...dates, [p.id]: e.target.value })} className={`${inline} w-[126px]`} />
-                      <button disabled={!dates[p.id]} onClick={() => act(() => api(`/api/project/orders/${p.id}/promise`, { promised: dates[p.id] }))} className={quiet}>Update</button>
-                      <button onClick={() => act(() => api(`/api/project/orders/${p.id}/receive`, {}))} className={quiet}>Received</button>
-                    </span>
-                  )}
-                </td>
-              </tr>
+              <div key={p.id} className={target === p.id ? "bg-white/[.07]" : ""}>
+                <Item code={p.id} title={<span className="font-medium text-white">{p.item}</span>}
+                  meta={<>{clean(p.supplier)}{p.activity ? <> · holds <Ref to={`schedule/gantt:${p.activity}`}>{p.activity}</Ref></> : null}{p.note ? <span className="block">{p.note}</span> : null}</>}
+                  visual={<span className="block text-[10.5px]"><span className="flex items-center gap-1.5 text-[#abb3bf]"><span>needed {short(p.needed)}</span><span className="h-px flex-1 bg-white/15" /><span className={isLate ? "font-semibold text-[#ffb4b4]" : ""}>promised {short(p.promised)}</span></span><span className={`mt-0.5 block ${isLate ? "text-[#ffb4b4]" : "text-[#7ee2c0]"}`}>{p.status === "received" ? "received" : isLate ? `${gap} day${gap === 1 ? "" : "s"} after it is needed` : "in time"}</span></span>}
+                  value={<span className="flex items-center justify-end gap-2"><Pill tone={PO_TONE[p.status] ?? "none"}>{p.status}</Pill><b className="font-semibold">{money(p.value)}</b></span>} />
+                {p.status !== "received" && (
+                  <div className="flex flex-wrap items-center gap-1 px-3 pb-2 pl-[76px]">
+                    {p.status === "requested" ? (
+                      <>
+                        <input value={names[p.id] ?? ""} onChange={(e) => setNames({ ...names, [p.id]: e.target.value })} placeholder="Supplier" aria-label={`Supplier for ${p.id}`} className={`${inline} w-[140px]`} />
+                        <input type="date" aria-label={`Promised date for ${p.id}`} value={dates[p.id] ?? ""} onChange={(e) => setDates({ ...dates, [p.id]: e.target.value })} className={`${inline} w-[126px]`} />
+                        <button disabled={!names[p.id]?.trim()} onClick={() => act(() => api(`/api/project/orders/${p.id}/assign`, { supplier: names[p.id], promised: dates[p.id] ?? "" }))} className={quiet}>Place</button>
+                      </>
+                    ) : (
+                      <>
+                        <input type="date" aria-label={`New promised date for ${p.id}`} value={dates[p.id] ?? ""} onChange={(e) => setDates({ ...dates, [p.id]: e.target.value })} className={`${inline} w-[126px]`} />
+                        <button disabled={!dates[p.id]} onClick={() => act(() => api(`/api/project/orders/${p.id}/promise`, { promised: dates[p.id] }))} className={quiet}>Update</button>
+                        <button onClick={() => act(() => api(`/api/project/orders/${p.id}/receive`, {}))} className={quiet}>Received</button>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
             );
           })}
-        </Table>
+        </div>
         {!rows.length && <Empty>No orders yet.</Empty>}
       </div>
     </div>
@@ -93,16 +97,17 @@ function Materials() {
       <Problem err={err} />
       <Kpis><Kpi label="on site" value={count("available")} tone="ok" /><Kpi label="on order" value={count("on_order")} /><Kpi label="not ordered" value={count("not_ordered") + count("not_requested")} tone={count("not_ordered") ? "warn" : undefined} /><Kpi label="arrive late" value={count("late")} tone={count("late") ? "bad" : "ok"} /></Kpis>
       <div className="min-h-0 flex-1 overflow-auto bg-[#111820]">
-        <Table heads={["Material", "To order", "Value", "First needed", "For tasks", "Order", "Supplier", "Promised", "State", "Worth a check"]}>
-          {rows.map((m) => (
-            <tr key={m.key} className={tr}>
-              <td className={`${td} font-medium text-white`}>{m.name}</td><td className={`${td} whitespace-nowrap`}>{num(m.gross)} {m.unit}</td><td className={`${td} whitespace-nowrap`}>{money(m.cost)}</td><td className={`${td} whitespace-nowrap`}>{short(m.needed)}</td><td className={td}>{(m.tasks as string[]).join(", ")}</td>
-              <td className={td}>{m.order ? <Ref to={`procurement/orders:${m.order}`}>{m.order}</Ref> : "–"}</td><td className={td}>{m.supplier ? clean(m.supplier) : "–"}</td><td className={`${td} whitespace-nowrap`}>{short(m.promised)}</td>
-              <td className={td}><Pill tone={STATE[m.state][1]}>{STATE[m.state][0]}</Pill></td>
-              <td className={td}>{(m.maybe_covered_by as string[]).length ? <span className="text-[#fbd38d]">{(m.maybe_covered_by as string[]).join(", ")} may already cover this</span> : ""}</td>
-            </tr>
-          ))}
-        </Table>
+        <div className="divide-y divide-white/[.05]">
+          {rows.map((m) => {
+            const max = Math.max(...rows.map((x) => x.cost), 1);
+            return (
+              <Item key={m.key} wide code={m.order ? <Ref to={`procurement/orders:${m.order}`}>{m.order}</Ref> : "–"} title={<span className="font-medium text-white">{m.name}</span>}
+                meta={<>{num(m.gross)} {m.unit} for {(m.tasks as string[]).join(", ")} · needed {short(m.needed)}{m.supplier ? ` · ${clean(m.supplier)}, promised ${short(m.promised)}` : ""}{(m.maybe_covered_by as string[]).length ? <span className="block text-[#fbd38d]">{(m.maybe_covered_by as string[]).join(", ")} may already cover this</span> : null}</>}
+                visual={<SizeBar value={m.cost} max={max} color={STATE_COLOR[m.state] ?? "#8f99a8"} title={money(m.cost)} />}
+                value={<span className="flex items-center justify-end gap-2"><Pill tone={STATE[m.state][1]}>{STATE[m.state][0]}</Pill><b className="font-semibold">{money(m.cost)}</b></span>} />
+            );
+          })}
+        </div>
       </div>
     </div>
   );
@@ -117,9 +122,14 @@ function Suppliers() {
       <Bar title="Suppliers" note="read from the orders" />
       <Problem err={err} />
       <div className="min-h-0 flex-1 overflow-auto bg-[#111820]">
-        <Table heads={["Supplier", "Orders", "Open", "Received", "Late", "Value", "Which"]}>
-          {rows.map((s) => <tr key={s.name} className={tr}><td className={`${td} font-medium text-white`}>{clean(s.name)}</td><td className={td}>{s.orders}</td><td className={td}>{s.open}</td><td className={td}>{s.received}</td><td className={td}>{s.late ? <Pill tone="bad">{s.late}</Pill> : "–"}</td><td className={`${td} whitespace-nowrap`}>{money(s.value)}</td><td className={td}><span className="flex flex-wrap gap-1">{(s.items as string[]).map((x) => <Ref key={x} to={`procurement/orders:${x}`}>{x}</Ref>)}</span></td></tr>)}
-        </Table>
+        <div className="divide-y divide-white/[.05]">
+          {rows.map((x) => (
+            <Item key={x.name} code={`${x.orders} PO`} title={<span className="font-medium text-white">{clean(x.name)}</span>}
+              meta={<span className="flex flex-wrap gap-1">{(x.items as string[]).map((o) => <Ref key={o} to={`procurement/orders:${o}`}>{o}</Ref>)}</span>}
+              visual={<span className="block"><SplitBar parts={[{ label: "received", value: x.received, color: "#29a383" }, { label: "open, in time", value: Math.max(0, x.open - x.late), color: "#3987e5" }, { label: "late", value: x.late, color: "#f87171" }]} max={Math.max(...rows.map((y) => y.orders), 1)} /><span className="mt-0.5 block text-[10.5px] text-[#8f99a8]">{x.received} received · {x.open} open{x.late ? <span className="text-[#ffb4b4]"> · {x.late} late</span> : ""}</span></span>}
+              value={<b className="font-semibold">{money(x.value)}</b>} />
+          ))}
+        </div>
         {!rows.length && <Empty>No suppliers yet: they come from the orders.</Empty>}
       </div>
     </div>
@@ -139,16 +149,17 @@ function Assignments({ target }: { target: string }) {
         <Problem err={err} />
         <Kpis><Kpi label="not programmed where the plan needs them" value={data.gaps} tone={data.gaps ? "warn" : "ok"} /><Kpi label="more than their crew" value={rows.filter((r) => r.over).length} tone={rows.some((r) => r.over) ? "bad" : "ok"} /></Kpis>
         <div className="min-h-0 flex-1 overflow-auto bg-[#111820]">
-          <Table heads={["WBS", "Activity", "Dates", "Programmed", "The work needs", "Sections", "Peak · crew", "Standing", ""]}>
+          <div className="divide-y divide-white/[.05]">
             {rows.map((r) => (
-              <tr key={r.id} className={`${tr} ${target && r.by === target ? "bg-white/[.07]" : ""}`}>
-                <td className={`${td} whitespace-nowrap font-mono text-[10.5px] text-[#8f99a8]`}>{r.code}</td><td className={td}><span className="text-white">{r.activity}</span> {r.name}{r.critical && <span className="ml-1 text-[10px] text-[#fbd38d]">critical</span>}</td><td className={`${td} whitespace-nowrap`}>{short(r.start)} – {short(r.finish)}</td><td className={td}>{r.programmed_name}</td>
-                <td className={td}>{r.gap ? <Pill tone="warn">{r.by_name}</Pill> : r.by_name}</td><td className={td}>{(r.sections as string[]).join(", ") || "–"}</td><td className={td}>{r.peak != null ? <span className={r.over ? "font-medium text-[#ffb4b4]" : ""}>{r.peak} · {r.crew ?? "–"}</span> : "–"}</td>
-                <td className={td}>{r.expired.length ? <Ref to={`procurement/subs:${r.by}`} tone="bad">{r.expired[0]} expired</Ref> : r.open_ncrs.length ? <Ref to={`quality/ncrs:${r.open_ncrs[0]}`} tone="bad">{r.open_ncrs[0]}</Ref> : r.rating ? <Pill tone={r.rating === "good" ? "ok" : "warn"}>{r.rating}</Pill> : "–"}</td>
-                <td className={td}><span className="flex gap-1">{r.gap && <button onClick={() => act(() => api("/api/project/assignments", { activity: r.activity, by: r.by }))} className={quiet}>Programme them</button>}{(r.sections as string[]).length > 0 && <button onClick={() => setMoving({ activity: r.activity, section: (r.sections as string[])[0], sections: r.sections, by: r.by })} className={quiet}>Move to…</button>}</span></td>
-              </tr>
+              <div key={r.id} className={target && r.by === target ? "bg-white/[.07]" : ""}>
+                <Item code={r.code} title={<span className="flex flex-wrap items-center gap-1.5"><span className="text-white">{r.activity}</span><span className="text-[#e5e8eb]">{r.name}</span>{r.critical && <span className="text-[10px] font-semibold text-[#fbd38d]">critical</span>}</span>}
+                  meta={<>{short(r.start)} – {short(r.finish)} · programmed: {r.programmed_name} · the work needs: {r.gap ? <span className="text-[#fbd38d]">{r.by_name}</span> : r.by_name}{(r.sections as string[]).length ? ` · sections ${(r.sections as string[]).join(", ")}` : ""}</>}
+                  visual={r.peak != null ? <span className="block"><span className="relative block h-2.5 w-full rounded-full bg-white/[.06]"><span className="absolute inset-y-0 left-0 rounded-full" style={{ width: `${(r.peak / Math.max(r.peak, r.crew ?? 0, 1)) * 100}%`, background: r.over ? "#f87171" : "#3987e5" }} />{r.crew != null && <span className="absolute -inset-y-1 w-[2px] rounded bg-white" style={{ left: `calc(${(r.crew / Math.max(r.peak, r.crew, 1)) * 100}% - 1px)` }} />}</span><span className={`mt-0.5 block text-[10.5px] ${r.over ? "text-[#ffb4b4]" : "text-[#8f99a8]"}`}>peak {r.peak} · crew {r.crew ?? "–"}</span></span> : null}
+                  value={r.expired.length ? <Ref to={`procurement/subs:${r.by}`} tone="bad">{r.expired[0]} expired</Ref> : r.open_ncrs.length ? <Ref to={`quality/ncrs:${r.open_ncrs[0]}`} tone="bad">{r.open_ncrs[0]}</Ref> : r.rating ? <Pill tone={r.rating === "good" ? "ok" : "warn"}>{r.rating}</Pill> : null} />
+                {(r.gap || (r.sections as string[]).length > 0) && <div className="flex gap-1 px-3 pb-2 pl-[76px]">{r.gap && <button onClick={() => act(() => api("/api/project/assignments", { activity: r.activity, by: r.by }))} className={quiet}>Programme them</button>}{(r.sections as string[]).length > 0 && <button onClick={() => setMoving({ activity: r.activity, section: (r.sections as string[])[0], sections: r.sections, by: r.by })} className={quiet}>Move to…</button>}</div>}
+              </div>
             ))}
-          </Table>
+          </div>
           {!rows.length && <Empty>No activities yet.</Empty>}
         </div>
       </div>

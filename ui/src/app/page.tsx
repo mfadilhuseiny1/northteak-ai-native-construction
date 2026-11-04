@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { Icon, type IconName } from "@/components/Icon";
 import { api, FocusContext, GoContext, notifyChanged, quiet, type Focus, type Rec } from "@/components/site/kit";
 import { WbsModule } from "@/components/site/WbsModule";
+import { ReportsModule } from "@/components/site/ReportsModule";
 import { ScheduleModule } from "@/components/site/ScheduleModule";
 import { CostModule } from "@/components/site/CostModule";
 import { KanbanModule } from "@/components/site/KanbanModule";
@@ -17,7 +18,6 @@ import { HomeModule } from "@/components/site/HomeModule";
 import { OperatorChat } from "@/components/site/OperatorChat";
 import { ReviewModule } from "@/components/site/ReviewModule";
 import { SourceDrawer } from "@/components/site/SourceDrawer";
-import { WorkPackages } from "@/components/site/WbsViews";
 import { CriticalModule } from "@/components/site/CriticalModule";
 import { ProceduresModule } from "@/components/site/ProceduresModule";
 import { RiskModule } from "@/components/site/RiskModule";
@@ -29,12 +29,12 @@ const Model3DModule = dynamic(() => import("@/components/site/Model3DModule").th
 
 const GROUPS: [string, [string, string, IconName][]][] = [
   ["Set up", [["review", "Review", "check"]]],
-  ["Workspace", [["list", "List", "list"], ["wbs", "WBS", "pipeline"], ["gantt", "Timeline", "clock"], ["critical", "Critical Path", "graph"], ["kanban", "Kanban", "grid"], ["model", "3D Timeline", "cube"]]],
-  ["Records", [["procedures", "Procedures", "doc"], ["cost", "Cost", "gauge"]]],
+  ["Workspace", [["wbs", "WBS", "pipeline"], ["gantt", "Timeline", "clock"], ["critical", "Critical Path", "graph"], ["kanban", "Kanban", "grid"], ["model", "3D Timeline", "cube"]]],
+  ["Records", [["procedures", "Procedures", "doc"], ["cost", "Cost", "gauge"], ["reports", "Reports", "report"]]],
 ];
 const TABS = GROUPS.flatMap(([, tabs]) => tabs);
 const OFF_MENU = ["documents", "schedule", "procurement", "quality", "tower", "risks", "agents"];  // out of the menu to keep the flow plain. A link that needs one still opens it: an RFI to answer, a hold point to sign
-const MOVED: Record<string, string> = { "new": "home", "planning": "home", "analysis": "review", "wbs/plan": "review", "tower/swarm": "review", "wbs/packages": "list", "schedule": "gantt", "schedule/gantt": "gantt", "schedule/network": "critical" };
+const MOVED: Record<string, string> = { "new": "home", "planning": "home", "analysis": "review", "wbs/plan": "review", "tower/swarm": "review", "list": "wbs/packages", "schedule": "gantt", "schedule/gantt": "gantt", "schedule/network": "critical" };
 const SETUP_QUESTIONS = ["Where do the documents disagree, and what should I settle before approving?", "What is missing from this package?", "Which assumptions should I check first?", "Explain the critical path in plain words."];
 const COPILOT = "siteswarm.copilot";
 
@@ -154,8 +154,8 @@ export default function Home() {
             {route.tab === "home" && <HomeModule />}
             {route.tab === "review" && own === true && <ReviewModule />}
             {route.tab === "review" && own === false && <AnalysisView />}
-            {route.tab === "list" && <WorkPackages />}
             {route.tab === "wbs" && <WbsModule sub={route.sub} target={route.target} />}
+            {route.tab === "reports" && <ReportsModule sub={route.sub} target={route.target} />}
             {route.tab === "procedures" && <ProceduresModule />}
             {route.tab === "critical" && <CriticalModule />}
             {route.tab === "gantt" && <ScheduleModule sub="gantt" target={route.target} />}

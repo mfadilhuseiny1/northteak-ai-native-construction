@@ -1,12 +1,13 @@
 "use client";
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { API_URL } from "@/lib/api";
-import { api, Bar, Card, Empty, field, good, Kpi, Kpis, Label, Loading, money, num, Pill, primary, Problem, quiet, Ref, dates, short, Side, SubTabs, Table, td, tr, useData, useFocus, useGo, type Rec, type Tone, NotYet } from "./kit";
+import { api, Bar, Card, Empty, field, good, Kpi, Kpis, Label, Loading, money, num, Pill, primary, Problem, quiet, Ref, dates, short, Side, useData, useFocus, useGo, type Rec, type Tone, NotYet } from "./kit";
 import { CARD, nodeFocus, NodePanel } from "./NodePanel";
 import { WbsDiagram, WbsReport, type WbsNode } from "./WbsDiagram";
 import { CpmNetwork, linkReasons } from "./CpmNetwork";
-import { ControlAccounts, Dictionary } from "./WbsViews";
+import { ControlAccounts, Dictionary, WorkPackages } from "./WbsViews";
+import { Group, hue, Item, Legend, OTHER, SizeBar, Span } from "./Visual";
 
 /* The WBS: the work broken down from the project, through control accounts and work packages, to the task. Everything else hangs on this tree, so a row here shows what is known about that piece of work, and opens it. */
 
@@ -16,7 +17,7 @@ const TAG: Record<string, string> = { DOCUMENT_CONFLICT: "Documents disagree", S
 const TYPE_ICON: Record<string, string> = { operation: "O", inspection: "I", handling: "H" };
 
 function Progress({ value }: { value: number }) {
-  return <span className="flex items-center gap-1.5" title={`${value}%`}><span className="h-1.5 w-14 overflow-hidden rounded-full bg-white/10"><span className="block h-full bg-[#29a383]" style={{ width: `${value}%` }} /></span><span className="w-7 text-right text-[10.5px] tabular-nums text-[#abb3bf]">{value}%</span></span>;
+  return <span className="flex items-center gap-1.5" title={`${value}%`}><span className="h-1.5 w-14 overflow-hidden rounded-full bg-white/10"><span className="block h-full bg-[#c08414]" style={{ width: `${value}%` }} /></span><span className="w-7 text-right text-[10.5px] tabular-nums text-[#abb3bf]">{value}%</span></span>;
 }
 
 /** What every module knows about this node, each a way into that module. */
@@ -37,16 +38,21 @@ function Links({ n }: { n: Rec }) {
   );
 }
 
-function Row({ n, depth, open, toggle, sel, onSel }: { n: Rec; depth: number; open: Set<string>; toggle: (code: string) => void; sel: string | null; onSel: (code: string) => void }) {
+const OUTLINE = "grid grid-cols-[60px_minmax(230px,1fr)_130px_24%_96px_92px_170px] items-center gap-x-3";  // the same widths on every row, so the timeline lines up down the page
+type Window = { from: string; to: string; today: string };
+
+function Row({ n, depth, open, toggle, sel, onSel, span, color }: { n: Rec; depth: number; open: Set<string>; toggle: (code: string) => void; sel: string | null; onSel: (code: string) => void; span: Window; color: string }) {
   const kids = (n.children ?? []) as Rec[];
   const isOpen = open.has(n.code);
   const { setFocus } = useFocus();
+  const at = (d: string) => Math.max(0, Math.min(100, ((Date.parse(d) - Date.parse(span.from)) / Math.max(1, Date.parse(span.to) - Date.parse(span.from))) * 100));
   return (
     <>
-      <tr onClick={() => onSel(n.code)} className={`group cursor-pointer border-t border-white/5 hover:bg-white/[.04] ${sel === n.code ? "bg-white/[.07]" : ""}`}>
-        <td className={`${td} whitespace-nowrap font-mono text-[10.5px] text-[#8f99a8]`}>{n.code}</td>
-        <td className={td}>
-          <span className="flex items-center gap-1" style={{ paddingLeft: depth * 16 }}>
+      <div onClick={() => onSel(n.code)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter") onSel(n.code); }} className={`group ${OUTLINE} cursor-pointer border-t border-white/[.04] px-3 py-1.5 outline-none hover:bg-white/[.04] focus-visible:bg-white/[.06] ${sel === n.code ? "bg-white/[.07]" : n.type === "package" ? "bg-white/[.025]" : ""}`} style={n.type === "package" ? { boxShadow: `inset 3px 0 0 ${color}` } : undefined}>
+        <span className="truncate font-mono text-[10.5px] text-[#8f99a8]">{n.code}</span>
+        <span className="min-w-0">
+          <span className="flex items-center gap-1">
+            {Array.from({ length: depth }, (_, i) => <span key={i} className="-my-2 h-7 w-3 shrink-0 border-l border-white/10" />)}
             {kids.length ? <button onClick={(e) => { e.stopPropagation(); toggle(n.code); }} aria-label={isOpen ? "Collapse" : "Expand"} aria-expanded={isOpen} className="rounded p-0.5 text-[#abb3bf] hover:bg-white/10"><Icon name={isOpen ? "down" : "right"} className="h-3 w-3" /></button> : <span className="w-4 shrink-0" />}
             {n.type === "task" && <span className={`flex h-4 w-4 shrink-0 items-center justify-center text-[9px] font-bold ${n.kind === "inspection" ? `rounded-[2px] border ${n.hold_point ? "border-[#e5484d] text-[#ffb4b4]" : "border-[#abb3bf] text-[#d3d8de]"}` : n.kind === "handling" ? "text-[#abb3bf]" : "rounded-full border border-[#abb3bf] text-[#d3d8de]"}`}>{TYPE_ICON[n.kind] ?? "O"}</span>}
             <span className={`min-w-0 ${n.type === "project" || n.type === "package" ? "font-semibold text-white" : n.type === "activity" ? "font-medium text-white" : n.type === "section" ? "text-[#e5e8eb]" : "text-[#d3d8de]"}`}>{n.name}</span>
@@ -56,17 +62,22 @@ function Row({ n, depth, open, toggle, sel, onSel }: { n: Rec; depth: number; op
             {n.ready && !n.ready.ready && <span className="shrink-0 text-[10px] text-[#fbd38d]">info not ready</span>}
             <button onClick={(e) => { e.stopPropagation(); setFocus(nodeFocus(n, kids)); }} title="Show only this in every module" aria-label={`Show only ${n.code} in every module`} className="ml-1 shrink-0 rounded p-0.5 text-[#8f99a8] opacity-0 hover:bg-white/10 hover:text-white focus:opacity-100 group-hover:opacity-100"><Icon name="fit" className="h-3 w-3" /></button>
           </span>
-        </td>
-        <td className={`${td} whitespace-nowrap text-[11px]`}>{n.by_name || ""}</td>
-        <td className={`${td} whitespace-nowrap text-[11px] tabular-nums`}>{n.start && n.finish ? dates(n.start, n.finish) : n.start ? short(n.start) : ""}</td>
-        <td className={td}>{n.status && n.type === "task" ? <Pill tone={CARD[n.status]?.[1] ?? "none"}>{CARD[n.status]?.[0] ?? n.status}</Pill> : typeof n.progress === "number" && n.type !== "section" ? <Progress value={n.progress} /> : null}</td>
-        <td className={`${td} whitespace-nowrap text-right text-[11px] tabular-nums`}>{n.cost ? money(n.cost.budget) : n.roll?.planned_cost ? money(n.roll.planned_cost) : ""}</td>
-        <td className={td}><Links n={n} /></td>
-      </tr>
+        </span>
+        <span className="truncate text-[11px] text-[#d3d8de]" title={n.by_name || ""}>{n.by_name || ""}</span>
+        <span>{n.start && n.finish ? <Span start={n.start} finish={n.finish} from={span.from} to={span.to} today={span.today} color={color} progress={typeof n.progress === "number" && n.type !== "section" ? n.progress : undefined} critical={!!n.critical && n.type !== "package"} /> : null}</span>
+        <span>{n.status && n.type === "task" ? <Pill tone={CARD[n.status]?.[1] ?? "none"}>{CARD[n.status]?.[0] ?? n.status}</Pill> : typeof n.progress === "number" && n.type !== "section" ? <Progress value={n.progress} /> : null}</span>
+        <span className="whitespace-nowrap text-right text-[11px] tabular-nums text-[#d3d8de]">{n.cost ? money(n.cost.budget) : n.roll?.planned_cost ? money(n.roll.planned_cost) : ""}</span>
+        <span><Links n={n} /></span>
+      </div>
       {n.type === "activity" && isOpen && (n.milestones as Rec[]).map((m) => (
-        <tr key={m.id} className="border-t border-white/5"><td className={`${td} font-mono text-[10.5px] text-[#8f99a8]`}>{m.id}</td><td className={td} colSpan={6}><span className={m.days_late ? "text-[#ffb4b4]" : "text-[#d3d8de]"} style={{ paddingLeft: (depth + 1) * 16 + 20 }}>◆ {m.name}: due {short(m.contract_date)}, forecast {short(m.forecast)}{m.days_late ? `, ${m.days_late} days late` : ""}</span></td></tr>
+        <div key={m.id} className={`${OUTLINE} border-t border-white/[.04] px-3 py-1.5`}>
+          <span className="font-mono text-[10.5px] text-[#8f99a8]">{m.id}</span>
+          <span className={`text-[11.5px] ${m.days_late ? "text-[#ffb4b4]" : "text-[#d3d8de]"}`} style={{ paddingLeft: (depth + 1) * 16 + 20 }}>◆ {m.name}: due {short(m.contract_date)}, forecast {short(m.forecast)}{m.days_late ? `, ${m.days_late} days late` : ""}</span>
+          <span />
+          <span className="relative block h-3.5">{[["contract", m.contract_date], ["forecast", m.forecast]].map(([k, d]) => <span key={k} title={`${k} ${d}`} className="absolute top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rotate-45 rounded-[2px]" style={{ left: `${at(d)}%`, ...(k === "contract" ? { boxShadow: "inset 0 0 0 1.5px #e5e8eb" } : { background: m.days_late ? "#f87171" : "#c08414" }) }} />)}</span>
+        </div>
       ))}
-      {isOpen && kids.map((k) => <Row key={k.code} n={k} depth={depth + 1} open={open} toggle={toggle} sel={sel} onSel={onSel} />)}
+      {isOpen && kids.map((k, i) => <Row key={k.code} n={k} depth={depth + 1} open={open} toggle={toggle} sel={sel} onSel={onSel} span={span} color={n.type === "project" ? hue(i) : color} />)}
     </>
   );
 }
@@ -112,60 +123,99 @@ function Adder({ kind, data, act, onClose }: { kind: string; data: Rec; act: (fn
   );
 }
 
-function Tree({ target }: { target: string }) {
-  const { data, err, act } = useData("/api/project/wbs");
+/** The breakdown as a tree diagram or as an outline table. What is picked opens beside it, in the WBS's panel. */
+function Tree({ view, data, target, sel, onSel }: { view: string; data: Rec; target: string; sel: string | null; onSel: (code: string) => void }) {
   const { focus } = useFocus();
-  const go = useGo();
   const [open, setOpen] = useState<Set<string> | null>(null);
-  const [sel, setSel] = useState<string | null>(target || null);
-  const [view, setView] = useState("tree");
-  const [adding, setAdding] = useState("");
-  useEffect(() => { if (target) { setSel(target); setAdding(""); setOpen((o) => new Set([...(o ?? []), ...ancestors(target)])); } }, [target]);
-  const root = data?.root as Rec | undefined;
+  const root = data.root as Rec;
   const opened = useMemo(() => {
     if (open) return open;
     const start = new Set<string>(["1"]);
-    for (const c of root?.children ?? []) start.add(c.code);  // down to the work packages: open one to see its tasks
+    for (const c of root.children ?? []) start.add(c.code);  // down to the work packages: open one to see its tasks
     return start;
   }, [open, root]);
-  if (!data || !root) return <div className="flex-1"><Problem err={err} />{!err && <Loading />}</div>;
+  useEffect(() => { if (target) setOpen(new Set([...opened, ...ancestors(target)])); }, [target]);  // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {  // a node renumbered by a move, or picked elsewhere, shows with its parents open
+    if (sel && ancestors(sel).slice(0, -1).some((c) => !opened.has(c))) setOpen(new Set([...opened, ...ancestors(sel).slice(0, -1)]));
+  }, [sel]);  // eslint-disable-line react-hooks/exhaustive-deps
   const toggle = (code: string) => { const next = new Set(opened); if (next.has(code)) next.delete(code); else next.add(code); setOpen(next); };
-  const pick = (code: string) => { setAdding(""); setSel(code); };
   const shown = focus && focus.type !== "project" ? (function find(n: Rec): Rec | null { if (n.code === focus.code) return n; for (const c of n.children ?? []) { const hit = find(c); if (hit) return hit; } return null; })(root) ?? root : root;
-  const r = root.roll as Rec, late = (data.milestones as Rec[]).filter((m) => m.days_late);
-  const next = (data.milestones as Rec[])[0];
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden text-[12px]">
-      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <Bar title={root.name} note={`${String(data.project.contractor ?? "").replace(" (fictional)", "")}${data.project.owner ? ` for ${String(data.project.owner).replace(" (fictional)", "")}` : ""} · today ${data.today}`}>
-          <span className="flex rounded border border-white/15 p-0.5" role="group" aria-label="View">{[["outline", "Outline"], ["tree", "Tree diagram"]].map(([k, label]) => <button key={k} aria-pressed={view === k} onClick={() => setView(k)} className={`rounded px-1.5 py-px text-[11px] ${view === k ? "bg-white/15 text-white" : "text-[#abb3bf] hover:text-white"}`}>{label}</button>)}</span>
-          <button onClick={() => { setSel(null); setAdding("package"); }} className={quiet}>Add control account</button>
-          <button disabled={!(data.packages as Rec[]).length} onClick={() => { setSel(null); setAdding("activity"); }} className={quiet}>Add work package</button>
-          <button disabled={!(data.activities as Rec[]).length} onClick={() => { setSel(null); setAdding("milestone"); }} className={quiet}>Add milestone</button>
-        </Bar>
-        <Problem err={err} />
-        <Kpis>
-          <Kpi label="control accounts · work packages" value={`${(data.packages as Rec[]).length} · ${(data.activities as Rec[]).length}`} />
-          <Kpi label="tasks done" value={r.tasks - r.proposed > 0 ? `${r.done} of ${r.tasks - r.proposed}` : "–"} hint={r.proposed ? `${r.proposed} proposed` : ""} />
-          <Kpi label="progress" value={`${root.progress}%`} />
-          <Kpi label="man-hours planned" value={r.man_hours ? num(r.man_hours, 0) : "–"} />
-          {next && <Kpi label={`milestone ${next.id}, due ${short(next.contract_date)}`} value={short(next.forecast)} tone={late.length ? "bad" : "ok"} hint={next.days_late ? `${next.days_late} days late` : "on time"} />}
-          <Kpi label="open RFIs · NCRs" value={`${r.rfis} · ${r.ncrs}`} tone={r.ncrs ? "bad" : r.rfis ? "warn" : "ok"} />
-        </Kpis>
-        {data.plan?.status === "pending" && (
-          <button onClick={() => go("wbs/plan")} className="flex shrink-0 items-center gap-2 border-b border-[#fab219]/30 bg-[#fab219]/[.07] px-4 py-1.5 text-left text-[#fbd38d] hover:bg-[#fab219]/[.12]"><Icon name="alert" className="h-3.5 w-3.5" />Work plan {data.plan.id} is waiting for you: its {r.proposed} tasks reach the board, the schedule and QA/QC when you approve it.<span className="ml-auto underline">Decide</span></button>
-        )}
-                <div className="min-h-0 flex-1 overflow-auto bg-[#111820]">
-          {view === "outline" ? (
-            <table className="w-full text-left text-[12px]">
-              <thead className="sticky top-0 z-[1] bg-[#1c2733] text-[10.5px] uppercase tracking-wide text-[#8f99a8]"><tr>{["WBS", "Work", "By", "Dates", "Progress", "Budget or plan", "Linked records"].map((h, i) => <th key={h} className={`whitespace-nowrap px-3 py-2 font-medium ${i === 5 || i === 6 ? "text-right" : ""}`}>{h}</th>)}</tr></thead>
-              <tbody><Row n={shown} depth={0} open={new Set([...opened, shown.code])} toggle={toggle} sel={sel} onSel={pick} /></tbody>
-            </table>
-          ) : <WbsDiagram root={shown as WbsNode} hide={shown.type === "project" ? ["section", "task"] : shown.type === "package" ? ["task"] : []} sel={sel} onSelect={pick} />}
-          {!(root.children as Rec[]).length && <NotYet>Nothing broken down yet. You can also add a control account and its work packages by hand.</NotYet>}
+    <div className="min-h-0 flex-1 overflow-auto bg-[#111820]">
+      {view === "outline" ? (
+        <div className="min-w-[1080px]">
+          <div className={`${OUTLINE} sticky top-0 z-[1] bg-[#1c2733] px-3 py-2 text-[10.5px] uppercase tracking-wide text-[#8f99a8]`}>{["WBS", "Work", "By", "When", "Progress", "Budget or plan", "Linked records"].map((h, i) => <span key={h} className={`whitespace-nowrap font-medium ${i >= 5 ? "text-right" : ""}`}>{h}</span>)}</div>
+          <Row n={shown} depth={0} open={new Set([...opened, shown.code])} toggle={toggle} sel={sel} onSel={onSel} span={{ from: root.start, to: root.finish, today: data.today }} color={OTHER} />
         </div>
-      </div>
-      {adding ? <Adder key={adding} kind={adding} data={data} act={act} onClose={() => setAdding("")} /> : sel ? <NodePanel key={sel} code={sel} onClose={() => { setSel(null); if (target) go("wbs/tree"); }} onMoved={(code) => { setOpen(new Set([...opened, ...ancestors(code)])); if (target) go(`wbs/tree:${code}`); else setSel(code); }} /> : null}
+      ) : <WbsDiagram root={shown as WbsNode} hide={shown.type === "project" ? ["section", "task"] : shown.type === "package" ? ["task"] : []} sel={sel} onSelect={onSel} />}
+      {!(root.children as Rec[]).length && <NotYet>Nothing broken down yet. You can also add a control account and its work packages by hand, with Add.</NotYet>}
+    </div>
+  );
+}
+
+/** One button for everything a person can add to the WBS by hand. What cannot be added yet says what has to come first. */
+function AddMenu({ data, onPick }: { data: Rec; onPick: (kind: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: MouseEvent) => { if (!box.current?.contains(e.target as Node)) setOpen(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    window.addEventListener("mousedown", away);
+    window.addEventListener("keydown", esc);
+    return () => { window.removeEventListener("mousedown", away); window.removeEventListener("keydown", esc); };
+  }, [open]);
+  const items: [string, string, string, string][] = [
+    ["package", "Control account", "a part of the job with its own budget", ""],
+    ["activity", "Work package", "work under a control account, with its days and links", (data.packages as Rec[]).length ? "" : "add a control account first"],
+    ["milestone", "Milestone", "a contract date, reached when a work package finishes", (data.activities as Rec[]).length ? "" : "add a work package first"],
+  ];
+  return (
+    <div ref={box} className="relative">
+      <button aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)} className={`${quiet} flex items-center gap-1`}><span className="text-[13px] leading-none">+</span>Add</button>
+      {open && (
+        <div role="menu" className="absolute right-0 top-full z-30 mt-1 w-[270px] rounded-md border border-white/15 bg-[#1c2733] p-1 shadow-[0_8px_24px_rgb(0_0_0/.45)]">
+          {items.map(([k, label, hint, first]) => (
+            <button key={k} role="menuitem" disabled={!!first} onClick={() => { setOpen(false); onPick(k); }} className="block w-full rounded px-2.5 py-1.5 text-left hover:bg-white/[.07] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent">
+              <span className="block text-[12px] text-white">{label}</span>
+              <span className="block text-[10.5px] text-[#8f99a8]">{first || hint}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const KIND_WORD: Record<string, string> = { operation: "work", inspection: "inspection", handling: "handling" };
+
+/** A plan's tasks, under the work package each belongs to: who does it, how many people for how long, and what it waits for. */
+function TaskCards({ steps, plan, who, sel, onSel }: { steps: Rec[]; plan: Rec; who: Rec; sel: string | null; onSel: (code: string) => void }) {
+  const tree = (plan.tree ?? []) as Rec[];
+  const groups = tree.length ? tree.map((t) => ({ key: t.activity as string, code: t.code as string, name: t.name as string })) : [...new Set(steps.map((s) => s.activity as string))].map((a) => ({ key: a, code: String(steps.find((s) => s.activity === a)?.code ?? "").split(".").slice(0, 3).join("."), name: a }));
+  const accounts = [...new Set(groups.map((g) => g.code.split(".").slice(0, 2).join(".")))];
+  const max = Math.max(...steps.map((s) => s.man_hours || 0), 1);
+  return (
+    <div className="space-y-3 p-3">
+      <div className="flex flex-wrap items-center gap-3 text-[10.5px] text-[#8f99a8]"><span>{steps.length} tasks in {groups.length} work packages. Bars: man-hours. Click a task to open it.</span><Legend items={[{ label: "critical", color: "#f87171" }, { label: "hold point", color: "#ffb4b4", hatched: true }]} /></div>
+      {groups.map((g) => {
+        const mine = steps.filter((s) => s.activity === g.key);
+        if (!mine.length) return null;
+        const color = hue(accounts.indexOf(g.code.split(".").slice(0, 2).join(".")));
+        const hours = mine.reduce((n, s) => n + (s.man_hours || 0), 0);
+        return (
+          <Group key={g.key} color={color} code={g.code} title={g.name} sub={`${mine.length} task${mine.length === 1 ? "" : "s"} · ${plan.packages?.[g.key]?.responsible || (who[mine[0].by] ?? mine[0].by)}`}
+            right={<div className="text-right"><p className="text-[14px] font-bold tabular-nums text-white">{num(hours, 0)}</p><p className="text-[10.5px] text-[#8f99a8]">man-hours</p></div>}>
+            {mine.map((s) => (
+              <Item key={s.id} code={s.code} selected={sel === s.code} onClick={() => onSel(s.code)}
+                title={<span className="flex flex-wrap items-center gap-1.5"><span className="text-[#e5e8eb]">{s.name}</span><span className="rounded bg-white/[.06] px-1.5 text-[10px] text-[#abb3bf]">{KIND_WORD[s.kind] ?? s.kind}</span>{s.critical && <span className="text-[10px] font-semibold text-[#f87171]">critical</span>}{s.hold_point && <span className="text-[10px] font-semibold text-[#ffb4b4]">hold point</span>}</span>}
+                meta={<><span className="flex flex-wrap gap-1">{(s.crew as Rec[]).map((c) => <span key={c.role} className="rounded-full bg-white/[.05] px-1.5 py-px text-[10px] text-[#d3d8de]"><b className="font-semibold text-white">{c.count}</b> {c.role}</span>)}{(s.after as string[]).length > 0 && <span className="text-[10px] text-[#8f99a8]">after {(s.after as string[]).join(", ")}</span>}</span><span className="mt-0.5 block text-[10px] text-[#6f7c8b]">{s.basis}</span></>}
+                visual={<SizeBar value={s.man_hours || 0} max={max} color={s.critical ? "#f87171" : color} />}
+                value={<><span className="block font-semibold">{num(s.man_hours, 0)} mh</span><span className="block text-[10.5px] font-normal text-[#8f99a8]">{num(s.hours, 0)} h on site</span></>} />
+            ))}
+          </Group>
+        );
+      })}
     </div>
   );
 }
@@ -256,16 +306,7 @@ export function WorkPlan() {
           {[["findings", "Findings"], ["tasks", "Tasks"], ["report", "Plan document"]].map(([k, label]) => <button key={k} onClick={() => setView(k)} className={`rounded-t px-2.5 py-1 text-[11.5px] ${view === k ? "bg-[#111820] font-medium text-white" : "text-[#abb3bf] hover:text-white"}`}>{label}{k === "findings" && look.length ? <span className="ml-1 rounded-full bg-[#fab219] px-1.5 text-[10px] font-semibold text-black">{look.length}</span> : null}</button>)}
         </div>
         <div className="min-h-0 flex-1 overflow-auto bg-[#111820]">
-          {view === "tasks" && (
-            <Table heads={["WBS", "Task", "What", "By", "Crew", "Hours", "Man-hours", "Waits for", "Basis"]}>
-              {steps.map((s) => (
-                <tr key={s.id} onClick={() => setSel(s.code)} className={`${tr} cursor-pointer ${sel === s.code ? "bg-white/[.07]" : ""}`}>
-                  <td className={`${td} whitespace-nowrap font-mono text-[10.5px] text-[#8f99a8]`}>{s.code}</td><td className={`${td} font-medium text-white`}>{s.id}{s.critical && <span className="ml-1 text-[10px] font-normal text-[#fbd38d]">critical</span>}</td><td className={td}>{s.name}{s.hold_point && <span className="ml-1 text-[10px] text-[#ffb4b4]">hold point</span>}</td><td className={td}>{plan.packages?.[s.activity]?.responsible || ((data.who as Rec)[s.by] ?? s.by)}</td>
-                  <td className={td}>{(s.crew as Rec[]).map((c) => <p key={c.role} className="whitespace-nowrap">{c.count} {c.role}</p>)}</td><td className={td}>{num(s.hours)}</td><td className={td}>{num(s.man_hours)}</td><td className={`${td} whitespace-nowrap`}>{(s.after as string[]).join(", ") || "–"}</td><td className={td}>{s.basis}</td>
-                </tr>
-              ))}
-            </Table>
-          )}
+          {view === "tasks" && <TaskCards steps={steps} plan={plan} who={data.who as Rec} sel={sel} onSel={setSel} />}
           {view === "findings" && (
             <div className="space-y-3 p-3">
               <Card title={`What code checked: ${look.length} to look at, ${checks.length - look.length} fine`}>
@@ -296,7 +337,7 @@ export function WorkPlan() {
                 {!(rec.rfi_drafts as Rec[]).length && <Empty>None.</Empty>}
               </Card>
               {(rec.work_items as Rec[]).length > 0 && <Card title={`Actions the agents proposed (${(rec.work_items as Rec[]).length})`} right={<button onClick={() => go("kanban/board")} className={quiet}>The board</button>}>
-                <Table heads={["Item", "What", "Who", "Due", "Status"]}>{(rec.work_items as Rec[]).map((w) => <tr key={w.id} className={tr}><td className={td}>{w.id}</td><td className={td}><span className="text-white">{w.title}</span>{w.why && <p className="text-[10.5px] text-[#8f99a8]">{w.why}</p>}</td><td className={td}>{(w.owner as string).replace(" (fictional)", "")}</td><td className={`${td} whitespace-nowrap`}>{w.due}</td><td className={td}><Pill tone={STATUS[w.status] ?? "none"}>{w.status}</Pill></td></tr>)}</Table>
+                <div className="divide-y divide-white/[.04]">{(rec.work_items as Rec[]).map((w) => <Item key={w.id} code={w.id} title={<span className="text-white">{w.title}</span>} meta={`${w.why ? `${w.why} · ` : ""}${(w.owner as string).replace(" (fictional)", "")}`} value={<span className="flex items-center justify-end gap-2"><span className="text-[11px] text-[#8f99a8]">due {w.due}</span><Pill tone={STATUS[w.status] ?? "none"}>{w.status}</Pill></span>} />)}</div>
               </Card>}
             </div>
           )}
@@ -309,14 +350,57 @@ export function WorkPlan() {
   );
 }
 
+const VIEWS: [string, string, string][] = [
+  ["tree", "Tree", "The breakdown drawn as a tree, down to the work packages"],
+  ["outline", "Outline", "Every level in one table, down to the task, with what is linked to it"],
+  ["packages", "Work packages", "The lowest level at which cost and time are planned, with where each stands on the board"],
+  ["accounts", "Control accounts", "Where scope, budget and schedule meet, each with one person answering for it"],
+  ["dictionary", "Dictionary", "What each piece of the breakdown is, written once"],
+];
+
+/** The WBS in one place: one switch for how to look at it, one button to add to it, and what is picked opening beside it in every view. */
 export function WbsModule({ sub, target }: { sub: string; target: string }) {
-  const tab = ["accounts", "dictionary"].includes(sub) ? sub : "tree";
+  const { data, err, act } = useData("/api/project/wbs");
+  const go = useGo();
+  const view = VIEWS.some(([k]) => k === sub) ? sub : "tree";
+  const [sel, setSel] = useState<string | null>(target || null);
+  const [adding, setAdding] = useState("");
+  useEffect(() => { if (target) { setSel(target); setAdding(""); } }, [target]);
+  const root = data?.root as Rec | undefined;
+  if (!data || !root) return <div className="flex-1"><Problem err={err} />{!err && <Loading />}</div>;
+  const pick = (code: string) => { setAdding(""); setSel(code); };
+  const r = root.roll as Rec, late = (data.milestones as Rec[]).filter((m) => m.days_late);
+  const next = (data.milestones as Rec[])[0];
   return (
-    <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-      <SubTabs base="wbs" sub={tab} tabs={[["tree", "WBS"], ["accounts", "Control accounts"], ["dictionary", "WBS dictionary"]]} />
-      {tab === "tree" && <Tree target={target} />}
-      {tab === "accounts" && <ControlAccounts />}
-      {tab === "dictionary" && <Dictionary />}
+    <div className="flex min-w-0 flex-1 flex-col overflow-hidden text-[12px]">
+      <Bar title={root.name} note={`${String(data.project.contractor ?? "").replace(" (fictional)", "")}${data.project.owner ? ` for ${String(data.project.owner).replace(" (fictional)", "")}` : ""} · today ${data.today}`}>
+        <span className="flex rounded-md border border-white/15 bg-black/20 p-0.5" role="tablist" aria-label="View">
+          {VIEWS.map(([k, label, hint]) => <button key={k} role="tab" aria-selected={view === k} title={hint} onClick={() => { if (k !== view) { setSel(null); setAdding(""); } go(`wbs/${k}`); }} className={`rounded px-2 py-0.5 text-[11.5px] ${view === k ? "bg-[#f5b82e] font-semibold text-[#171106]" : "text-[#abb3bf] hover:bg-white/[.07] hover:text-white"}`}>{label}</button>)}
+        </span>
+        <AddMenu data={data} onPick={(kind) => { setSel(null); setAdding(kind); }} />
+      </Bar>
+      <Problem err={err} />
+      <Kpis>
+        <Kpi label="control accounts · work packages" value={`${(data.packages as Rec[]).length} · ${(data.activities as Rec[]).length}`} />
+        <Kpi label="tasks done" value={r.tasks - r.proposed > 0 ? `${r.done} of ${r.tasks - r.proposed}` : "–"} hint={r.proposed ? `${r.proposed} proposed` : ""} />
+        <Kpi label="progress" value={`${root.progress}%`} />
+        <Kpi label="man-hours planned" value={r.man_hours ? num(r.man_hours, 0) : "–"} />
+        {next && <Kpi label={`milestone ${next.id}, due ${short(next.contract_date)}`} value={short(next.forecast)} tone={late.length ? "bad" : "ok"} hint={next.days_late ? `${next.days_late} days late` : "on time"} />}
+        <Kpi label="open RFIs · NCRs" value={`${r.rfis} · ${r.ncrs}`} tone={r.ncrs ? "bad" : r.rfis ? "warn" : "ok"} />
+      </Kpis>
+      {data.plan?.status === "pending" && (
+        <button onClick={() => go("review")} className="flex shrink-0 items-center gap-2 border-b border-[#fab219]/30 bg-[#fab219]/[.07] px-4 py-1.5 text-left text-[#fbd38d] hover:bg-[#fab219]/[.12]"><Icon name="alert" className="h-3.5 w-3.5" />Work plan {data.plan.id} is waiting for you: its {r.proposed} tasks reach the board, the schedule and QA/QC when you approve it.<span className="ml-auto whitespace-nowrap underline">Open Review</span></button>
+      )}
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          {(view === "tree" || view === "outline") && <Tree view={view} data={data} target={target} sel={sel} onSel={pick} />}
+          {view === "packages" && <WorkPackages sel={sel} onSel={pick} />}
+          {view === "accounts" && <ControlAccounts sel={sel} onSel={pick} />}
+          {view === "dictionary" && <Dictionary />}
+        </div>
+        {adding ? <Adder key={adding} kind={adding} data={data} act={act} onClose={() => setAdding("")} />
+          : sel && view !== "dictionary" ? <NodePanel key={sel} code={sel} onClose={() => { setSel(null); if (target) go(`wbs/${view}`); }} onMoved={(code) => { if (target) go(`wbs/${view}:${code}`); else setSel(code); }} /> : null}
+      </div>
     </div>
   );
 }

@@ -1,7 +1,8 @@
 "use client";
 import { useState } from "react";
 import { Markdown } from "@/components/aip/Briefing";
-import { api, Bar, Card, field, full, good, Kpi, Kpis, Label, Loading, Pill, Problem, quiet, short, Table, td, tr, useData, useGo, type Rec, type Tone } from "./kit";
+import { SizeBar } from "./Visual";
+import { api, Bar, Card, field, full, good, Kpi, Kpis, Label, Loading, Pill, Problem, quiet, short, useData, useGo, type Rec, type Tone } from "./kit";
 
 /* Where agents' proposals become real, or don't. Approving a plan moves the schedule, adds its cost to the forecast and opens its work items on the board; a message waits here for its own approval. Every step lands in the audit trail. */
 
@@ -17,19 +18,24 @@ function Decision({ d, act }: { d: Rec; act: (fn: () => Promise<unknown>) => Pro
   return (
     <Card title={<span className="flex items-center gap-2">{d.title}<Pill tone={STATUS[d.status]}>{d.status}</Pill>{d.mode === "mock" && <Pill tone="violet">offline mock: scripted answers</Pill>}</span>}
       right={<span className="text-[10.5px] font-normal text-[#8f99a8]">{d.id} · {d.created}</span>}>
-      <Table heads={pending ? ["", "Option", "Agents' ruling", "Pour", "Milestone", "Cost", "Why"] : ["Option", "Agents' ruling", "Pour", "Milestone", "Cost", "Why"]}>
-        {(d.options as Rec[]).map((o) => (
-          <tr key={o.id} onClick={() => pending && setOption(o.id)} className={`${tr} ${pending ? "cursor-pointer" : ""} ${o.id === (pending ? option : d.option) ? "bg-[#d99a16]/15" : ""}`}>
-            {pending && <td className={td}><input type="radio" name={`opt-${d.id}`} aria-label={`Choose ${o.id}`} checked={option === o.id} onChange={() => setOption(o.id)} /></td>}
-            <td className={td}><span className="mr-1.5 font-medium text-white">{o.id}</span>{o.name}{o.id === d.recommended && <span className="ml-1.5 text-[10.5px] text-[#7ee2c0]">recommended</span>}</td>
-            <td className={td}><Pill tone={VERDICT[o.verdict]}>{o.verdict}</Pill>{o.attack && <p className="mt-0.5 text-[10.5px] text-[#8f99a8]">red team: {o.attack.result}</p>}</td>
-            <td className={`${td} whitespace-nowrap`}>{short(o.evaluation.pour_on)}</td>
-            <td className={`${td} whitespace-nowrap ${o.evaluation.days_late ? "text-[#ffb4b4]" : ""}`}>{o.evaluation.days_late ? `${o.evaluation.days_late} days late` : "on time"}</td>
-            <td className={`${td} whitespace-nowrap`}>{full(o.evaluation.total_cost_rp)}</td>
-            <td className={td}>{o.reason}<p className="text-[10.5px] text-[#8f99a8]">{(o.evidence as string[]).join(", ")}</p></td>
-          </tr>
-        ))}
-      </Table>
+      <div className="grid gap-2 p-3 md:grid-cols-2 xl:grid-cols-3">
+        {(d.options as Rec[]).map((o) => {
+          const picked = o.id === (pending ? option : d.option), max = Math.max(...(d.options as Rec[]).map((x) => x.evaluation.total_cost_rp || 0), 1);
+          return (
+            <button key={o.id} type="button" onClick={() => pending && setOption(o.id)} disabled={!pending} className={`rounded-lg border p-3 text-left transition ${picked ? "border-[#f5b82e]/70 bg-[#d99a16]/10" : "border-white/10 bg-white/[.02] hover:border-white/25"} disabled:cursor-default`}>
+              <span className="flex items-center gap-2">{pending && <span className={`h-3.5 w-3.5 shrink-0 rounded-full border-2 ${option === o.id ? "border-[#f5b82e] bg-[#f5b82e]" : "border-white/30"}`} />}<span className="font-mono text-[11px] text-[#8f99a8]">{o.id}</span><span className="flex-1 font-semibold text-white">{o.name}</span><Pill tone={VERDICT[o.verdict]}>{o.verdict}</Pill></span>
+              {o.id === d.recommended && <span className="mt-1 block text-[10.5px] font-semibold text-[#7ee2c0]">the agents recommend this</span>}
+              <span className="mt-2 grid grid-cols-2 gap-2 text-[10.5px]">
+                <span><span className="block text-[#8f99a8]">pour</span><b className="text-[12px] text-white">{short(o.evaluation.pour_on)}</b></span>
+                <span><span className="block text-[#8f99a8]">milestone</span><b className={`text-[12px] ${o.evaluation.days_late ? "text-[#ffb4b4]" : "text-[#7ee2c0]"}`}>{o.evaluation.days_late ? `${o.evaluation.days_late} days late` : "on time"}</b></span>
+              </span>
+              <span className="mt-2 block"><span className="flex justify-between text-[10.5px] text-[#8f99a8]"><span>cost</span><b className="text-white">{full(o.evaluation.total_cost_rp)}</b></span><span className="mt-0.5 block"><SizeBar value={o.evaluation.total_cost_rp || 0} max={max} color="#c08414" /></span></span>
+              <span className="mt-2 block text-[11px] leading-snug text-[#d3d8de]">{o.reason}</span>
+              <span className="mt-1 block text-[10px] text-[#8f99a8]">{(o.evidence as string[]).join(", ")}{o.attack ? ` · red team: ${o.attack.result}` : ""}</span>
+            </button>
+          );
+        })}
+      </div>
       <div className="space-y-2 border-t border-white/5 p-3">
         {pending && chosen && (
           <div>
@@ -91,9 +97,15 @@ export function DecisionsView() {
         </Card>
         <Card title="Audit trail">
           <div className="max-h-[320px] overflow-auto">
-            <Table heads={["When", "Who", "What", "Record", "Detail"]}>
-              {audit.map((a) => <tr key={a.n} className={tr}><td className={`${td} whitespace-nowrap`}>{a.t}</td><td className={`${td} whitespace-nowrap`}>{a.who}</td><td className={td}>{a.action}</td><td className={`${td} whitespace-nowrap`}>{a.id}</td><td className={td}>{(a.detail ?? "").replace(/ \(fictional\)/g, "")}</td></tr>)}
-            </Table>
+            <ol className="relative ml-4 border-l border-white/10 py-2">
+              {audit.map((a) => (
+                <li key={a.n} className="relative py-1.5 pl-4 pr-3">
+                  <span className={`absolute -left-[5px] top-[11px] h-2.5 w-2.5 rounded-full ring-2 ring-[#1c2733] ${a.who === "Agent swarm" ? "bg-[#9085e9]" : "bg-[#3987e5]"}`} />
+                  <span className="flex flex-wrap items-baseline gap-x-2 text-[11.5px]"><span className="text-white">{a.action}</span>{a.id && <span className="font-mono text-[10.5px] text-[#8f99a8]">{a.id}</span>}<span className="ml-auto whitespace-nowrap text-[10.5px] tabular-nums text-[#8f99a8]">{a.t}</span></span>
+                  <span className="block text-[10.5px] text-[#8f99a8]">{a.who}{a.detail ? ` · ${(a.detail ?? "").replace(/ \(fictional\)/g, "")}` : ""}</span>
+                </li>
+              ))}
+            </ol>
             {!audit.length && <p className="p-4 text-center text-[#8f99a8]">Nothing recorded yet.</p>}
           </div>
         </Card>

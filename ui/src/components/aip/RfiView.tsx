@@ -12,6 +12,7 @@ type Rfi = { id: string; subject: string; question: string; raised_by: string; r
 type Register = { today: string; rfis: Rfi[]; counts: Record<string, number> };
 
 const STATUS: Record<string, string> = { draft: "bg-[#e879a8]/20 text-[#e9d5ff]", open: "bg-[#fab219]/15 text-[#fbd38d]", answered: "bg-[#29a383]/20 text-[#7ee2c0]" };
+const EDGE: Record<string, string> = { draft: "#e879a8", open: "#fab219", answered: "#29a383" };
 const FILTERS = [["all", "All"], ["open", "Open"], ["draft", "Drafts"], ["answered", "Answered"]] as const;
 const EMPTY = { subject: "", question: "", to: "Engineer", activity: "", due: "", impact: "" };
 
@@ -60,24 +61,29 @@ export function RfiView({ target }: { target?: string }) {
         </div>
         {err && <p className="bg-[#e5484d]/10 px-4 py-1 text-[11px] text-[#ffb4b4]">{err}</p>}
         <div className="min-h-0 flex-1 overflow-auto bg-[#111820]">
-          <table className="w-full text-left">
-            <thead className="sticky top-0 bg-[#1c2733] text-[10.5px] uppercase tracking-wide text-[#8f99a8]">
-              <tr>{["RFI", "Subject", "Status", "Ball in court", "Due", "Holds", "Raised by"].map((h) => <th key={h} className="px-3 py-2 font-medium">{h}</th>)}</tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r.id} onClick={() => { setSel(r.id); setAnswer(""); }} className={`cursor-pointer border-t border-white/5 hover:bg-white/5 ${sel === r.id ? "bg-white/[.07]" : ""}`}>
-                  <td className="whitespace-nowrap px-3 py-2 font-medium text-white">{r.id}</td>
-                  <td className="px-3 py-2 text-[#e5e8eb]">{r.subject}{r.drafted_by && <span className="ml-1.5 rounded bg-[#e879a8]/20 px-1 text-[9.5px] text-[#e9d5ff]">agent draft</span>}</td>
-                  <td className="px-3 py-2"><span className={`rounded-full px-2 py-0.5 text-[10.5px] ${STATUS[r.status]}`}>{r.status}</span></td>
-                  <td className="whitespace-nowrap px-3 py-2 text-[#d3d8de]">{r.ball_in_court || "–"}</td>
-                  <td className={`whitespace-nowrap px-3 py-2 tabular-nums ${r.overdue ? "font-medium text-[#ffb4b4]" : "text-[#d3d8de]"}`}>{r.due || "–"}{r.overdue ? " · overdue" : ""}</td>
-                  <td className="whitespace-nowrap px-3 py-2 text-[#d3d8de]">{r.activity ? <button onClick={(e) => { e.stopPropagation(); go(`schedule/gantt:${r.activity}`); }} className="hover:underline">{r.activity}</button> : "–"}{r.critical && <span className="ml-1 text-[10px] text-[#fbd38d]">critical</span>}</td>
-                  <td className="px-3 py-2 text-[#abb3bf]">{r.raised_by}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          {rows.length > 0 && (
+            <div className="border-b border-white/[.05] px-3 py-2">
+              <div className="flex h-2.5 gap-[2px] overflow-hidden rounded-full">{(["draft", "open", "answered"] as const).map((k) => { const n = rows.filter((r) => r.status === k).length; return n ? <span key={k} className="h-full" title={`${n} ${k}`} style={{ width: `${(n / rows.length) * 100}%`, background: EDGE[k] }} /> : null; })}</div>
+              <div className="mt-1.5 flex flex-wrap gap-x-4 text-[10.5px] text-[#8f99a8]">{(["draft", "open", "answered"] as const).map((k) => <span key={k} className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full" style={{ background: EDGE[k] }} />{k}<b className="text-white">{rows.filter((r) => r.status === k).length}</b></span>)}{rows.some((r) => r.overdue) && <span className="text-[#ffb4b4]">{rows.filter((r) => r.overdue).length} overdue</span>}</div>
+            </div>
+          )}
+          <div className="divide-y divide-white/[.05]">
+            {rows.map((r) => (
+              <div key={r.id} onClick={() => { setSel(r.id); setAnswer(""); }} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter") { setSel(r.id); setAnswer(""); } }} className={`flex cursor-pointer gap-3 px-3 py-2.5 outline-none hover:bg-white/[.04] focus-visible:bg-white/[.06] ${sel === r.id ? "bg-white/[.07]" : ""}`} style={{ boxShadow: `inset 3px 0 0 ${EDGE[r.status] ?? "#8f99a8"}` }}>
+                <span className="w-[62px] shrink-0 pt-0.5 font-mono text-[10.5px] text-[#8f99a8]">{r.id}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block leading-snug text-[#e5e8eb]">{r.subject}{r.drafted_by && <span className="ml-1.5 rounded bg-[#e879a8]/20 px-1 text-[9.5px] text-[#e9d5ff]">agent draft</span>}</span>
+                  <span className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10.5px] text-[#8f99a8]">
+                    {r.ball_in_court && <span>with <b className="font-medium text-[#d3d8de]">{r.ball_in_court}</b></span>}
+                    {r.activity && <button onClick={(e) => { e.stopPropagation(); go(`schedule/gantt:${r.activity}`); }} className="hover:underline">holds <b className="font-medium text-[#d3d8de]">{r.activity}</b>{r.critical && <span className="ml-1 text-[#fbd38d]">critical</span>}</button>}
+                    {r.due && <span className={r.overdue ? "font-semibold text-[#ffb4b4]" : ""}>due {r.due}{r.overdue ? ", overdue" : ""}</span>}
+                    <span>raised by {r.raised_by}</span>
+                  </span>
+                </span>
+                <span className="shrink-0 pt-0.5"><span className={`rounded-full px-2 py-0.5 text-[10.5px] ${STATUS[r.status]}`}>{r.status}</span></span>
+              </div>
+            ))}
+          </div>
           {reg && !rows.length && <p className="py-10 text-center text-[#8f99a8]">No RFIs here.</p>}
         </div>
       </div>

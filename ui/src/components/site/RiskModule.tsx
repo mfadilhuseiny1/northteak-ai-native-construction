@@ -1,12 +1,17 @@
 "use client";
 import { Fragment, useMemo, useState } from "react";
 import { Icon } from "@/components/Icon";
-import { api, Bar, Card, clean, Empty, field, inline, Kpi, Kpis, Label, Loading, Pill, primary, Problem, quiet, Side, Table, td, tr, useData, useGo, type Rec, type Tone } from "./kit";
+import { api, Bar, Card, clean, Empty, field, inline, Kpi, Kpis, Label, Loading, Pill, primary, Problem, quiet, Side, useData, useGo, type Rec, type Tone } from "./kit";
 
 /* The Risk Register: every risk on one page, scored probability by impact. Code detects what the records
    already show (open NCRs, late orders, overdue RFIs, a crew short on pour day) and those sit beside the risks
    a person puts on the register themselves. A detected risk opens the record it rests on; a registered risk is
    scored, owned and answered by a person, and its response can go straight onto the Kanban board. */
+
+/** A score out of five as five dots, so probability and impact read at a glance. */
+function Dots({ n }: { n: number }) {
+  return <span className="inline-flex gap-[2px]">{[1, 2, 3, 4, 5].map((k) => <span key={k} className={`h-1.5 w-1.5 rounded-full ${k <= n ? "bg-[#d3d8de]" : "bg-white/15"}`} />)}</span>;
+}
 
 export const LEVEL_COLOR: Record<string, string> = { extreme: "#e5484d", high: "#ec835a", medium: "#fab219", low: "#29a383" };
 const LEVEL_TEXT: Record<string, string> = { extreme: "#fff", high: "#1c1408", medium: "#1c1408", low: "#06231b" };
@@ -201,20 +206,26 @@ export function RiskModule() {
         <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_300px] items-start gap-3 overflow-y-auto bg-[#111820] p-3 max-xl:grid-cols-1">
           <section className="min-w-0 overflow-hidden rounded border border-white/10 bg-[#1c2733]">
             <div className="max-h-[calc(100vh-238px)] overflow-auto max-xl:max-h-none">
-              <Table heads={["Score", "Risk", "Category", "WBS / record", "P × I", "Owner", "Due", "Status"]}>
+              <div className="divide-y divide-white/[.05]">
                 {shown.map((r) => (
-                  <tr key={r.id} onClick={() => setSel(r.id)} className={`${tr} cursor-pointer ${sel === r.id ? "bg-white/[.07]" : ""} ${r.status === "closed" ? "opacity-50" : ""}`}>
-                    <td className={td}><span className="flex items-center gap-1.5"><ScoreBadge score={r.score} /><span className="text-[10px] capitalize leading-tight" style={{ color: LEVEL_COLOR[r.level] }}>{r.level}</span></span></td>
-                    <td className={td}><span className="font-medium leading-snug text-white">{clean(r.title)}</span><span className="mt-0.5 line-clamp-2 block text-[10.5px] leading-snug text-[#8f99a8]">{clean(r.detail)}</span><span className="mt-0.5 block text-[10px] text-[#8f99a8]">{r.id} · {r.source === "detected" ? "detected by code" : "registered"}</span></td>
-                    <td className={td}><Pill>{r.category}</Pill></td>
-                    <td className={`${td} whitespace-nowrap`}>{r.activity || r.ref || "—"}</td>
-                    <td className={`${td} whitespace-nowrap tabular-nums`}>{r.probability} × {r.impact}</td>
-                    <td className={td}>{r.owner ? clean(r.owner) : <span className="text-[#fbd38d]">no owner</span>}</td>
-                    <td className={`${td} whitespace-nowrap ${r.overdue ? "text-[#ffb4b4]" : ""}`}>{r.due || "—"}</td>
-                    <td className={td}><Pill tone={STATUS_TONE[r.status]}>{r.status}</Pill></td>
-                  </tr>
+                  <div key={r.id} onClick={() => setSel(r.id)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter") setSel(r.id); }} className={`flex cursor-pointer gap-3 px-3 py-2.5 outline-none hover:bg-white/[.04] focus-visible:bg-white/[.06] ${sel === r.id ? "bg-white/[.07]" : ""} ${r.status === "closed" ? "opacity-50" : ""}`} style={{ boxShadow: `inset 3px 0 0 ${LEVEL_COLOR[r.level]}` }}>
+                    <span className="flex w-[54px] shrink-0 flex-col items-center gap-0.5 pt-0.5"><ScoreBadge score={r.score} /><span className="text-[10px] capitalize" style={{ color: LEVEL_COLOR[r.level] }}>{r.level}</span></span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block font-medium leading-snug text-white">{clean(r.title)}</span>
+                      <span className="mt-0.5 line-clamp-2 block text-[10.5px] leading-snug text-[#8f99a8]">{clean(r.detail)}</span>
+                      <span className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[10.5px]">
+                        <Pill>{r.category}</Pill>
+                        <span className="flex items-center gap-1 text-[#abb3bf]" title={`probability ${r.probability} of 5, impact ${r.impact} of 5`}>P <Dots n={r.probability} /> I <Dots n={r.impact} /></span>
+                        {(r.activity || r.ref) && <span className="rounded bg-white/[.05] px-1.5 text-[#d3d8de]">{r.activity || r.ref}</span>}
+                        <span className={r.owner ? "text-[#d3d8de]" : "text-[#fbd38d]"}>{r.owner ? clean(r.owner) : "no owner"}</span>
+                        {r.due && <span className={r.overdue ? "text-[#ffb4b4]" : "text-[#8f99a8]"}>due {r.due}</span>}
+                        <span className="text-[#6f7c8b]">{r.id} · {r.source === "detected" ? "detected by code" : "registered"}</span>
+                      </span>
+                    </span>
+                    <span className="shrink-0 pt-0.5"><Pill tone={STATUS_TONE[r.status]}>{r.status}</Pill></span>
+                  </div>
                 ))}
-              </Table>
+              </div>
               {!shown.length && <Empty>No risks match. Clear a filter, or add the risk yourself: code only sees what the records show.</Empty>}
             </div>
           </section>

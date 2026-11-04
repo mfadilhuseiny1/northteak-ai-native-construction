@@ -1,7 +1,9 @@
 "use client";
-import { Fragment, useState } from "react";
+import { useState } from "react";
 import { api, Bar, Card, Empty, field, full, inFocus, Kpi, Kpis, Loading, money, num, Pill, primary, Problem, quiet, Ref, SubTabs, Table, td, tr, useData, useFocus, useGo, type Rec, NotYet } from "./kit";
 import { ClaimsView } from "./RecordsViews";
+import { ACTUAL, PLAN } from "./ReportCharts";
+import { Diverge, Group, hue, Item, Legend, Progress, SERIES, ShareStrip, SizeBar, SplitBar } from "./Visual";
 
 /* Cost estimation: what is the work worth? By control account and work package, spread over time as a Kurva-S, and the contract BoQ and the take-off beside it. It says which kind of estimate it is, because a top-down figure must not read like a measured one. */
 
@@ -62,32 +64,30 @@ function Estimate() {
       </Kpis>
       <div className="min-h-0 flex-1 space-y-3 overflow-auto bg-[#111820] p-3">
         {curve.length > 0 && <Card title="Planned progress over time: the Kurva-S" right={<span className="text-[10.5px] font-normal text-[#8f99a8]">read from the master schedule</span>}><SCurve points={curve} /></Card>}
-        <Card title="By control account and work package">
-          <Table heads={["WBS", "Work", "Worth", "Share", "Against the owner's estimate", "Tasks", "Man-hours"]}>
-            {rows.map((a) => (
-              <Fragment key={a.id}>
-                <tr onClick={() => toggle(a.id)} className={`${tr} cursor-pointer bg-white/[.02]`}>
-                  <td className={`${td} whitespace-nowrap font-mono text-[10.5px] text-[#8f99a8]`}>{a.code}</td>
-                  <td className={`${td} font-semibold text-white`}><span className="mr-1.5 inline-block w-3 text-[#abb3bf]">{open.has(a.id) ? "▾" : "▸"}</span>{a.name}<span className="ml-1.5 text-[10.5px] font-normal text-[#8f99a8]">{a.id}</span></td>
-                  <td className={`${td} whitespace-nowrap font-semibold text-white`}>{money(a.value)}</td>
-                  <td className={`${td} tabular-nums`}>{data.total ? `${((a.value / data.total) * 100).toFixed(1)}%` : "–"}</td>
-                  <td className={td}>{a.against_owner_pct == null ? "–" : <Pill tone={a.against_owner_pct <= -5 ? "warn" : "none"}>{a.against_owner_pct > 0 ? "+" : ""}{a.against_owner_pct}%</Pill>}</td>
-                  <td className={`${td} tabular-nums`}>{a.tasks || "–"}</td><td className={`${td} tabular-nums`}>{a.man_hours ? num(a.man_hours, 0) : "–"}</td>
-                </tr>
-                {open.has(a.id) && (a.packages as Rec[]).map((w) => (
-                  <tr key={w.id} onClick={() => go(`wbs/tree:${w.code}`)} className={`${tr} cursor-pointer`}>
-                    <td className={`${td} whitespace-nowrap font-mono text-[10.5px] text-[#8f99a8]`}>{w.code}</td>
-                    <td className={`${td} pl-8`}>{w.name}</td>
-                    <td className={`${td} whitespace-nowrap`}>{w.value ? money(w.value) : "–"}</td>
-                    <td className={`${td} tabular-nums`}>{w.weight != null ? `${w.weight}%` : "–"}</td><td className={td} />
-                    <td className={`${td} tabular-nums`}>{w.tasks || "–"}</td><td className={`${td} tabular-nums`}>{w.man_hours ? num(w.man_hours, 0) : "–"}</td>
-                  </tr>
+        {rows.length > 0 && (
+          <Card title="Where the money goes" right={<span className="text-[10.5px] font-normal text-[#8f99a8]">click a part to jump to it</span>}>
+            <div className="p-3"><ShareStrip parts={rows.map((a, i) => ({ key: a.id, label: a.name, value: a.value, color: hue(i) }))} onPick={(k) => document.getElementById(`ca-${k}`)?.scrollIntoView({ behavior: "smooth", block: "start" })} /></div>
+          </Card>
+        )}
+        {!rows.length && <NotYet>Nothing to estimate yet.</NotYet>}
+        <div className="grid gap-3 xl:grid-cols-2">
+          {rows.map((a, i) => {
+            const packages = (a.packages as Rec[]), max = Math.max(...rows.flatMap((x) => (x.packages as Rec[]).map((w) => w.value || 0)), 1);
+            const many = packages.length > 8 && !open.has(a.id);
+            return (
+              <Group key={a.id} id={`ca-${a.id}`} color={hue(i)} code={a.code} title={a.name}
+                sub={`${a.id} · ${packages.length} work package${packages.length === 1 ? "" : "s"} · ${a.tasks || 0} tasks · ${a.man_hours ? num(a.man_hours, 0) : "–"} man-hours`}
+                right={<div className="text-right"><p className="text-[15px] font-bold tabular-nums text-white">{money(a.value)}</p><p className="text-[10.5px] text-[#8f99a8]">{data.total ? `${((a.value / data.total) * 100).toFixed(1)}% of the work` : ""}</p>{a.against_owner_pct != null && <div className="mt-0.5"><Diverge value={a.against_owner_pct} title="Against the owner's estimate: blue is below it, orange above" /></div>}</div>}
+                footer={packages.length > 8 ? <button onClick={() => toggle(a.id)} className="w-full border-t border-white/[.06] py-1.5 text-[11px] text-[#9cc7f5] hover:bg-white/[.03]">{many ? `Show all ${packages.length}` : "Show fewer"}</button> : null}>
+                {(many ? packages.slice(0, 8) : packages).map((w) => (
+                  <Item key={w.id} code={w.code} title={w.name} meta={`${w.tasks || 0} tasks · ${w.man_hours ? num(w.man_hours, 0) : "–"} man-hours`} onClick={() => go(`wbs/tree:${w.code}`)}
+                    visual={<SizeBar value={w.value || 0} max={max} color={hue(i)} title={money(w.value)} />}
+                    value={<><span className="block font-semibold">{w.value ? money(w.value) : "–"}</span>{w.weight != null && <span className="block text-[10.5px] font-normal text-[#8f99a8]">{w.weight}% of the job</span>}</>} />
                 ))}
-              </Fragment>
-            ))}
-          </Table>
-          {!rows.length && <NotYet>Nothing to estimate yet.</NotYet>}
-        </Card>
+              </Group>
+            );
+          })}
+        </div>
         {data.takeoff && <button onClick={() => go("cost/takeoff")} className={quiet}>The take-off and bill of materials</button>}
       </div>
     </div>
@@ -120,18 +120,21 @@ function Control({ target }: { target: string }) {
         <Kpi label="SPI" value={Number(t.spi).toFixed(2)} tone={t.spi < 1 ? "warn" : "ok"} />
       </Kpis>
       <div className="min-h-0 flex-1 space-y-3 overflow-auto bg-[#111820] p-3">
-        <Card title="Control accounts">
-          <Table heads={["Account", "Budget", "Committed", "Earned", "Actual", "Added by plans", "Forecast", "Variance", "CPI", "SPI"]}>
-            {packages.map((p) => (
-              <tr key={p.id} className={`${tr} ${target && p.id === target ? "bg-white/[.07]" : ""}`}>
-                <td className={td}><span className="mr-1.5 text-[10.5px] text-[#8f99a8]">{p.id}</span><span className="text-white">{p.name}</span></td>
-                <td className={td}>{money(p.budget)}</td><td className={td}>{money(p.committed)}</td><td className={td}>{money(p.ev)}</td><td className={td}>{money(p.ac)}</td>
-                <td className={td}>{p.recovery ? money(p.recovery) : "–"}</td><td className={td}>{money(p.eac)}</td>
-                <td className={`${td} ${p.variance < 0 ? "text-[#fbd38d]" : "text-[#7ee2c0]"}`}>{money(p.variance)}</td>
-                <td className={td}><Pill tone={p.cpi < 1 ? "warn" : "ok"}>{Number(p.cpi).toFixed(2)}</Pill></td><td className={td}><Pill tone={p.spi < 1 ? "warn" : "ok"}>{Number(p.spi).toFixed(2)}</Pill></td>
-              </tr>
-            ))}
-          </Table>
+        <Card title="Control accounts" right={<Legend items={[{ label: "budget", color: PLAN }, { label: "earned", color: ACTUAL }, { label: "spent", color: "#8f99a8" }, { label: "forecast at completion", color: ACTUAL, hatched: true }]} />}>
+          <div className="grid gap-px bg-white/[.04] md:grid-cols-2">
+            {packages.map((p) => {
+              const max = Math.max(...packages.map((x) => Math.max(x.budget, x.eac)), 1), over = p.variance < 0;
+              return (
+                <div key={p.id} className={`space-y-1.5 bg-[#1c2733] p-3 ${target && p.id === target ? "!bg-[#243241]" : ""}`}>
+                  <div className="flex items-baseline gap-2"><span className="text-[10.5px] text-[#8f99a8]">{p.id}</span><span className="flex-1 truncate font-semibold text-white">{p.name}</span><Pill tone={p.cpi < 1 ? "warn" : "ok"}>CPI {Number(p.cpi).toFixed(2)}</Pill>{p.pv >= 0.01 * p.budget && <Pill tone={p.spi < 1 ? "warn" : "ok"}>SPI {Number(p.spi).toFixed(2)}</Pill>}</div>
+                  {[["Budget", p.budget, PLAN, false], ["Earned", p.ev, ACTUAL, false], ["Spent", p.ac, "#8f99a8", false], ["Forecast", p.eac, over ? "#f87171" : ACTUAL, true]].map(([label, v, color, hatched]) => (
+                    <div key={label as string} className="grid grid-cols-[62px_minmax(0,1fr)_86px] items-center gap-2 text-[11px]"><span className="text-[#8f99a8]">{label as string}</span><SplitBar parts={[{ label: label as string, value: v as number, color: color as string, hatched: hatched as boolean }]} max={max} /><span className="text-right tabular-nums text-[#d3d8de]">{money(v as number)}</span></div>
+                  ))}
+                  <p className="text-[10.5px] text-[#8f99a8]"><span className={over ? "text-[#ffb4b4]" : "text-[#7ee2c0]"}>{money(Math.abs(p.variance))} {over ? "over" : "under"} budget</span> · {money(p.committed)} committed{p.recovery ? ` · ${money(p.recovery)} added by plans` : ""}</p>
+                </div>
+              );
+            })}
+          </div>
           {!packages.length && <NotYet>No control accounts yet.</NotYet>}
         </Card>
         <Card title={`Costs recorded (${items.length})`}>
@@ -146,9 +149,12 @@ function Control({ target }: { target: string }) {
             </div>
           )}
           {items.length ? (
-            <Table heads={["Item", "Package", "What", "Amount", "Kind", "Recoverable from", "Source"]}>
-              {items.map((i) => <tr key={i.id} className={tr}><td className={td}>{i.id}</td><td className={td}>{i.package}</td><td className={`${td} text-white`}>{i.description}</td><td className={td}>{full(i.amount)}</td><td className={td}><Pill tone={i.actual ? "info" : "none"}>{i.actual ? "actual" : "forecast"}</Pill></td><td className={td}>{i.recoverable_from || "–"}</td><td className={td}>{i.source || "Added by hand"}</td></tr>)}
-            </Table>
+            <div className="divide-y divide-white/[.04]">
+              {items.map((i) => {
+                const max = Math.max(...items.map((x) => x.amount), 1);
+                return <Item key={i.id} code={i.id} title={i.description} meta={`${i.package} · ${i.source || "added by hand"}${i.recoverable_from ? ` · recoverable from ${i.recoverable_from}` : ""}`} visual={<SizeBar value={i.amount} max={max} color={i.actual ? "#8f99a8" : ACTUAL} />} value={<span className="flex items-center justify-end gap-2"><Pill tone={i.actual ? "info" : "none"}>{i.actual ? "spent" : "forecast"}</Pill><b className="font-semibold">{full(i.amount)}</b></span>} />;
+              })}
+            </div>
           ) : <Empty>Nothing yet. A recovery plan&apos;s cost lands here when it is approved.</Empty>}
         </Card>
       </div>
@@ -182,15 +188,25 @@ function Boq() {
           <button disabled={!form.name.trim() || !Number(form.qty) || !Number(form.unit_price)} onClick={async () => { if (await act(() => api("/api/project/boq", { ...form, qty: Number(form.qty), unit_price: Number(form.unit_price) }))) setForm(null); }} className={primary}>Add</button>
         </div>
       )}
-      <div className="min-h-0 flex-1 overflow-auto bg-[#111820]">
-        <Table heads={["WBS", "Code", "Item", "Area", "Quantity", "Rate", "Value", "Planned", "Verified"]}>
-          {groups.flatMap((g) => [
-            <tr key={g} className="border-t border-white/10 bg-white/[.03]"><td className={`${td} font-mono text-[10.5px] text-[#8f99a8]`}>{lines.find((l) => l.package === g)?.wbs.split(".").slice(0, 2).join(".")}</td><td className={`${td} font-semibold text-white`} colSpan={5}>{lines.find((l) => l.package === g)?.package_name || "No package"}</td><td className={`${td} font-semibold text-white`}>{money(lines.filter((l) => l.package === g).reduce((n, l) => n + l.value, 0))}</td><td className={td} colSpan={2} /></tr>,
-            ...lines.filter((l) => l.package === g).map((l) => (
-              <tr key={l.id} className={tr}><td className={`${td} font-mono text-[10.5px] text-[#8f99a8]`}>{l.wbs}</td><td className={td}>{l.id}</td><td className={`${td} text-white`}>{l.name}</td><td className={td}>{l.area || "–"}</td><td className={td}>{num(l.qty)} {l.unit}</td><td className={td}>{Number(l.unit_price).toLocaleString("en-US")}</td><td className={td}>{money(l.value)}</td><td className={td}>{l.planned_pct}%</td><td className={td}>{l.verified_pct}%</td></tr>
-            )),
-          ])}
-        </Table>
+      <div className="min-h-0 flex-1 space-y-3 overflow-auto bg-[#111820] p-3">
+        {lines.length > 0 && (
+          <Card title="The contract's value, by control account" right={<Legend items={[{ label: "verified done", color: ACTUAL }, { label: "where it should be by now", color: PLAN }]} />}>
+            <div className="p-3"><ShareStrip parts={groups.map((g, i) => ({ key: g, label: lines.find((l) => l.package === g)?.package_name || "No package", value: lines.filter((l) => l.package === g).reduce((n, l) => n + l.value, 0), color: hue(i) }))} onPick={(k) => document.getElementById(`boq-${k}`)?.scrollIntoView({ behavior: "smooth", block: "start" })} /></div>
+          </Card>
+        )}
+        {groups.map((g, i) => {
+          const mine = lines.filter((l) => l.package === g), max = Math.max(...lines.map((l) => l.value), 1), total = mine.reduce((n, l) => n + l.value, 0);
+          return (
+            <Group key={g} id={`boq-${g}`} color={hue(i)} code={mine[0]?.wbs.split(".").slice(0, 2).join(".")} title={mine[0]?.package_name || "No package"} sub={`${mine.length} line${mine.length === 1 ? "" : "s"}`}
+              right={<div className="text-right"><p className="text-[15px] font-bold tabular-nums text-white">{money(total)}</p><p className="text-[10.5px] text-[#8f99a8]">{value ? `${((total / value) * 100).toFixed(1)}% of the BoQ` : ""}</p></div>}>
+              {mine.map((l) => (
+                <Item key={l.id} wide code={l.wbs} title={l.name} meta={`${l.id}${l.area ? ` · ${l.area}` : ""} · ${num(l.qty)} ${l.unit} × Rp ${Number(l.unit_price).toLocaleString("en-US")}`}
+                  visual={<span className="block space-y-1"><SizeBar value={l.value} max={max} color={hue(i)} title={money(l.value)} /><Progress done={l.verified_pct} planned={l.planned_pct} /></span>}
+                  value={<><span className="block font-semibold">{money(l.value)}</span><span className="block text-[10.5px] font-normal text-[#8f99a8]">{l.verified_pct}% done · {l.planned_pct}% due</span></>} />
+              ))}
+            </Group>
+          );
+        })}
         {!lines.length && <Empty>No BoQ lines yet.</Empty>}
       </div>
     </div>
@@ -216,20 +232,44 @@ function Takeoff() {
         <Kpi label="material waste" value={money(t.waste_cost)} tone="warn" hint={saving ? `${money(saving)} could come out` : ""} />
       </Kpis>
       <div className="min-h-0 flex-1 space-y-3 overflow-auto bg-[#111820] p-3">
-        <Card title="Quantity take-off: each worked out by code from the agent's sum, against the BoQ">
-          <Table heads={["Quantity", "The sum", "Worked out", "BoQ", "Difference", "Exposure", "Source"]}>
-            {(v.quantities as Rec[]).map((q) => <tr key={q.id} className={tr}><td className={`${td} font-medium text-white`}>{q.element}</td><td className={`${td} font-mono text-[11px]`}>{q.expression}</td><td className={td}>{num(q.value, 2)} {q.unit}</td><td className={td}>{q.boq_qty != null ? `${num(q.boq_qty, 2)} ${q.unit}` : "–"}</td><td className={td}>{q.boq_diff_pct != null ? <Pill tone={Math.abs(q.boq_diff_pct) > 3 ? "bad" : "ok"}>{q.boq_diff_pct > 0 ? "+" : ""}{q.boq_diff_pct}%</Pill> : "–"}</td><td className={td}>{q.boq_exposure_rp ? money(q.boq_exposure_rp) : "–"}</td><td className={td}><span className="flex flex-wrap gap-1">{(q.evidence as string[]).map((e) => <Ref key={e} to={`documents/register:${e}`}>{e}</Ref>)}</span></td></tr>)}
-          </Table>
+        <Card title="Quantity take-off: each worked out by code from the agent's sum, against the BoQ" right={<Legend items={[{ label: "worked out", color: ACTUAL }, { label: "in the BoQ", color: PLAN }]} />}>
+          <div className="divide-y divide-white/[.04]">
+            {(v.quantities as Rec[]).map((q) => {
+              const max = Math.max(q.value, q.boq_qty ?? 0, 1);
+              return (
+                <Item key={q.id} wide code={q.id} title={<span className="font-medium text-white">{q.element}</span>}
+                  meta={<><span className="font-mono">{q.expression}</span><span className="ml-2 inline-flex flex-wrap gap-1 align-middle">{(q.evidence as string[]).map((e) => <Ref key={e} to={`documents/register:${e}`}>{e}</Ref>)}</span></>}
+                  visual={<span className="block space-y-1"><span className="flex items-center gap-2"><SizeBar value={q.value} max={max} color={ACTUAL} /><span className="w-[92px] shrink-0 text-right text-[10.5px] tabular-nums text-[#d3d8de]">{num(q.value, 2)} {q.unit}</span></span>{q.boq_qty != null && <span className="flex items-center gap-2"><SizeBar value={q.boq_qty} max={max} color={PLAN} /><span className="w-[92px] shrink-0 text-right text-[10.5px] tabular-nums text-[#8f99a8]">{num(q.boq_qty, 2)} {q.unit}</span></span>}</span>}
+                  value={<span className="block text-right">{q.boq_diff_pct != null ? <Diverge value={q.boq_diff_pct} loud={3} title="Worked out against the BoQ" /> : <span className="text-[11px] text-[#8f99a8]">not in the BoQ</span>}{q.boq_exposure_rp ? <span className="mt-0.5 block text-[10.5px] text-[#fbd38d]">{money(q.boq_exposure_rp)} exposure</span> : null}</span>} />
+              );
+            })}
+          </div>
         </Card>
-        <Card title="Bill of materials: what to order, and the waste in it" right={<span className="flex items-center gap-2"><span className="text-[10.5px] font-normal text-[#8f99a8]">{String(v.source).split(",")[0]}</span><button onClick={() => go("procurement/materials")} className={quiet}>Is it on order?</button></span>}>
-          <Table heads={["Material", "Net need", "Waste", "To order", "Rate (Rp)", "Cost (Rp)", "Waste (Rp)", "Tasks", "Where the waste figure comes from"]}>
-            {(v.materials as Rec[]).map((m) => <tr key={m.key} className={tr}><td className={`${td} font-medium text-white`}>{m.name}</td><td className={td}>{num(m.net)} {m.unit}</td><td className={`${td} ${m.waste ? "text-[#fbd38d]" : "text-[#8f99a8]"}`}>{m.waste ? `${num(m.waste)} (${m.waste_pct}%)` : "none stated"}</td><td className={td}>{num(m.gross)} {m.unit}</td><td className={td}>{m.rate.toLocaleString("en-US")}</td><td className={td}>{m.cost.toLocaleString("en-US")}</td><td className={td}>{m.waste_cost ? m.waste_cost.toLocaleString("en-US") : "–"}</td><td className={td}>{(m.steps as string[]).join(", ")}</td><td className={`${td} text-[11px] text-[#abb3bf]`}>{m.basis}</td></tr>)}
-          </Table>
+        <Card title="Bill of materials: what to order, and the waste in it" right={<span className="flex items-center gap-3"><Legend items={[{ label: "used", color: SERIES[0] }, { label: "wasted", color: SERIES[1], hatched: true }]} /><button onClick={() => go("procurement/materials")} className={quiet}>Is it on order?</button></span>}>
+          <p className="border-b border-white/[.04] px-3 py-1.5 text-[10.5px] text-[#8f99a8]">{String(v.source).split(",")[0]}</p>
+          <div className="divide-y divide-white/[.04]">
+            {(v.materials as Rec[]).map((m) => {
+              const max = Math.max(...(v.materials as Rec[]).map((x) => x.cost), 1);
+              return (
+                <Item key={m.key} wide code={(m.steps as string[]).slice(0, 2).join(", ")} title={<span className="font-medium text-white">{m.name}</span>}
+                  meta={<><span>Order {num(m.gross)} {m.unit}: {num(m.net)} needed{m.waste ? <span className="text-[#fbd38d]"> + {num(m.waste)} waste ({m.waste_pct}%)</span> : ", no waste stated"} · Rp {m.rate.toLocaleString("en-US")} a {m.unit}</span><span className="block text-[10px] text-[#6f7c8b]">{m.basis}</span></>}
+                  visual={<SplitBar parts={[{ label: "used", value: m.cost - (m.waste_cost || 0), color: SERIES[0] }, { label: "wasted", value: m.waste_cost || 0, color: SERIES[1], hatched: true }]} max={max} />}
+                  value={<><span className="block font-semibold">{money(m.cost)}</span>{m.waste_cost ? <span className="block text-[10.5px] font-normal text-[#fbd38d]">{money(m.waste_cost)} wasted</span> : null}</>} />
+              );
+            })}
+          </div>
         </Card>
-        <Card title="Cost by WBS section">
-          <Table heads={["WBS", "Section", "Work package", "Man-hours", "Labour", "Material", "Waste", "Total"]}>
-            {(v.by_section as Rec[]).map((s) => <tr key={s.code} onClick={() => go(`wbs/tree:${s.code}`)} className={`${tr} cursor-pointer`}><td className={`${td} font-mono text-[10.5px] text-[#8f99a8]`}>{s.code}</td><td className={`${td} text-white`}>{s.name}</td><td className={td}>{s.activity}</td><td className={td}>{num(s.man_hours)}</td><td className={td}>{money(s.labour)}</td><td className={td}>{money(s.material)}</td><td className={td}>{s.waste ? money(s.waste) : "–"}</td><td className={td}>{money(s.labour + s.material)}</td></tr>)}
-          </Table>
+        <Card title="Cost by WBS section" right={<Legend items={[{ label: "labour", color: SERIES[0] }, { label: "material", color: SERIES[3] }, { label: "material wasted", color: SERIES[1], hatched: true }]} />}>
+          <div className="divide-y divide-white/[.04]">
+            {(v.by_section as Rec[]).map((s) => {
+              const max = Math.max(...(v.by_section as Rec[]).map((x) => x.labour + x.material), 1);
+              return (
+                <Item key={s.code} wide code={s.code} title={s.name} meta={`${s.activity} · ${num(s.man_hours)} man-hours`} onClick={() => go(`wbs/tree:${s.code}`)}
+                  visual={<SplitBar parts={[{ label: "labour", value: s.labour, color: SERIES[0] }, { label: "material", value: s.material - (s.waste || 0), color: SERIES[3] }, { label: "material wasted", value: s.waste || 0, color: SERIES[1], hatched: true }]} max={max} />}
+                  value={<><span className="block font-semibold">{money(s.labour + s.material)}</span><span className="block text-[10.5px] font-normal text-[#8f99a8]">{money(s.labour)} labour</span></>} />
+              );
+            })}
+          </div>
         </Card>
         <Card title={`Waste the agents would take out (${flags.length})`} right={saving ? <span className="text-[10.5px] font-normal text-[#8f99a8]">about {money(saving)}, their estimate</span> : undefined}>
           {flags.length ? flags.map((f, i) => (

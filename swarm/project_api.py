@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import io
 import re
 import time
+import zipfile
+from pathlib import Path
 from typing import Callable
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
@@ -623,14 +626,73 @@ def documents() -> dict:
     return M.documents()
 
 
+ZIP_MOST = 256 * 1024 * 1024  # a whole tender package, zipped: the UGM one is 26 MB
+ZIP_FILES = 200
+ZIP_UNPACKED = 1024 * 1024 * 1024  # what one zip may unpack to in all: a small file that unpacks to gigabytes is refused
+
+
 @router.post("/api/project/documents")
 async def upload_document(file: UploadFile = File(...), title: str = Form(""), kind: str = Form("other"), activity: str = Form(""), issued_by: str = Form(""), issued_on: str = Form("")) -> dict:
-    """A document you upload is yours: it is kept on this machine, and goes nowhere unless a person asks a real model to read it."""
+    """A document you upload is yours: it is kept on this machine, and goes nowhere unless a person asks a real model to read it. A zip of documents is unpacked, each file in it a document of its own."""
+    if (file.filename or "").lower().endswith(".zip"):
+        return await _unpack(file, activity, issued_by, issued_on)
     rid = P.next_id("document")
     saved = _saved_name(rid, file.filename or "", DOC_TYPES)
     target = A.upload_folder() / saved
     await _keep(file, target)
-    clean = re.sub(r"[^\w .,()\-]", "_", file.filename or saved)[:120]
+    return await _register(rid, target, file.filename or saved, title, kind, activity, issued_by, issued_on)
+
+
+async def _unpack(file: UploadFile, activity: str, issued_by: str, issued_on: str) -> dict:
+    """A tender package as it is downloaded, in one zip: each document in it goes on the register as if it had been uploaded on its own, and sorted
+    the same way. Only a file's name and type come from the zip, never a path: each is kept under our own name, so folders are flattened. What is
+    not a document, a zip inside the zip, or a file locked with a password is set aside, and the answer says which and why."""
+    data = await file.read(ZIP_MOST + 1)
+    if len(data) > ZIP_MOST:
+        raise HTTPException(413, "the zip is larger than 256 MB")
+    if not data:
+        raise HTTPException(400, "the file is empty")
+    try:
+        archive = zipfile.ZipFile(io.BytesIO(data))
+    except zipfile.BadZipFile as e:
+        raise HTTPException(400, "this zip cannot be opened") from e
+    entries = [i for i in archive.infolist() if not i.is_dir()]
+    if len(entries) > ZIP_FILES:
+        raise HTTPException(413, f"the zip holds {len(entries)} files: at most {ZIP_FILES} at once")
+    if sum(i.file_size for i in entries) > ZIP_UNPACKED:
+        raise HTTPException(413, "the zip unpacks to more than 1 GB")
+    zip_name = re.sub(r"[^\w .,()\-]", "_", file.filename or "documents.zip")[:120]
+    done, skipped = [], []
+    for info in sorted(entries, key=lambda i: i.filename):
+        name = info.filename.replace("\\", "/").rsplit("/", 1)[-1]
+        if not name or name.startswith(".") or info.filename.startswith("__MACOSX/"):  # a folder's hidden files and the Mac's resource forks
+            continue
+        suffix = Path(name).suffix.lower()
+        why = ("a zip inside the zip: unzip it and add it on its own" if suffix == ".zip" else "not a document type that is accepted" if suffix not in DOC_TYPES
+               else "larger than 64 MB" if info.file_size > MAX_UPLOAD else "locked with a password" if info.flag_bits & 0x1 else "")
+        if not why:
+            try:
+                body = archive.read(info)
+            except (RuntimeError, NotImplementedError, zipfile.BadZipFile, OSError) as e:
+                body, why = b"", f"could not be unpacked: {type(e).__name__}"
+            else:
+                why = "" if body else "empty"
+        if why:
+            skipped.append({"name": name, "why": why})
+            continue
+        rid = P.next_id("document")
+        target = A.upload_folder() / _saved_name(rid, name, DOC_TYPES)
+        target.write_bytes(body)
+        done.append(await _register(rid, target, name, Path(name).stem, "auto", activity, issued_by, issued_on, zip_name))
+    if not done and not skipped:
+        raise HTTPException(400, "the zip holds no files")
+    return {"zip": zip_name, "documents": done, "skipped": skipped}
+
+
+async def _register(rid: str, target: Path, name: str, title: str = "", kind: str = "auto", activity: str = "", issued_by: str = "", issued_on: str = "", from_zip: str = "") -> dict:
+    """A kept file read, sorted and put on the register."""
+    saved = target.name
+    clean = re.sub(r"[^\w .,()\-]", "_", name or saved)[:120]
     try:
         pages = await asyncio.to_thread(K.read_pages, target)  # hundreds of pages take a while, and the API has other requests to answer
     except Exception as e:  # noqa: BLE001 - a broken file is a fact about the file, not a failure of the upload
@@ -640,10 +702,10 @@ async def upload_document(file: UploadFile = File(...), title: str = Form(""), k
     text = "\n\n".join(pages).strip()[:extract.MAX_TEXT]
     how = broken or (f"{target.suffix[1:].upper()}, {len(pages)} pages" if text else f"{len(pages)} pages of images: no text to read without a model" if pages else "kept as a file: no text to read")
     K.keep_pages(rid, pages)
-    sorted_kind, use, why = K.classify(file.filename or saved, pages)
+    sorted_kind, use, why = K.classify(name or saved, pages)
     kind = sorted_kind if kind in ("auto", "") else kind
     sorting = {"use": use, "why": why, "pages": len(pages), "words": sum(len(p.split()) for p in pages), "digest": K.digest_of(target)}
-    return P.put("document", rid, {"id": rid, "source": "upload", "kind": kind, "title": title.strip() or clean, "from": issued_by, "date": issued_on or time.strftime("%Y-%m-%d"), **sorting, "text": text, "how_read": how, "file": saved, "filename": clean, "activities": [activity] if activity else [], "status": "received", "facts": extract.facts(text)}, P.PM, "uploaded a document", clean)
+    return P.put("document", rid, {"id": rid, "source": "upload", "kind": kind, "title": title.strip() or clean, "from": issued_by, "date": issued_on or time.strftime("%Y-%m-%d"), **sorting, "text": text, "how_read": how, "file": saved, "filename": clean, "activities": [activity] if activity else [], "status": "received", "facts": extract.facts(text), **({"from_zip": from_zip} if from_zip else {})}, P.PM, "uploaded a document", f"{clean}, from {from_zip}" if from_zip else clean)
 
 
 class BriefIn(BaseModel):
@@ -960,5 +1022,9 @@ def agent_decide(module: str, index: int, verdict: str) -> dict:
 
 
 from . import contract_admin  # noqa: E402 - its routes join these, and it imports the modules above
+from . import reports  # noqa: E402 - the same
+from . import tender  # noqa: E402 - the same
 
 router.include_router(contract_admin.router)
+router.include_router(reports.router)
+router.include_router(tender.router)

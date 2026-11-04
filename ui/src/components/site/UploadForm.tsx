@@ -43,8 +43,10 @@ export function UploadForm({ activities, onDone }: { activities: Rec[]; onDone: 
       try {
         const r = await fetch(`${API_URL}/api/project/documents`, { method: "POST", body });
         if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail ?? r.statusText);
-        got.push(await r.json());
-        setStates((s) => ({ ...s, [i]: "done" }));
+        const out = await r.json();
+        if (out.documents) got.push(...(out.documents as Rec[]));  // a zip: each file in it is a document of its own
+        else got.push(out);
+        setStates((s) => ({ ...s, [i]: out.documents ? `done: ${(out.documents as Rec[]).length} documents from the zip${(out.skipped as Rec[]).length ? `, ${(out.skipped as Rec[]).length} set aside` : ""}` : "done" }));
       } catch (e) { setStates((s) => ({ ...s, [i]: `failed: ${(e as Error).message}` })); }
     }
     setSaved(got);
@@ -54,7 +56,7 @@ export function UploadForm({ activities, onDone }: { activities: Rec[]; onDone: 
   const finished = saved.length > 0 && !busy;
   return (
     <div className="space-y-2">
-      <input ref={input} type="file" multiple aria-label="Files" accept=".pdf,.txt,.md,.csv,.png,.jpg,.jpeg,.dwg,.dxf,.xlsx,.docx" onChange={(e) => pick(e.target.files)} className="w-full text-[11px] text-[#d3d8de] file:mr-2 file:rounded file:border-0 file:bg-white/10 file:px-2 file:py-1 file:text-white" />
+      <input ref={input} type="file" multiple aria-label="Files" accept=".pdf,.txt,.md,.csv,.png,.jpg,.jpeg,.dwg,.dxf,.xlsx,.docx,.zip" onChange={(e) => pick(e.target.files)} className="w-full text-[11px] text-[#d3d8de] file:mr-2 file:rounded file:border-0 file:bg-white/10 file:px-2 file:py-1 file:text-white" />
       {files.length > 0 && (
         <div className="max-h-[220px] space-y-1 overflow-y-auto rounded border border-white/10 p-1.5">
           {files.map((f, i) => (
@@ -63,7 +65,7 @@ export function UploadForm({ activities, onDone }: { activities: Rec[]; onDone: 
               <span className="min-w-0 flex-1 truncate text-[11px] text-[#d3d8de]" title={f.name}>{titleOf(f.name)}<span className="ml-1 text-[10px] text-[#8f99a8]">{sizeOf(f.size)}</span></span>
               {kind !== "auto" && <Pill>{KINDS[kind]}</Pill>}
               {states[i] === "uploading" && <span className="shrink-0 text-[10px] text-[#fbd38d]">uploading…</span>}
-              {states[i] === "done" && <Icon name="check" className="h-3.5 w-3.5 shrink-0 text-[#7ee2c0]" />}
+              {String(states[i] ?? "").startsWith("done") && <Icon name="check" className="h-3.5 w-3.5 shrink-0 text-[#7ee2c0]" />}{String(states[i] ?? "").startsWith("done: ") && <span className="shrink-0 text-[10px] text-[#7ee2c0]">{String(states[i]).slice(6)}</span>}
               {String(states[i] ?? "").startsWith("failed") && <span className="shrink-0 text-[10px] text-[#ffb4b4]">{String(states[i]).slice(8, 60)}</span>}
             </div>
           ))}
@@ -80,7 +82,7 @@ export function UploadForm({ activities, onDone }: { activities: Rec[]; onDone: 
       {finished && <p className={failed.length ? "text-[#fbd38d]" : "text-[#7ee2c0]"}>{saved.length} of {files.length} uploaded and read by rules.{failed.length > 0 && ` ${failed.length} failed: ${failed.map((f) => f.name).join(", ")}`}</p>}
       <div className="flex justify-end gap-1.5">
         {finished && <button onClick={() => onDone(saved)} className={primary}>Done</button>}
-        {!finished && <button disabled={!files.length || busy} onClick={upload} className={primary}>{busy ? `Uploading ${Object.values(states).filter((s) => s === "done").length} of ${files.length}…` : files.length > 1 ? `Upload ${files.length} documents` : "Upload, and read it with rules"}</button>}
+        {!finished && <button disabled={!files.length || busy} onClick={upload} className={primary}>{busy ? `Uploading ${Object.values(states).filter((s) => String(s).startsWith("done")).length} of ${files.length}…` : files.length > 1 ? `Upload ${files.length} documents` : "Upload, and read it with rules"}</button>}
       </div>
       <p className="text-[11px] text-[#abb3bf]">They stay on this machine. Only what the agents need goes to Meta, and only when you start an analysis.</p>
     </div>

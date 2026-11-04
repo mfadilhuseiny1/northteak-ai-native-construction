@@ -82,9 +82,9 @@ export function Kpi({ label, value, hint, tone }: { label: string; value: ReactN
   return <div><p className={`text-[20px] font-bold leading-none tabular-nums ${color}`}>{value}</p><p className="mt-1 text-[10px] font-medium uppercase tracking-[.08em] text-[#7d8b9b]">{label}{hint ? ` · ${hint}` : ""}</p></div>;
 }
 
-export function Card({ title, right, children }: { title: ReactNode; right?: ReactNode; children: ReactNode }) {
+export function Card({ title, right, children, className = "" }: { title: ReactNode; right?: ReactNode; children: ReactNode; className?: string }) {
   return (
-    <section className="rise overflow-hidden rounded-lg border border-white/10 bg-[#1c2733] shadow-[0_4px_16px_rgb(0_0_0/.25)]">
+    <section className={`rise overflow-hidden rounded-lg border border-white/10 bg-[#1c2733] shadow-[0_4px_16px_rgb(0_0_0/.25)] ${className}`}>
       <div className="flex items-center gap-2 border-b border-white/[.06] bg-white/[.02] px-3 py-2"><div className="text-[12px] font-bold tracking-tight text-white">{title}</div><div className="ml-auto flex items-center gap-1.5">{right}</div></div>
       {children}
     </section>

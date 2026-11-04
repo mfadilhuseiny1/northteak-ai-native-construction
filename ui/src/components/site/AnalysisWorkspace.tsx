@@ -6,15 +6,9 @@ import { api, Empty, Kpi, Kpis, Loading, money, notifyChanged, Pill, Problem, qu
 import { MemoryPanel } from "./MemoryPanel";
 import { openSource, SourceLink } from "./SourceDrawer";
 import { UploadForm } from "./UploadForm";
+import { Diverge, Group, hue, Item, ShareStrip, SizeBar } from "./Visual";
 
 /* What Home shows of a project beside the conversation: its documents, and what the agents and code took from them, the executive summary and the BOQ. Everything shown here comes from a real analysis on this project, and each item leads back to its source. It stays a proposal until a person approves it on the Review tab, which also lists the conflicts, gaps and assumptions. The WBS, schedule, dependencies and procedures have their own tabs, so they are not repeated here. */
-const head = "whitespace-nowrap px-3 py-2 font-medium";
-const cell = "px-3 py-2 align-top text-[#d3d8de]";
-const row = "border-t border-white/5 hover:bg-white/[.04]";
-
-function Grid({ heads, children }: { heads: string[]; children: ReactNode }) {
-  return <table className="w-full text-left text-[13px]"><thead className="sticky top-0 z-[1] bg-[#1c2733] text-[11px] uppercase tracking-wide text-[#8f99a8]"><tr>{heads.map((h) => <th key={h} className={head}>{h}</th>)}</tr></thead><tbody>{children}</tbody></table>;
-}
 
 function Note({ children, tone = "plain" }: { children: ReactNode; tone?: "plain" | "warn" }) {
   return <p className={`shrink-0 border-b border-white/5 px-4 py-2 leading-snug ${tone === "warn" ? "bg-[#fab219]/[.07] text-[#fbd38d]" : "text-[#abb3bf]"}`}>{children}</p>;
@@ -105,19 +99,18 @@ function BoqLines({ lines }: { lines: Rec[] }) {
         return (
           <details key={s} open={i === 0} className="rounded border border-white/10 bg-[#1c2733]">
             <summary className="cursor-pointer px-3 py-2 font-medium text-white">{s || "Before the first section"} <span className="ml-1 text-[12px] font-normal tabular-nums text-[#8f99a8]">{mine.length} lines</span></summary>
-            <table className="w-full text-left text-[13px]">
-              <thead className="text-[11px] uppercase tracking-wide text-[#8f99a8]"><tr>{["Work", "Volume", "Unit", ...(priced ? ["Rate", "Amount"] : []), "Source"].map((h) => <th key={h} className={head}>{h}</th>)}</tr></thead>
-              <tbody>
-                {mine.map((x, n) => (
-                  <tr key={n} className={row}>
-                    <td className={cell}>{x.group && x.group !== mine[n - 1]?.group && <span className="block text-[12px] text-[#8f99a8]">{x.group}</span>}{x.name || <span className="text-[#fbd38d]">Description not readable: open its page</span>}</td>
-                    <td className={`${cell} whitespace-nowrap tabular-nums`}>{figure(Number(x.qty))}</td><td className={cell}>{x.unit}</td>
-                    {priced > 0 && <><td className={`${cell} whitespace-nowrap`}>{x.rate ? money(x.rate) : "–"}</td><td className={`${cell} whitespace-nowrap`}>{x.amount ? money(x.amount) : "–"}</td></>}
-                    <td className={cell}><SourceLink doc={x.doc} page={x.page}>p.{x.page}</SourceLink></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div className="divide-y divide-white/[.04] border-t border-white/[.06]">
+              {mine.map((x, n) => {
+                const max = Math.max(...mine.map((y) => Number(y.amount) || 0), 1);
+                return (
+                  <Item key={n} wide code={<SourceLink doc={x.doc} page={x.page}>p.{x.page}</SourceLink>}
+                    title={<>{x.group && x.group !== mine[n - 1]?.group && <span className="block text-[10.5px] uppercase tracking-wide text-[#8f99a8]">{x.group}</span>}{x.name || <span className="text-[#fbd38d]">Description not readable: open its page</span>}</>}
+                    meta={`${figure(Number(x.qty))} ${x.unit}${x.rate ? ` × ${money(x.rate)}` : ""}`}
+                    visual={priced > 0 && x.amount ? <SizeBar value={Number(x.amount)} max={max} color={hue(i)} title={money(x.amount)} /> : null}
+                    value={priced > 0 ? (x.amount ? <b className="font-semibold">{money(x.amount)}</b> : <span className="text-[#5c6b7a]">–</span>) : null} />
+                );
+              })}
+            </div>
           </details>
         );
       })}
@@ -139,12 +132,20 @@ export function BoqSection({ plan, docs }: { plan: Rec; docs: Rec[] }) {
         <span className="ml-auto flex flex-wrap gap-1">{boq.map((d) => <SourceLink key={d.id} doc={d.id} page={1} title={String(d.title)} />)}</span>
       </div>
       <div className="min-h-0 flex-1 overflow-auto">
-        {valued && <Grid heads={["No.", "Work", "Worth", ...(owner ? ["Against the owner's estimate"] : [])]}>
-          {accounts.flatMap((a) => [
-            <tr key={a.no} className="border-t border-white/10 bg-white/[.03]"><td className={`${cell} font-semibold text-white`}>{a.no}</td><td className={`${cell} font-semibold text-white`}>{a.name}</td><td className={`${cell} whitespace-nowrap font-semibold text-white`}>{a.value ? money(a.value) : "–"}</td>{owner && <td className={cell}>{a.against_owner_pct == null ? "–" : <Pill tone={a.against_owner_pct <= -5 ? "warn" : "none"}>{a.against_owner_pct > 0 ? "+" : ""}{a.against_owner_pct}%</Pill>}</td>}</tr>,
-            ...(a.packages as Rec[]).filter((w) => w.no !== a.no).map((w) => <tr key={w.no} className={row}><td className={`${cell} whitespace-nowrap text-[#8f99a8]`}>{w.no}</td><td className={cell}>{w.name}</td><td className={`${cell} whitespace-nowrap`}>{w.value ? money(w.value) : "–"}</td>{owner && <td className={cell} />}</tr>),
-          ])}
-        </Grid>}
+        {valued && (
+          <div className="space-y-3 p-3">
+            <ShareStrip parts={accounts.map((a, k) => ({ key: String(a.no), label: a.name, value: Number(a.value) || 0, color: hue(k) }))} />
+            {accounts.map((a, k) => {
+              const packages = (a.packages as Rec[]).filter((w) => w.no !== a.no), max = Math.max(...accounts.flatMap((x) => (x.packages as Rec[]).map((w) => Number(w.value) || 0)), 1);
+              return (
+                <Group key={a.no} color={hue(k)} code={a.no} title={a.name} sub={`${packages.length || 1} work package${packages.length === 1 ? "" : "s"}`}
+                  right={<div className="text-right"><p className="text-[14px] font-bold tabular-nums text-white">{a.value ? money(a.value) : "–"}</p>{owner && <Diverge value={a.against_owner_pct} title="Against the owner's estimate: blue is below it, orange above" />}</div>}>
+                  {packages.map((w) => <Item key={w.no} code={w.no} title={w.name} visual={<SizeBar value={Number(w.value) || 0} max={max} color={hue(k)} />} value={w.value ? money(w.value) : "–"} />)}
+                </Group>
+              );
+            })}
+          </div>
+        )}
         {lines.length > 0
           ? <BoqLines lines={lines} />
           : <p className="px-4 py-3 text-[12px] leading-snug text-[#8f99a8]">Values are the priced recap spread by the schedule&apos;s weights. This package has no line-by-line BoQ to read.</p>}

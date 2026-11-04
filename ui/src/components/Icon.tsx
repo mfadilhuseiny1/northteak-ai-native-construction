@@ -75,6 +75,7 @@ const PATHS = {
   wave: "M2 12c2-4 4-4 6 0s4 4 6 0 4-4 6 0",
   bell: "M6 16v-5a6 6 0 0 1 12 0v5l2 2H4zM10 20a2 2 0 0 0 4 0",
   gauge: "M4 18a8 8 0 1 1 16 0M12 18l4-6",
+  report: "M4 20h16M7 16v-4M12 16V7M17 16v-6",
   comment: "M4 5h16v11H9l-5 4z",
   server: "M4 4h16v6H4zM4 14h16v6H4zM8 7h.01M8 17h.01",
   device: "M7 3h10v18H7zM11 18h2",

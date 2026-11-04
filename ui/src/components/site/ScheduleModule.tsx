@@ -4,6 +4,7 @@ import { Icon } from "@/components/Icon";
 import { api, Bar, Card, clean, Empty, field, inFocus, Kpi, Kpis, Label, Loading, num, Pill, primary, Problem, quiet, Ref, short, Side, Table, td, tr, useData, useFocus, useGo, type Rec, NotYet } from "./kit";
 import { NetworkSheet } from "./NetworkSheet";
 import { NodePanel } from "./NodePanel";
+import { Item, SizeBar } from "./Visual";
 
 /* Module 2, AI Scheduling: when should the work happen? Code works out every date, the float and the critical path from the dependencies, and detects what is late. The thin bar is the baseline, so a move shows at a glance, and tasks from the work plan sit under their activity. */
 
@@ -218,10 +219,21 @@ function Resources() {
     <div className="min-h-0 flex-1 space-y-3 overflow-auto bg-[#111820] p-3 text-[12px]">
       <Card title="People on site at the peak of each day" right={<span className="text-[10.5px] font-normal text-[#8f99a8]">{t.hours_per_oh} working hours a day</span>}><CrewChart days={r.crew_by_day} limit={t.programme_crew} who={who} /></Card>
       <Card title="Workforce by trade" right={<span className="text-[10.5px] font-normal text-[#8f99a8]">OH: one person for one day. From SNI 7394:2008, plus the agents&apos; estimates for handling and inspection</span>}>
-        <Table heads={["Trade", "OH", "Man-hours", "Cost (Rp)"]}>{(r.workforce as Rec[]).map((w) => <tr key={w.role} className={tr}><td className={`${td} text-white`}>{w.role}{w.supervises ? <span className="text-[#8f99a8]"> (shared across tasks)</span> : null}</td><td className={td}>{num(w.oh)}</td><td className={td}>{num(w.man_hours)}</td><td className={td}>{w.cost.toLocaleString("en-US")}</td></tr>)}</Table>
+        <div className="divide-y divide-white/[.04]">{(r.workforce as Rec[]).map((w) => {
+          const max = Math.max(...(r.workforce as Rec[]).map((x) => x.man_hours), 1);
+          return <Item key={w.role} code={`${num(w.oh)} OH`} title={<span className="text-white">{w.role}{w.supervises ? <span className="text-[#8f99a8]"> (shared across tasks)</span> : null}</span>} meta={`Rp ${w.cost.toLocaleString("en-US")}`} visual={<SizeBar value={w.man_hours} max={max} />} value={<><span className="block font-semibold">{num(w.man_hours)}</span><span className="block text-[10.5px] font-normal text-[#8f99a8]">man-hours</span></>} />;
+        })}</div>
       </Card>
       <Card title="Peak against what each has" right={<button onClick={() => go("procurement/assignments")} className={quiet}>Assignments</button>}>
-        <Table heads={["Who", "Peak on this plan", "Crew they have", ""]}>{Object.entries(t.peak_by as Record<string, number>).filter(([k]) => t.crews[k] != null).map(([k, n]) => <tr key={k} className={tr}><td className={`${td} text-white`}>{who[k] ?? k}</td><td className={td}>{n}</td><td className={td}>{t.crews[k]}</td><td className={td}><Pill tone={n > t.crews[k] ? "bad" : "ok"}>{n > t.crews[k] ? "more than they have" : "fits"}</Pill></td></tr>)}</Table>
+        <div className="divide-y divide-white/[.04]">{Object.entries(t.peak_by as Record<string, number>).filter(([k]) => t.crews[k] != null).map(([k, n]) => {
+          const have = t.crews[k] as number, over = n > have, max = Math.max(n, have, 1);
+          return (
+            <Item key={k} title={<span className="text-white">{who[k] ?? k}</span>} meta={`${n} at the peak of this plan, ${have} in their crew`}
+              visual={<span className="relative block h-3 w-full rounded-full bg-white/[.06]"><span className="absolute inset-y-0 left-0 rounded-full" style={{ width: `${(n / max) * 100}%`, background: over ? "#f87171" : "#3987e5" }} /><span className="absolute -inset-y-1 w-[2px] rounded bg-white" style={{ left: `calc(${(have / max) * 100}% - 1px)` }} title={`crew they have: ${have}`} /></span>}
+              value={<Pill tone={over ? "bad" : "ok"}>{over ? `${n - have} more than they have` : "fits"}</Pill>} />
+          );
+        })}</div>
+        <p className="border-t border-white/[.04] px-3 py-1.5 text-[10.5px] text-[#8f99a8]">The bar is the peak this plan needs; the white line is the crew they have.</p>
       </Card>
     </div>
   );

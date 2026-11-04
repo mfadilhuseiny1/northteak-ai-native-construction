@@ -6,6 +6,7 @@ import { Running } from "./AnalysisView";
 import { api, Empty, field, good, Loading, money, notifyChanged, Pill, primary, Problem, quiet, useData, useGo, type Rec } from "./kit";
 import { SourceLink } from "./SourceDrawer";
 import { ContractChecklist } from "./ContractChecklist";
+import { TenderSelection } from "./TenderSelection";
 
 /* Review: what the agents and code propose, sorted by what a project manager has to do about it, one item or a whole section at a time. The plan as a whole is what gets approved. Until then nothing reaches the board. Each section says what a decision there changes, because some change the plan and some only stand on the record. */
 
@@ -93,7 +94,7 @@ export function ReviewModule() {
   const sections = useMemo(() => (rec && cpm.data ? sectionsOf(rec, cpm.data, go) : []), [rec, cpm.data, go]);
   if (run.data?.run?.status === "running") return <Running data={run.data} onStop={() => void api(`/api/aip/runs/${run.data?.run.id}/cancel`, {}).then(() => run.reload())} />;
   if (!data || !cpm.data) return <div className="flex-1 bg-[#111820]"><Problem err={err || cpm.err} />{!err && !cpm.err && <Loading />}</div>;
-  if (!rec) return <div className="min-h-0 flex-1 space-y-2 overflow-y-auto bg-[#111820] p-3 text-[13px]"><Empty>Nothing to review yet. <button onClick={() => go("home")} className="underline">Start on Home</button>.</Empty><ContractChecklist /></div>;
+  if (!rec) return <div className="min-h-0 flex-1 space-y-2 overflow-y-auto bg-[#111820] p-3 text-[13px]"><Empty>Nothing to review yet. <button onClick={() => go("home")} className="underline">Start on Home</button>.</Empty><TenderSelection /><ContractChecklist /></div>;
   const pending = rec.status === "pending";
   const reviews = (rec.reviews ?? {}) as Record<string, Rec>;
   const send = (keys: string[], verdict: string) => act(() => api(`/api/project/plans/${rec.id}/review`, { keys, verdict }));
@@ -122,7 +123,7 @@ export function ReviewModule() {
             <button onClick={() => act(() => api(`/api/project/plans/${rec.id}/reject`, { note }))} className={`${quiet} !px-3 !py-1.5 !text-[12.5px]`}>Reject the plan</button>
             <button onClick={() => act(() => api(`/api/project/plans/${rec.id}/approve`, { note })).then((ok) => { if (ok) notifyChanged(); })} title="This puts the tasks on the Kanban board and plans the inspections. The WBS, Timeline, Critical Path, Kanban and 3D Timeline all read the same work packages." className={`${good} !px-3 !py-1.5 !text-[12.5px]`}>Approve the plan</button>
           </>}
-          {rec.status === "approved" && <button onClick={() => go("list")} className={`${primary} !px-3 !py-1.5 !text-[12.5px]`}>Open the workspace</button>}
+          {rec.status === "approved" && <button onClick={() => go("wbs/packages")} className={`${primary} !px-3 !py-1.5 !text-[12.5px]`}>Open the workspace</button>}
           {rec.status === "rejected" && <button onClick={() => go("home")} className={`${primary} !px-3 !py-1.5 !text-[12.5px]`}>Tell the agents what to change</button>}
         </div>
         {pending && (unread > 0 || rejected > 0) && <p className="mt-1.5 text-[12.5px] text-[#fbd38d]">{unread > 0 ? `${unread} conflict${unread === 1 ? "" : "s"} between the documents not yet looked at. ` : ""}{rejected > 0 ? `${rejected} work package${rejected === 1 ? "" : "s"} you rejected will get no tasks.` : ""}</p>}
@@ -153,6 +154,7 @@ export function ReviewModule() {
             </section>
           );
         })}
+        <TenderSelection />
         <ContractChecklist />
       </div>
     </div>

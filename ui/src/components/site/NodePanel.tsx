@@ -99,7 +99,7 @@ function WhoDoesIt({ n, act }: { n: Rec; act: (fn: () => Promise<unknown>) => Pr
           <option value="self" className="bg-[#1c2733]">Own crew — we do it ourselves</option>
           {subs.map((s) => <option key={s.id} value={s.id} className="bg-[#1c2733]">Subcontract: {s.name}{s.trade ? ` — ${s.trade}` : ""}{s.crew ? ` · crew ${s.crew}` : ""}{s.status === "onboarding" ? " · onboarding" : ""}</option>)}
         </select>
-        <button disabled={by === current && !sections.length} onClick={give} className={`${primary} shrink-0`}>Give it to them</button>
+        <button disabled={by === current && !sections.length} onClick={give} className={`${primary} shrink-0`}>Assign</button>
       </div>
       {sections.length > 0 && <p className="text-[10.5px] text-[#8f99a8]">Its open task cards in {sections.join(", ")} move to that crew on the board. Cards already done stay as they are.</p>}
       {saved && <p className="text-[#7ee2c0]">{saved}</p>}
@@ -156,9 +156,15 @@ export function NodePanel({ code, onClose, onMoved }: { code: string; onClose: (
           {(s.materials as Rec[]).length > 0 && (
             <div>
               <Label>Material and waste</Label>
-              <table className="mt-1 w-full text-[11px] text-[#d3d8de]"><thead className="text-[10px] text-[#8f99a8]"><tr><th className="text-left font-normal">Material</th><th className="text-right font-normal">Net</th><th className="text-right font-normal">Waste</th><th className="text-right font-normal">To order</th></tr></thead><tbody>
-                {(s.materials as Rec[]).map((m) => <tr key={m.key} className="border-t border-white/5" title={`${m.waste_pct}%: ${m.basis}`}><td className="py-0.5">{m.name}</td><td className="text-right tabular-nums">{num(m.net)}</td><td className={`text-right tabular-nums ${m.waste ? "text-[#fbd38d]" : "text-[#8f99a8]"}`}>{m.waste ? num(m.waste) : "–"}</td><td className="text-right tabular-nums">{num(m.gross)} {m.unit}</td></tr>)}
-              </tbody></table>
+              <div className="mt-1 space-y-1.5">
+                {(s.materials as Rec[]).map((m) => (
+                  <div key={m.key} title={`${m.waste_pct}%: ${m.basis}`}>
+                    <div className="flex items-baseline justify-between gap-2 text-[11px]"><span className="text-[#e5e8eb]">{m.name}</span><span className="tabular-nums text-[#d3d8de]">order {num(m.gross)} {m.unit}</span></div>
+                    <div className="mt-0.5 flex h-2 w-full gap-[2px] overflow-hidden rounded-full bg-white/[.06]"><span className="h-full rounded-l-full bg-[#3987e5]" style={{ width: `${(m.net / Math.max(m.gross, 1)) * 100}%` }} />{m.waste > 0 && <span className="h-full rounded-r-full" style={{ width: `${(m.waste / Math.max(m.gross, 1)) * 100}%`, background: "repeating-linear-gradient(45deg, #d95926 0 3px, transparent 3px 6px)", boxShadow: "inset 0 0 0 1px #d95926" }} />}</div>
+                    <p className="text-[10px] text-[#8f99a8]">{num(m.net)} needed{m.waste ? <span className="text-[#fbd38d]"> + {num(m.waste)} waste</span> : ", no waste stated"}</p>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
           {(data.flags as Rec[]).map((f, i) => <p key={i} className="rounded bg-[#fab219]/10 p-2 leading-snug text-[#fbd38d]"><b className="font-semibold">Waste to take out ({f.kind}).</b> {f.note}{f.saving_rp ? ` About ${money(f.saving_rp)}, the agent's estimate.` : ""}</p>)}
