@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { Icon } from "@/components/Icon";
 import { api, Bar, clean, Empty, field, good, inFocus, Label, Loading, Pill, primary, Problem, quiet, Ref, Side, useData, useFocus, useGo, type Rec, type Tone } from "./kit";
 import { NodePanel } from "./NodePanel";
@@ -11,6 +11,14 @@ const COLUMNS: [string, string][] = [["proposed", "Proposed"], ["open", "To do"]
 const LEVEL: Record<string, Tone> = { high: "bad", medium: "warn", low: "none" };
 const KIND: Record<string, string> = { operation: "O", inspection: "I", handling: "H" };
 const DOT: Record<string, string> = { proposed: "#e879a8", open: "#8f99a8", doing: "#3987e5", review: "#fab219", done: "#29a383" };
+const WORD: Record<string, string> = Object.fromEntries(COLUMNS);
+/** A card's light: trouble outranks where the card stands. Work stopped while under way is the alarm. Work not yet started that waits on a hold point is normal, so it only pulses. */
+const lightOf = (c: Rec) => {
+  if (c.stopped && ["doing", "review"].includes(c.status)) return { kb: "stopped", color: "#e5484d", word: "Stopped" };
+  if (c.overdue) return { kb: "late", color: "#f97316", word: "Overdue" };
+  if (c.stopped) return { kb: "held", color: "#e5484d", word: "Waiting on a hold point" };
+  return { kb: c.status as string, color: DOT[c.status], word: WORD[c.status] };
+};
 const CONTROL = "rounded border border-white/15 bg-black/20 px-2 py-1 text-[12.5px] text-white";
 const ACTION = "!px-2.5 !py-1 !text-[12.5px]";
 
@@ -19,22 +27,25 @@ function when(d: string, today: string) {
   return new Date(`${d}T00:00:00`).toLocaleDateString("en-GB", { day: "numeric", month: "short", ...(d.slice(0, 4) === today.slice(0, 4) ? {} : { year: "numeric" }) });
 }
 
-function Card({ c, names, today, on, dim, onOpen, onDragStart }: { c: Rec; names: Record<string, string>; today: string; on: boolean; dim: boolean; onOpen: () => void; onDragStart: () => void }) {
+function Card({ c, n, names, today, on, dim, onOpen, onDragStart }: { c: Rec; n: number; names: Record<string, string>; today: string; on: boolean; dim: boolean; onOpen: () => void; onDragStart: () => void }) {
+  const light = lightOf(c);
   const soft = (c.blockers as Rec[]).filter((b) => !b.stop);
   const hard = (c.blockers as Rec[]).filter((b) => b.stop);
   const frozen = c.status === "proposed";
   const say = (b: Rec) => (b.kind === "activity" && names[b.ref] ? `Waits for ${names[b.ref]}` : b.text);  // the work's name: an id says nothing on a card
   return (
     <button draggable={!frozen} onDragStart={onDragStart} onClick={onOpen} title={frozen ? "A proposal: it opens when its plan is approved" : "Drag to another column, or open it"}
-      className={`rise block w-full rounded-lg border bg-[#1c2733] px-3 py-2.5 text-left shadow-[0_2px_8px_rgb(0_0_0/.25)] transition ${on ? "border-[#f5b82e] shadow-[0_0_0_1px_#f5b82e]" : c.stopped ? "border-[#e5484d]/70" : c.overdue ? "border-[#fab219]/70" : "border-white/10 hover:-translate-y-px hover:border-white/30 hover:shadow-[0_5px_14px_rgb(0_0_0/.35)]"} ${dim ? "opacity-30" : ""} ${frozen ? "cursor-default border-dashed" : "cursor-grab active:cursor-grabbing"}`}>
+      data-kb={light.kb} data-still={on || undefined} data-dim={dim || undefined} style={{ "--kb-color": light.color, "--kb-i": light.kb === "stopped" ? 0 : n } as CSSProperties}
+      className={`kb-card rise block w-full rounded-lg border bg-[#1c2733] py-2.5 pl-3.5 pr-3 text-left shadow-[0_2px_8px_rgb(0_0_0/.25)] transition ${on ? "border-[#f5b82e] shadow-[0_0_0_1px_#f5b82e]" : c.stopped ? "border-[#e5484d]/70" : c.overdue ? "border-[#f97316]/70" : "border-white/10 hover:-translate-y-px hover:border-white/30 hover:shadow-[0_5px_14px_rgb(0_0_0/.35)]"} ${dim ? "opacity-30" : ""} ${frozen ? "cursor-default border-dashed" : "cursor-grab active:cursor-grabbing"}`}>
       <span className="flex items-center gap-1.5 text-[11.5px] text-[#8f99a8]">
+        <span className="kb-led h-2 w-2 shrink-0 rounded-full" role="img" aria-label={light.word} title={light.word} />
         {KIND[c.kind] && <span className={`flex h-4 w-4 shrink-0 items-center justify-center text-[9.5px] font-bold text-[#d3d8de] ${c.kind === "inspection" ? `rounded-[2px] border ${c.hold_point ? "border-[#e5484d]" : "border-[#abb3bf]"}` : c.kind === "operation" ? "rounded-full border border-[#abb3bf]" : ""}`}>{KIND[c.kind]}</span>}
         <span className="truncate font-mono">{c.wbs || c.id}</span>
         {c.step && <span className="shrink-0">{c.step}</span>}
         {c.critical && c.cpm_rank ? <span className={`ml-auto shrink-0 rounded-full px-2 py-px text-[11px] font-medium ${c.cpm_rank === 1 ? "bg-[#e5484d]/25 text-[#ffb4b4]" : "bg-[#fab219]/15 text-[#fbd38d]"}`}>CPM #{c.cpm_rank}</span> : c.critical && <span className="ml-auto shrink-0 rounded-full bg-[#fab219]/15 px-2 py-px text-[11px] text-[#fbd38d]">critical</span>}
       </span>
       <span className="mt-1 block text-[14px] font-medium leading-snug text-white">{c.title}</span>
-      {c.status === "doing" && c.progress > 0 && <span className="mt-2 flex items-center gap-2"><span className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-white/10"><span className="block h-full bg-[#29a383]" style={{ width: `${c.progress}%` }} /></span><span className="shrink-0 text-[12px] tabular-nums text-[#d3d8de]">{c.progress}%</span></span>}
+      {c.status === "doing" && c.progress > 0 && <span className="mt-2 flex items-center gap-2"><span className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-white/10"><span className="kb-sheen block h-full" style={{ width: `${c.progress}%`, background: DOT.doing }} /></span><span className="shrink-0 text-[12px] tabular-nums text-[#d3d8de]">{c.progress}%</span></span>}
       <span className="mt-2 flex items-center gap-2 text-[12px] text-[#abb3bf]">
         {c.owner && <span className="min-w-0 truncate" title={clean(c.owner)}>{clean(c.owner)}</span>}
         {c.due && <span className={`ml-auto shrink-0 tabular-nums ${c.overdue ? "font-medium text-[#ffb4b4]" : ""}`}>{when(c.due, today)}</span>}
@@ -278,10 +289,10 @@ function Board({ target }: { target: string }) {
             return (
               <div key={key} onDragOver={(e) => { if (key !== "proposed") { e.preventDefault(); setOver(key); } }} onDragLeave={() => setOver("")}
                 onDrop={(e) => { e.preventDefault(); setOver(""); const c = all.find((x) => x.id === drag); if (c) move(c, key); setDrag(null); }}
-                className={`flex min-h-0 min-w-[270px] flex-1 basis-0 flex-col rounded-xl border ${over === key ? "border-[#f5b82e] bg-[#f5b82e]/[.07] shadow-[inset_0_0_0_1px_#f5b82e]" : "border-white/[.07] bg-[#151e28]"}`}>
-                <p className="flex shrink-0 items-center gap-2 border-b border-white/[.05] px-3 py-2.5 text-[13px] font-bold tracking-tight text-white"><span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: DOT[key] }} />{label}<span className="ml-auto rounded-full bg-white/10 px-2 text-[12px] font-normal tabular-nums text-[#c5cbd3]">{mine.length}</span></p>
-                <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-2 pb-2">
-                  {mine.map((c) => <Card key={c.id} c={c} names={names} today={data.today} on={sel === c.id} dim={!!lit && !lit.has(c.id)} onOpen={() => { setForm(null); setDetail(false); setSel(c.id); }} onDragStart={() => setDrag(c.id)} />)}
+                style={{ borderTopColor: over === key ? undefined : DOT[key] }} className={`flex min-h-0 min-w-[270px] flex-1 basis-0 flex-col rounded-xl border border-t-2 ${over === key ? "border-[#f5b82e] bg-[#f5b82e]/[.07] shadow-[inset_0_0_0_1px_#f5b82e]" : "border-white/[.07] bg-[#151e28]"}`}>
+                <p data-kb={key} style={{ "--kb-color": DOT[key], background: `linear-gradient(180deg, ${DOT[key]}22, transparent)` } as CSSProperties} className="flex shrink-0 items-center gap-2 rounded-t-xl border-b border-white/[.05] px-3 py-2.5 text-[13px] font-bold tracking-tight text-white"><span className="kb-led h-2.5 w-2.5 shrink-0 rounded-full" />{label}<span className="ml-auto rounded-full bg-white/10 px-2 text-[12px] font-normal tabular-nums text-[#c5cbd3]">{mine.length}</span></p>
+                <div className="min-h-0 flex-1 overflow-y-auto p-1">
+                  {mine.map((c, n) => <div key={c.id} className="kb-slot p-1"><Card c={c} n={n} names={names} today={data.today} on={sel === c.id} dim={!!lit && !lit.has(c.id)} onOpen={() => { setForm(null); setDetail(false); setSel(c.id); }} onDragStart={() => setDrag(c.id)} /></div>)}
                   {!mine.length && <p className="m-1 rounded-lg border border-dashed border-white/10 p-4 text-center text-[12px] text-[#6b7480]">Drop a card here</p>}
                 </div>
               </div>
