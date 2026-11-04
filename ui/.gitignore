@@ -1,4 +1,5 @@
 node_modules/
 .next/
+.next-preview/
 next-env.d.ts
 *.tsbuildinfo

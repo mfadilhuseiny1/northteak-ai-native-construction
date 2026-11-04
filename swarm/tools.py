@@ -8,11 +8,10 @@ refused, told why, and never reaches the comparison.
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import re
 from dataclasses import dataclass, field
 from typing import Callable
-
-from google.adk.tools import ToolContext
 
 from . import config
 from .reconcile import NEEDS_RULING
@@ -35,10 +34,15 @@ class RunContext:
 
 
 RUNS: dict[str, RunContext] = {}
+STATE: contextvars.ContextVar[dict] = contextvars.ContextVar("state")  # what this run's agents have established: the runner sets it, and agents side by side share it
 
 
-def run_of(tool_context: ToolContext) -> RunContext:
-    return RUNS[tool_context.state["run_id"]]
+def state() -> dict:
+    return STATE.get()
+
+
+def run_of() -> RunContext:
+    return RUNS[state()["run_id"]]
 
 
 def _refuse(run: RunContext, agent: str, code: str, reason: str) -> dict:
@@ -78,22 +82,22 @@ def check_finding(run: RunContext, source: str, code: str, pct: float, evidence_
 
 
 def _source_tools(source: str, agent: str) -> list[Callable]:
-    def submit_finding(item_code: str, pct: float, evidence_ids: list[str], note: str, tool_context: ToolContext) -> dict:
+    def submit_finding(item_code: str, pct: float, evidence_ids: list[str], note: str) -> dict:
         """Record the progress % this source shows for one item, citing the evidence IDs it comes from."""
-        run = run_of(tool_context)
+        run = run_of()
         why = check_finding(run, source, item_code, pct, evidence_ids)
         if why:
             return _refuse(run, agent, item_code, why)
-        tool_context.state[f"finding:{source}:{item_code}"] = {"pct": pct, "evidence_ids": evidence_ids, "note": note}
+        state()[f"finding:{source}:{item_code}"] = {"pct": pct, "evidence_ids": evidence_ids, "note": note}
         run.emit({"type": "finding", "source": source, "code": item_code, "pct": pct})
         return {"ok": True}
 
-    def submit_not_verifiable(item_code: str, reason: str, evidence_ids: list[str], tool_context: ToolContext) -> dict:
+    def submit_not_verifiable(item_code: str, reason: str, evidence_ids: list[str]) -> dict:
         """Record that this source cannot establish the progress of one item, and why. Use it instead of guessing."""
-        run = run_of(tool_context)
+        run = run_of()
         if item_code not in run.data.boq:
             return _refuse(run, agent, item_code, f"unknown item code {item_code}")
-        tool_context.state[f"finding:{source}:{item_code}"] = {"pct": None, "reason": reason, "evidence_ids": evidence_ids}
+        state()[f"finding:{source}:{item_code}"] = {"pct": None, "reason": reason, "evidence_ids": evidence_ids}
         run.emit({"type": "finding", "source": source, "code": item_code, "pct": None, "reason": reason})
         return {"ok": True}
 
@@ -102,25 +106,25 @@ def _source_tools(source: str, agent: str) -> list[Callable]:
 
 # ------------------------------------------------------------------------------------------------ lead
 
-def get_claim_overview(tool_context: ToolContext) -> dict:
+def get_claim_overview() -> dict:
     """The project and the draft claim's lines."""
-    data = run_of(tool_context).data
+    data = run_of().data
     return {"project": data.project, "lines": [{"code": c, "name": data.boq[c]["name"], "area": data.boq[c]["area"], "value": data.boq[c]["value"],
                                                 "claimed_pct": data.claim[c]["claimed_pct"], "amount_claimed": data.claim[c]["amount"]} for c in data.codes]}
 
 
-def set_plan(plan: str, focus_items: list[str], tool_context: ToolContext) -> dict:
+def set_plan(plan: str, focus_items: list[str]) -> dict:
     """Record the review plan and the item codes most worth attention. Every line is reviewed either way."""
-    run = run_of(tool_context)
+    run = run_of()
     focus = [c for c in focus_items if c in run.data.boq]
-    tool_context.state["plan"] = {"plan": plan, "focus_items": focus}
+    state()["plan"] = {"plan": plan, "focus_items": focus}
     run.emit({"type": "plan", "plan": plan, "focus_items": focus})
     return {"ok": True}
 
 
-def get_final_report(tool_context: ToolContext) -> dict:
+def get_final_report() -> dict:
     """The reviewed claim: totals, the lines that need action and the extra work found."""
-    core = tool_context.state.get("report_core") or {}
+    core = state().get("report_core") or {}
     return {"totals": core.get("totals"), "extra_work": core.get("extra_work"),
             "action_lines": [{k: x[k] for k in ("code", "name", "status", "reason", "impact", "billing_difference")}
                              for x in core.get("lines", []) if x["status"] != "supported"]}
@@ -128,16 +132,16 @@ def get_final_report(tool_context: ToolContext) -> dict:
 
 # ------------------------------------------------------------------------------------------------ field
 
-def list_site_photos(tool_context: ToolContext) -> dict:
+def list_site_photos() -> dict:
     """Every item to report on, and every site photo with its item, area and date."""
-    data = run_of(tool_context).data
+    data = run_of().data
     return {"cutoff": data.project["cutoff"], "items": [{"code": c, "name": data.boq[c]["name"], "area": data.boq[c]["area"]} for c in data.codes],
             "photos": [{k: p[k] for k in ("id", "item_code", "area", "date", "caption")} for p in data.photos]}
 
 
-async def inspect_photos(photo_ids: list[str], tool_context: ToolContext) -> dict:
+async def inspect_photos(photo_ids: list[str]) -> dict:
     """Read site photos. Returns for each one whether the work is visible, the elements installed, the total and the %."""
-    run = run_of(tool_context)
+    run = run_of()
     gate = asyncio.Semaphore(4)
 
     async def one(photo_id: str) -> dict:
@@ -157,26 +161,26 @@ async def inspect_photos(photo_ids: list[str], tool_context: ToolContext) -> dic
 
 # ------------------------------------------------------------------------------------------------ schedule
 
-def read_schedule(tool_context: ToolContext) -> dict:
+def read_schedule() -> dict:
     """Planned progress of every item at the cut-off date. Evidence ID of an item: SCH-<code>."""
-    data = run_of(tool_context).data
+    data = run_of().data
     return {"cutoff": data.project["cutoff"], "items": [{"code": c, "name": data.boq[c]["name"], "planned_pct": data.schedule[c]["planned_pct_at_cutoff"],
                                                          "evidence_id": f"SCH-{c}"} for c in data.codes]}
 
 
 # ------------------------------------------------------------------------------------------------ documents
 
-def read_daily_logs(tool_context: ToolContext) -> dict:
+def read_daily_logs() -> dict:
     """Every BoQ item with its quantity, and every daily log entry as the foremen wrote it."""
-    data = run_of(tool_context).data
+    data = run_of().data
     return {"items": [{"code": c, "name": data.boq[c]["name"], "area": data.boq[c]["area"], "unit": data.boq[c]["unit"], "boq_qty": data.boq[c]["qty"]} for c in data.codes],
             "entries": data.logs}
 
 
-def record_log_quantities(item_code: str, log_ids: list[str], quantities: list[float], note: str, tool_context: ToolContext) -> dict:
+def record_log_quantities(item_code: str, log_ids: list[str], quantities: list[float], note: str) -> dict:
     """Record the completed quantity each log entry adds to one item: log_ids and quantities are parallel lists, and a
     removal is negative. Code adds them up and works out the % of the BoQ quantity. Each quantity must be written in its entry."""
-    run = run_of(tool_context)
+    run = run_of()
     data = run.data
     if item_code not in data.boq:
         return _refuse(run, "documents", item_code, f"unknown item code {item_code}")
@@ -191,19 +195,19 @@ def record_log_quantities(item_code: str, log_ids: list[str], quantities: list[f
     pct = round(100 * sum(quantities) / data.boq[item_code]["qty"], 1)
     if not 0 <= pct <= 101:
         return _refuse(run, "documents", item_code, f"these quantities add up to {pct}% of the BoQ quantity")
-    tool_context.state[f"finding:documents:{item_code}"] = {"pct": pct, "evidence_ids": log_ids, "note": note, "quantities": quantities}
+    state()[f"finding:documents:{item_code}"] = {"pct": pct, "evidence_ids": log_ids, "note": note, "quantities": quantities}
     run.emit({"type": "finding", "source": "documents", "code": item_code, "pct": pct})
     return {"ok": True, "pct": pct}
 
 
-def read_change_orders(tool_context: ToolContext) -> dict:
+def read_change_orders() -> dict:
     """The change orders on record."""
-    return {"change_orders": run_of(tool_context).data.change_orders}
+    return {"change_orders": run_of().data.change_orders}
 
 
-def report_extra_work(title: str, log_ids: list[str], note: str, tool_context: ToolContext) -> dict:
+def report_extra_work(title: str, log_ids: list[str], note: str) -> dict:
     """Report work done on site that is on no BoQ item and has no approved change order, so it cannot be billed yet."""
-    run = run_of(tool_context)
+    run = run_of()
     bad = [i for i in log_ids if run.data.log(i) is None]
     if not log_ids or bad:
         return _refuse(run, "documents", title, f"cite log entries that exist; these do not: {', '.join(bad) or 'none given'}")
@@ -212,16 +216,16 @@ def report_extra_work(title: str, log_ids: list[str], note: str, tool_context: T
     if covered:
         return _refuse(run, "documents", title, f"already covered by an approved change order: {', '.join(covered)}")
     key = "extra:" + "+".join(sorted(log_ids))
-    tool_context.state[key] = {"title": title, "log_ids": sorted(log_ids), "note": note}
+    state()[key] = {"title": title, "log_ids": sorted(log_ids), "note": note}
     run.emit({"type": "extra_work", "title": title, "log_ids": sorted(log_ids), "note": note})
     return {"ok": True}
 
 
 # ------------------------------------------------------------------------------------------------ cost
 
-def read_claim_and_boq(tool_context: ToolContext) -> dict:
+def read_claim_and_boq() -> dict:
     """Each claim line beside its BoQ item. expected_amount is what the BoQ price and claimed % give; difference is the claim minus that."""
-    data = run_of(tool_context).data
+    data = run_of().data
     lines = []
     for c in data.codes:
         item, line = data.boq[c], data.claim[c]
@@ -232,33 +236,33 @@ def read_claim_and_boq(tool_context: ToolContext) -> dict:
     return {"lines": lines}
 
 
-def submit_cost_check(item_code: str, result: str, evidence_ids: list[str], note: str, tool_context: ToolContext) -> dict:
+def submit_cost_check(item_code: str, result: str, evidence_ids: list[str], note: str) -> dict:
     """Record whether one claim line matches the BoQ. result: "ok" or "mismatch"."""
-    run = run_of(tool_context)
+    run = run_of()
     if item_code not in run.data.boq:
         return _refuse(run, "cost", item_code, f"unknown item code {item_code}")
     truth = "mismatch" if run.data.billing_difference(item_code) else "ok"
     if result != truth:
         return _refuse(run, "cost", item_code, f"the figures say {truth}, not {result}")
-    tool_context.state[f"cost:{item_code}"] = {"result": result, "evidence_ids": evidence_ids, "note": note}
+    state()[f"cost:{item_code}"] = {"result": result, "evidence_ids": evidence_ids, "note": note}
     run.emit({"type": "cost_check", "code": item_code, "result": result})
     return {"ok": True}
 
 
 # ------------------------------------------------------------------------------------------------ verifier
 
-def get_flagged_items(tool_context: ToolContext) -> dict:
+def get_flagged_items() -> dict:
     """The conclusions that need a ruling, with their reasoning and evidence IDs."""
-    data = run_of(tool_context).data
-    lines = tool_context.state.get("reconciled") or []
+    data = run_of().data
+    lines = state().get("reconciled") or []
     return {"cutoff": data.project["cutoff"], "stale_after_days": config.STALE_DAYS,
             "items": [{k: x[k] for k in ("code", "name", "status", "reason", "claimed_pct", "field_pct", "log_pct", "evidence_ids")}
                       for x in lines if x["status"] in NEEDS_RULING]}
 
 
-def open_evidence(evidence_ids: list[str], tool_context: ToolContext) -> dict:
+def open_evidence(evidence_ids: list[str]) -> dict:
     """Open evidence records by ID: photos and daily log entries carry their dates, photos also their reading."""
-    run = run_of(tool_context)
+    run = run_of()
     out = {}
     for e in evidence_ids:
         record = run.data.evidence(e)
@@ -266,15 +270,15 @@ def open_evidence(evidence_ids: list[str], tool_context: ToolContext) -> dict:
     return {"evidence": out}
 
 
-def rule_on_item(item_code: str, decision: str, reason: str, tool_context: ToolContext) -> dict:
+def rule_on_item(item_code: str, decision: str, reason: str) -> dict:
     """Confirm a conclusion or reject it. decision: "confirmed" or "rejected". A rejected item goes to on-site inspection."""
-    run = run_of(tool_context)
-    flagged = {x["code"] for x in (tool_context.state.get("reconciled") or []) if x["status"] in NEEDS_RULING}
+    run = run_of()
+    flagged = {x["code"] for x in (state().get("reconciled") or []) if x["status"] in NEEDS_RULING}
     if item_code not in flagged:
         return _refuse(run, "verifier", item_code, "this item has no conclusion to rule on")
     if decision not in ("confirmed", "rejected"):
         return _refuse(run, "verifier", item_code, 'decision must be "confirmed" or "rejected"')
-    tool_context.state[f"ruling:{item_code}"] = {"decision": decision, "reason": reason}
+    state()[f"ruling:{item_code}"] = {"decision": decision, "reason": reason}
     run.emit({"type": "ruling", "code": item_code, "decision": decision, "reason": reason})
     return {"ok": True}
 

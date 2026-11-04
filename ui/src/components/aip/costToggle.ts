@@ -3,7 +3,7 @@
 import { useSyncExternalStore } from "react";
 
 /**
- * Model costs stay off SiteSwarm's screens unless the viewer turns them on from the cost button in the header.
+ * Model costs stay off NorthTeak's screens unless the viewer turns them on from the cost button in the header.
  * Per browser; the swarm view follows it too.
  */
 const KEY = "aip.costToggle.tampil";

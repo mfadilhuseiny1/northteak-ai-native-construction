@@ -1,9 +1,15 @@
-google-adk==2.12.0
+camel-ai==0.2.90
+# Pinned: swarm/memory.py switches off what this version does behind the scenes, and tests/test_memory.py proves nothing leaves the machine. Do not add fastembed: mem0 would then download a model from Hugging Face.
+mem0ai==2.2.1
+mcp<2
+openai<4
 fastapi
+pydantic
 uvicorn[standard]
 pillow
 python-dotenv
 pytest
-litellm
-mcp
 httpx
+pypdf
+python-multipart
+paho-mqtt>=2,<3

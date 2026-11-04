@@ -23,13 +23,7 @@ import re
 import time
 from typing import Any, Callable
 
-from google.adk.agents import LlmAgent
-from google.adk.agents.run_config import RunConfig
-from google.adk.runners import Runner
-from google.adk.sessions import InMemorySessionService
-from google.genai import types
-
-from . import config, project, site_case as C, vision
+from . import llm, project, site_case as C, vision
 from .connectors import McpHub
 from .data import ProjectData
 
@@ -44,13 +38,20 @@ PHASES = [("penugasan", "Assign"), ("lapangan", "Field reading"), ("register", "
 SIGNALS = ["SUPPLY_DELAY", "CREW_SHORT", "HOLD_POINT_OPEN", "WEATHER_RISK", "MIX_NOT_APPROVED", "DESIGN_CONSTRAINT", "SUBCONTRACTOR_REWORK", "SUBCONTRACTOR_CAPACITY", "NOTICE_DUE",
            "COST_EXPOSURE", "SCHEDULE_CRITICAL", "RFI_OPEN", "OTHER"]
 HANDOFF_ASK = 'End with ONE handoff line for the orchestrator, the validator and the next agent: HANDOFF {"done": ["what you finished, with key figures"], "left_undone": ["what you could not do"], "issues_found": ["problems you found"]}'
+def lessons_for(a: dict) -> str:
+    """What people decided and learned on the modules this agent works with. Empty until there is something, so its instructions stay as they were."""
+    from . import module_agents  # it imports this file
+
+    return module_agents.lessons_for(a)
+
+
 RULES = """Rules of the firm:
 - Use only what your tools returned. Never invent a fact, date, name or number. Cite evidence IDs.
 - If your sources cannot settle something, say so. You read only your own sources, so do not guess what others hold.
 - You recommend; you decide nothing. People decide. A message you write is a draft.
 - Call things discrepancies or risks. Never accuse anyone."""
 
-_emit: contextvars.ContextVar[Callable[[dict], None]] = contextvars.ContextVar("emit")
+_emit: contextvars.ContextVar[Callable[[dict], None]] = contextvars.ContextVar("emit", default=lambda ev: None)
 
 
 def emit(ev: dict) -> None:
@@ -125,10 +126,12 @@ def parse_json(text: str) -> Any:
     m = re.search(r"\{.*\}", text or "", re.S)
     if not m:
         return None
-    try:
-        return json.loads(m.group(0))
-    except ValueError:
-        return None
+    for body in (m.group(0), re.sub(r",(\s*[}\]])", r"\1", m.group(0))):  # a model can leave a line break inside a string, or a comma after the last item
+        try:
+            return json.loads(body, strict=False)
+        except ValueError:
+            continue
+    return None
 
 
 def split_handoff(text: str) -> tuple[str, dict]:
@@ -142,17 +145,16 @@ def split_handoff(text: str) -> tuple[str, dict]:
 
 
 def numbers_in(text: str) -> set[str]:
-    return {re.sub(r"[.,]", "", n) for n in re.findall(r"\d[\d.,]*\d|\d", text or "")}
+    return {re.sub(r"[.,]", "", re.sub(r"[.,]00$", "", n)) for n in re.findall(r"\d[\d.,]*\d|\d", text or "")}  # "316.00" in a table and "316" in a sentence are one figure
 
 
 class Firm:
     signals = SIGNALS
 
-    def __init__(self, model_of: Callable[[str, str, int], Any], max_usd: float, brief: str, focus: str = "", mock: bool = False):
+    def __init__(self, model_of: Callable[[str, str, int], Any], max_usd: float, brief: str, focus: str = "", mock: bool = False, parallel: int | None = None):
         self.model_of, self.max_usd, self.brief, self.focus, self.mock = model_of, max_usd, brief, focus, mock
         self.team = {a["key"]: dict(a) for a in roster()[0]}
-        self.service = InMemorySessionService()
-        self.sem = asyncio.Semaphore(CONCURRENT)
+        self.sem = asyncio.Semaphore(parallel or CONCURRENT)
         self.cool_until = 0.0
         self.usage: dict[str, dict] = {}
         self.receipts: dict[str, list[dict]] = {}
@@ -340,25 +342,18 @@ class Firm:
             emit({"type": "error", "agent": None, "message": self.stopped})
 
     async def turn(self, key: str, model: str, text: str, tools: list, prompt: str, calls: int) -> str:
-        def count(callback_context, llm_response):
-            u = llm_response.usage_metadata
-            self.charge(key, model, (u.prompt_token_count or 0) if u else 0, config.output_tokens(u) if u else 0)
+        def count(used_in: int, used_out: int) -> None:
+            self.charge(key, model, used_in, used_out)
             self.usage[key]["calls"] += 1
 
-        def instruction(_ctx) -> str:
-            return text
+        def gate() -> None:
+            if self.spent >= self.max_usd and not self.mock:
+                if not self.stopped:
+                    self.stopped = f"stopped at the spending limit of ${self.max_usd:.2f}"
+                    emit({"type": "error", "agent": None, "message": self.stopped})
+                raise RuntimeError(self.stopped)
 
-        agent = LlmAgent(name=re.sub(r"\W", "_", key), model=self.model_of(key, model, 6000), instruction=instruction, tools=tools, after_model_callback=count,
-                         disallow_transfer_to_parent=True, disallow_transfer_to_peers=True)
-        runner = Runner(app_name="swarm", agent=agent, session_service=self.service)
-        s = await self.service.create_session(app_name="swarm", user_id="pm")
-        message = types.Content(role="user", parts=[types.Part(text=prompt)])
-        out = ""
-        async for ev in runner.run_async(user_id="pm", session_id=s.id, new_message=message, run_config=RunConfig(max_llm_calls=calls)):
-            if getattr(ev, "error_message", None):
-                emit({"type": "error", "agent": key, "message": ev.error_message})
-            if ev.is_final_response() and ev.content and ev.content.parts:  # the last message only: ADK's output_key would also join a model's status lines from between its tool calls
-                out = "".join(p.text for p in ev.content.parts if p.text and not p.thought).strip() or out
+        out = await llm.turn(self.model_of(key, model, 6000), text, tools, prompt, calls, count, gate)
         if not out:  # the turn ended before the report: what its steps established, said plainly
             rs = self.receipts.get(key, [])
             out = "(report not finished) Steps: " + "; ".join(f"{r['tool']} → {r['summary']}" for r in rs[-12:])
@@ -470,7 +465,7 @@ class Firm:
         emit({"type": "machine", "key": key, "status": status, **extra})
 
     def head(self, a: dict) -> str:
-        return f"You are {a['name']} in a swarm that works a construction site disruption through to a recovery plan for the main contractor's project manager. Your role: {a['peran']}.\n{RULES}"
+        return f"You are {a['name']} in a swarm that works a construction site disruption through to a recovery plan for the main contractor's project manager. Your role: {a['peran']}.\n{RULES}{lessons_for(a)}"
 
     # -------------------------------------------------------------------------------------------- the phases
 
@@ -714,7 +709,7 @@ Read the documents and messages, look for what the ruling missed, then call red_
             return {"rulings": self.rulings, "red_team": self.attacks, "pick_by_code": chosen, "drafts": self.drafts, "proposed_work_items": self.proposed}
 
         text = f"""{self.head(self.team['partner'])}
-Call read_rulings, then write the recovery plan for the project manager, in plain English, in three parts with these headings:
+Call read_rulings, then write the recovery plan for the project manager, in plain words, in three parts with these headings:
 ## What happened
 ## What I recommend, and why ({chosen or 'no option stands'})
 ## Actions by who and when
@@ -769,8 +764,8 @@ Plan:
         team, why = roster()
         emit({"type": "run", "status": "started", "kind": "swarm"})
         emit({"type": "firm", "tim": team, "mesin": MACHINES, "fase": [{"id": i, "label": label} for i, label in PHASES], "brief": self.brief, "versi": "1.0", "ukuran": why})
-        await self.hub.start()
         try:
+            await self.hub.start()
             plan = await self.phase_0()
             await self.phase_1(plan)
             self.phase_2()

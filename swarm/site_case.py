@@ -108,27 +108,49 @@ def _day(n: int) -> str:
     return (date.fromisoformat(TODAY) + timedelta(days=n)).isoformat()
 
 
-def schedule(pour_delay_days: int = 0, compress: dict | None = None) -> dict:
-    """Plain critical path: earliest start and finish per activity, float against the milestone or the last finish, calendar days."""
-    compress = compress or {}
-    finish, rows = {}, {}
-    for aid, name, dur, preds, who in ACTIVITIES:
+def schedule(pour_delay_days: int = 0, compress: dict | None = None, activities: list | None = None, links: dict | None = None, start: str | None = None, not_before: dict | None = None, leads: dict | None = None, overlaps: dict | None = None) -> dict:
+    """Plain critical path: earliest start and finish per activity, float against the milestone or the last finish, calendar days.
+
+    With nothing else given it is the scenario's own programme. A person's added activities and changed links come in through activities and links. not_before holds an activity to the day a master schedule starts it, and leads lets it overlap what it waits for by the days that schedule overlaps them."""
+    compress, links, not_before, leads, overlaps = compress or {}, links or {}, not_before or {}, leads or {}, overlaps or {}
+    items = {a[0]: (a[0], a[1], a[2], list(links.get(a[0], a[3])), a[4]) for a in (ACTIVITIES if activities is None else activities)}
+    order: list[str] = []
+    while len(order) < len(items):  # in the order the links allow, whatever order they were added in
+        ready = next((k for k, i in items.items() if k not in order and all(p in order or p not in items for p in i[3])), None)
+        if ready is None:
+            raise ValueError(f"the activity links form a cycle: {', '.join(k for k in items if k not in order)}")
+        order.append(ready)
+    first = date.fromisoformat(start or TODAY)
+    day = lambda n: (first + timedelta(days=n)).isoformat()  # noqa: E731
+    finish, begun, rows = {}, {}, {}
+    for aid in order:
+        _, name, dur, preds, who = items[aid]
         d = max(1, dur - compress.get(aid, 0))
-        start = max([finish[p] + 1 for p in preds], default=0)
+        beside = {p: ends_after for p, ends_after in overlaps.get(aid, {}).items() if p in preds and p in finish}  # work running alongside cannot start before the other starts, nor end before it ends, unless the schedule itself has it end first
+        begin = max([finish[p] + 1 + leads.get(aid, {}).get(p, 0) for p in preds if p in finish and p not in beside] + [begun[p] for p in beside] + [finish[p] - d + 1 for p, ends_after in beside.items() if ends_after] + [not_before.get(aid, 0)])
         if aid == POUR:
-            start += pour_delay_days
-        finish[aid] = start + d - 1
-        rows[aid] = {"id": aid, "name": name, "duration": d, "start": _day(start), "finish": _day(finish[aid]), "predecessors": preds, "by": who}
-    end = max(finish.values())
-    succ = {a[0]: [b[0] for b in ACTIVITIES if a[0] in b[3]] for a in ACTIVITIES}
+            begin += pour_delay_days
+        begun[aid] = begin
+        finish[aid] = begin + d - 1
+        rows[aid] = {"id": aid, "name": name, "duration": d, "start": day(begin), "finish": day(finish[aid]), "predecessors": preds, "by": who}
+    end = max(finish.values(), default=0)
+    succ = {k: [j for j, i in items.items() if k in i[3]] for k in items}
     late: dict[str, int] = {}
-    for aid, _, _, _, _ in reversed(ACTIVITIES):
-        late[aid] = min([late[s] - rows[s]["duration"] for s in succ[aid]], default=end)
+    for aid in reversed(order):
+        bounds = [end]  # an overlap allowed for must not carry it past the end of the job
+        for x in succ[aid]:
+            if x in late:
+                beside = overlaps.get(x, {}).get(aid)
+                bounds += [late[x] - rows[x]["duration"] - leads.get(x, {}).get(aid, 0)] if beside is None else [late[x] - rows[x]["duration"] + rows[aid]["duration"], *([late[x]] if beside else [])]
+        late[aid] = min(bounds)
         rows[aid]["float_days"] = late[aid] - finish[aid]
         rows[aid]["critical"] = rows[aid]["float_days"] == 0
-    contract = date.fromisoformat(MILESTONE["contract_date"])
-    actual = date.fromisoformat(rows[MILESTONE["activity"]]["finish"])
-    return {"activities": list(rows.values()), "milestone": {**MILESTONE, "forecast": actual.isoformat(), "days_late": max(0, (actual - contract).days)}}
+    out = {"activities": [rows[k] for k in items], "milestone": None}
+    if MILESTONE["activity"] in rows:
+        contract = date.fromisoformat(MILESTONE["contract_date"])
+        actual = date.fromisoformat(rows[MILESTONE["activity"]]["finish"])
+        out["milestone"] = {**MILESTONE, "forecast": actual.isoformat(), "days_late": max(0, (actual - contract).days)}
+    return out
 
 
 def evaluate(option_id: str) -> dict:

@@ -6,7 +6,97 @@ body {
 }
 
 body {
-  background: #2f3c48;
+  background: #111820;
   color: #f6f7f9;
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-family: "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", sans-serif;
+  font-feature-settings: "tnum" 1, "cv05" 1;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* the app is dark: scrollbars, date pickers and select lists follow */
+:root { color-scheme: dark; }
+
+::selection { background: #f5b82e; color: #171106; }
+
+/* slim steel scrollbars instead of the chunky OS default */
+* { scrollbar-width: thin; scrollbar-color: #46586a transparent; }
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-thumb { background: #46586a; border-radius: 8px; }
+*::-webkit-scrollbar-thumb:hover { background: #5b7187; }
+*::-webkit-scrollbar-track { background: transparent; }
+.no-scrollbar { scrollbar-width: none; }
+
+/* the header gives up room only as far as its tabs need it (data-tight, measured in page.tsx): first the group names, then the brand's words, then the space around each tab, then the names of the tabs that are not open */
+[data-tight="1"] .drop-1, :is([data-tight="2"], [data-tight="3"]) :is(.drop-1, .drop-2), [data-tight="4"] :is(.drop-1, .drop-2, .drop-4) { display: none; }
+[data-tight="3"] .snug { padding-inline: 6px; }
+[data-tight="4"] .snug { padding-inline: 8px; }
+
+/* the NorthTeak logo (public/logo): the tree alone, or the tree with its name, painted in the text colour so it sits on the dark screens */
+.logo-mark, .logo-full { display: block; background-color: currentColor; mask: url(/logo/northteak-mark.svg) center / contain no-repeat; }
+.logo-full { mask-image: url(/logo/northteak.svg); }
+
+/* every interactive element answers the keyboard and the pointer */
+button, a, select, input, textarea { transition: background-color .15s ease, border-color .15s ease, color .15s ease, box-shadow .15s ease, transform .15s ease; }
+:focus-visible { outline: 2px solid #f5b82e; outline-offset: 1px; border-radius: 4px; }
+
+/* the dotted drafting grid behind diagrams and boards */
+.dotgrid {
+  background-color: #111820;
+  background-image: radial-gradient(circle, rgb(255 255 255 / .07) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+
+@keyframes rise { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.rise { animation: rise .25s ease both; }
+
+/* A Kanban card's status light. The rhythm says the status as well as the colour does, so it reads without colour: the slower it is, the less it asks of anyone.
+   Every card has the small light and a steady edge, which cost almost nothing. The glow is only on what is under way or late, so it means something and stays cheap with hundreds of cards.
+   Only opacity moves, on the light's own layer, so a blink repaints nothing, and nothing flashes faster than three times a second. */
+[data-kb="proposed"] { --kb-name: kb-breathe; --kb-time: 3.2s; }
+[data-kb="open"] { --kb-name: kb-idle; --kb-time: 3.6s; }
+[data-kb="doing"] { --kb-name: kb-pulse; --kb-time: 1.6s; }
+[data-kb="review"] { --kb-name: kb-double; --kb-time: 2.4s; }
+[data-kb="done"] { --kb-name: kb-idle; --kb-time: 5s; }
+[data-kb="held"] { --kb-name: kb-breathe; --kb-time: 2.6s; }
+[data-kb="late"] { --kb-name: kb-pulse; --kb-time: 1.2s; }
+[data-kb="stopped"] { --kb-name: kb-alarm; --kb-time: 1s; }
+@keyframes kb-idle { 0%, 100% { opacity: .4; } 50% { opacity: .8; } }
+@keyframes kb-breathe { 0%, 100% { opacity: .3; } 50% { opacity: 1; } }
+@keyframes kb-pulse { 0%, 100% { opacity: .3; } 40% { opacity: 1; } }
+@keyframes kb-double { 0%, 16%, 32%, 100% { opacity: .25; } 8%, 24% { opacity: 1; } }
+@keyframes kb-alarm { 0%, 49% { opacity: 1; } 50%, 100% { opacity: .12; } }
+.kb-led, .kb-card::before { animation: var(--kb-name) var(--kb-time) ease-in-out infinite; animation-delay: calc(var(--kb-i, 0) * -140ms); }
+.kb-led { background: var(--kb-color); box-shadow: 0 0 6px var(--kb-color); }
+.kb-card { position: relative; background-image: linear-gradient(90deg, var(--kb-color) 3px, transparent 3px); }
+.kb-card:is([data-kb="doing"], [data-kb="review"], [data-kb="late"], [data-kb="stopped"])::before { content: ""; position: absolute; inset: -1px; border-radius: inherit; pointer-events: none; box-shadow: inset 0 0 20px -8px var(--kb-color), 0 0 12px -3px var(--kb-color); }
+.kb-card:hover::before, .kb-card:hover .kb-led, .kb-card:focus-visible::before, .kb-card:focus-visible .kb-led, .kb-card[data-still]::before, .kb-card[data-still] .kb-led { animation: none; opacity: 1; }  /* steady while someone reads it */
+.kb-card[data-dim]::before, .kb-card[data-dim] .kb-led { animation: none; opacity: .4; }  /* a card set aside does not call for attention */
+.kb-slot { content-visibility: auto; contain-intrinsic-size: auto 104px; }  /* a card scrolled out of its column costs nothing, with hundreds on the board */
+.kb-sheen { position: relative; overflow: hidden; }
+.kb-sheen::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgb(255 255 255 / .45), transparent); animation: kb-sheen 1.6s linear infinite; }
+@keyframes kb-sheen { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+
+/* The agent swarm. A wire carries work only while the agent at its end is working, and a ring grows from a node only while it is. A paused replay stands still. */
+.sw-flow { stroke-dasharray: 7 9; animation: sw-flow .8s linear infinite; }
+@keyframes sw-flow { to { stroke-dashoffset: -16; } }
+.sw-ping { transform-box: fill-box; transform-origin: center; animation: sw-ping 1.6s ease-out infinite; }
+@keyframes sw-ping { from { transform: scale(1); opacity: .75; } to { transform: scale(1.65); opacity: 0; } }
+.sw-done { transform-box: fill-box; transform-origin: center; animation: sw-ping .9s ease-out both; }
+.sw-still .sw-flow, .sw-still .sw-ping { animation-play-state: paused; }
+.sw-node { outline: none; }
+.sw-node:hover circle:not(.sw-ping), .sw-node:hover rect, .sw-node:focus-visible circle:not(.sw-ping), .sw-node:focus-visible rect { stroke: #fff; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+  .sw-flow { animation: none; }
+  .sw-ping { animation: none; opacity: .4; }
+  .sw-done { animation: none; opacity: 0; }
+  .kb-led, .kb-card::before { animation: none; opacity: 1; }  /* the rule above would make an endless blink flicker, so these stop: the light stays, steady */
+  .kb-sheen::after { animation: none; opacity: 0; }
+}
+
+/* paper: a report printed or saved as PDF flows over as many A4 pages as it needs, on white */
+@media print {
+  @page { size: A4; margin: 0; }
+  html, body { height: auto !important; overflow: visible !important; background: #fff !important; }
 }

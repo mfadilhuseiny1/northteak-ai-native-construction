@@ -54,6 +54,7 @@ const PATHS = {
   grid: "M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z",
   list: "M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01",
   eye: "M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6",
+  person: "M12 10a3 3 0 1 0 0-6 3 3 0 0 0 0 6M5 20c1.2-3.2 3.8-4.5 7-4.5s5.8 1.3 7 4.5",
   folderUp: "M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM12 16v-6m0 0-2.5 2.5M12 10l2.5 2.5",
   stop: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18M9.5 9.5h5v5h-5z",
   // stars joined by lines: the Object Explorer graph tab (Rasi)
@@ -74,6 +75,7 @@ const PATHS = {
   wave: "M2 12c2-4 4-4 6 0s4 4 6 0 4-4 6 0",
   bell: "M6 16v-5a6 6 0 0 1 12 0v5l2 2H4zM10 20a2 2 0 0 0 4 0",
   gauge: "M4 18a8 8 0 1 1 16 0M12 18l4-6",
+  report: "M4 20h16M7 16v-4M12 16V7M17 16v-6",
   comment: "M4 5h16v11H9l-5 4z",
   server: "M4 4h16v6H4zM4 14h16v6H4zM8 7h.01M8 17h.01",
   device: "M7 3h10v18H7zM11 18h2",

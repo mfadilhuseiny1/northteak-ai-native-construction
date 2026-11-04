@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import os
 import json
 import re
 import traceback
@@ -56,7 +57,7 @@ def index() -> FileResponse:
 
 @app.get("/api/config")
 def get_config() -> dict:
-    return {"gemini_ready": config.gemini_ready(), "max_usd": config.MAX_USD, "max_llm_calls": config.MAX_LLM_CALLS,
+    return {"muse_ready": config.muse_ready(), "max_usd": config.MAX_USD, "max_llm_calls": config.MAX_LLM_CALLS,
             "models": {"lead": config.MODEL_LEAD, "worker": config.MODEL_WORKER, "vision": config.MODEL_VISION}}
 
 
@@ -70,14 +71,14 @@ def get_project() -> dict:
 
 @app.post("/api/runs")
 async def start_run(body: StartRun) -> dict:
-    if body.mode not in ("mock", "gemini"):
+    if body.mode not in ("mock", "muse"):
         raise HTTPException(400, "unknown mode")
-    if body.mode == "gemini":
-        if not config.gemini_ready():
-            raise HTTPException(400, "a real run needs GOOGLE_API_KEY in this repository's .env")
+    if body.mode == "muse":
+        if not config.muse_ready():
+            raise HTTPException(400, "a real run needs META_API_KEY in this repository's .env.local")
         if not body.confirm_paid:
             raise HTTPException(400, "a real run spends money and must be confirmed")
-        if any(x.mode == "gemini" and not x.done for x in LIVE.values()):
+        if any(x.mode == "muse" and not x.done for x in LIVE.values()):
             raise HTTPException(409, "a real run is already going")
     run_id = f"run-{uuid.uuid4().hex[:10]}"
     live = Live(id=run_id, mode=body.mode)
@@ -120,7 +121,10 @@ def _live(run_id: str) -> Live:
     path = RUNS_DIR / f"{run_id}.json"
     if not re.fullmatch(r"run-[0-9a-f]+", run_id) or not path.exists():
         raise HTTPException(404, "no such run")
-    saved = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        saved = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as e:
+        raise HTTPException(500, f"that saved run is unreadable: {e}") from e
     return Live(id=saved["id"], mode=saved["mode"], events=saved["events"], done=True, report=saved["report"])
 
 
@@ -130,7 +134,10 @@ def latest_run() -> dict:
     runs = []
     case = _case_id()
     for path in RUNS_DIR.glob("*.json") if RUNS_DIR.exists() else []:
-        saved = json.loads(path.read_text(encoding="utf-8"))
+        try:
+            saved = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue  # one corrupt saved run does not hide the rest
         if saved.get("case") == case:
             runs.append((saved["mode"] != "mock", path.stat().st_mtime, saved["id"], saved["mode"]))
     if not runs:
@@ -191,4 +198,4 @@ def get_photo(photo_id: str) -> FileResponse:
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="127.0.0.1", port=8300, log_level="warning")
+    uvicorn.run(app, host="127.0.0.1", port=int(os.environ.get("SWARM_SERVER_PORT", "8300")), log_level="warning")

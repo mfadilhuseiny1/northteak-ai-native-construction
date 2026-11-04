@@ -6,7 +6,7 @@ No single document is enough, and the package disagrees with itself in the ways 
 from __future__ import annotations
 
 SCOPE = {"id": "L4-COL", "title": "Level 4 columns", "activities": ["A50", "A60"], "sections": [
-    {"id": "rebar", "name": "Steel rebar", "by": "besi"}, {"id": "formwork", "name": "Formwork", "by": "rangka"}, {"id": "concrete", "name": "Concrete mixture", "by": "self"}, {"id": "assembly", "name": "Erection and casting", "by": "self"}]}
+    {"id": "rebar", "name": "Steel rebar", "by": "besi", "activity": "A50"}, {"id": "formwork", "name": "Formwork", "by": "rangka", "activity": "A50"}, {"id": "concrete", "name": "Concrete mixture", "by": "self", "activity": "A60"}, {"id": "assembly", "name": "Erection and casting", "by": "self", "activity": ""}]}
 
 DOCUMENTS = [
     {"id": "PLAN-SCOPE-01", "kind": "scope", "from": "Planning consultant", "date": "2026-09-20", "title": "Work brief: Level 4 columns",
@@ -36,7 +36,7 @@ RATES = {"labour": {"Pekerja": 130_000, "Tukang": 160_000, "Kepala tukang": 175_
 ITP_IDS = ["HP-21", "W-22", "T-23", "T-24"]
 PROGRAMME_CREW = 14
 OWN_CREW = 30
-BRIEF = ("Turn the consultant's planning package for Level 4 columns (activities A50 and A60) into an implementable Operation Process Chart and procedure: every operation and inspection in order, with the workforce, material and waste of each step. "
+BRIEF = ("Turn the consultant's planning package for Level 4 columns (activities A50 and A60) into an implementable Work Breakdown Structure and procedure: every operation and inspection as a task, with what it waits for and the workforce, material and waste of each. "
          "Say what in the package does not agree, and what must be settled before work starts.")
 
 # scoring only: never given to an agent

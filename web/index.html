@@ -106,7 +106,7 @@ aside img { width: 100%; border-radius: 8px; border: 1px solid var(--line); marg
   <div class="spacer"></div>
   <select id="mode" aria-label="Model">
     <option value="mock">Offline mock (no cost)</option>
-    <option value="gemini">Gemini on Google ADK (real, paid)</option>
+    <option value="muse">Muse on the Meta Model API (real, paid)</option>
   </select>
   <button id="replay" hidden>Replay last run</button>
   <button class="primary" id="run">Review claim</button>
@@ -162,8 +162,8 @@ async function init() {
   meta = project; window.cfg = cfg;
   const p = project.project;
   $("project").textContent = `${p.name} · ${p.contractor} · Claim no. ${p.claim_no} · cut-off ${p.cutoff}`;
-  $("mode").options[1].disabled = !cfg.gemini_ready;
-  if (!cfg.gemini_ready) $("mode").options[1].textContent += " · add a key to .env";
+  $("mode").options[1].disabled = !cfg.muse_ready;
+  if (!cfg.muse_ready) $("mode").options[1].textContent += " · add a key to .env";
   drawFlow();
   reset();
   checkReplay();
@@ -290,14 +290,14 @@ function replay() {
 
 async function start() {
   const mode = $("mode").value;
-  if (mode === "gemini" && !confirm(`This run uses your API key and spends real money. It stops at $${cfg.max_usd.toFixed(2)} or ${cfg.max_llm_calls} model calls. Start it?`)) return;
+  if (mode === "muse" && !confirm(`This run uses your API key and spends real money. It stops at $${cfg.max_usd.toFixed(2)} or ${cfg.max_llm_calls} model calls. Start it?`)) return;
   reset();
   $("run").disabled = true; $("run").textContent = "Reviewing…";
   setNotice(mode);
   $("spend").textContent = "";
   let res;
   try {
-    res = await fetch("/api/runs", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({mode, confirm_paid: mode === "gemini"})});
+    res = await fetch("/api/runs", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({mode, confirm_paid: mode === "muse"})});
     if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
   } catch (err) { say(`<b>Could not start</b>: ${esc(err.message)}`, true); $("run").disabled = false; $("run").textContent = "Review claim"; return; }
   const {run_id} = await res.json();

@@ -2,14 +2,10 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
-from typing import AsyncGenerator
-
-from google.adk.models import BaseLlm, LlmRequest, LlmResponse
-from google.genai import types
 
 from . import site_case as C
+from .llm import Scripted
 from .firm import ANALYSTS
 
 HANDOFF = 'HANDOFF {"done": ["read my sources"], "left_undone": [], "issues_found": []}'
@@ -43,15 +39,6 @@ PROPOSALS = {
     "contract": [("Send the clause 21 delay notice to the owner", "Contract manager", "2026-10-07", "Notice is due within 48 hours.", "A30"), ("Chase the engineer for an answer to RFI-035", "Project engineer", "2026-10-08", "CV Rangka Beton cannot start grid E without it.", "A50")],
     "cost": [("Back-charge standby to the supplier under PO clause 9", "Commercial manager", "2026-10-16", "The supplier pays documented standby costs.", "A30")],
 }
-
-
-def _results(request: LlmRequest) -> dict[str, list[dict]]:
-    seen: dict[str, list[dict]] = {}
-    for content in request.contents or []:
-        for part in content.parts or []:
-            if part.function_response:
-                seen.setdefault(part.function_response.name, []).append(part.function_response.response or {})
-    return seen
 
 
 def script(key: str, r: dict, tools: set[str] = frozenset()) -> list[tuple[str, dict]] | str:
@@ -114,14 +101,10 @@ def script(key: str, r: dict, tools: set[str] = frozenset()) -> list[tuple[str, 
     return f"My line's work is merged; the signals stand as flagged.\n{HANDOFF}"
 
 
-class MockFirmLlm(BaseLlm):
-    agent_key: str = ""
-    delay: float = 0.0
+class MockFirmLlm(Scripted):
+    def __init__(self, model: str = "mock", agent_key: str = "", delay: float = 0.0):
+        super().__init__(model, delay)
+        self.agent_key = agent_key
 
-    async def generate_content_async(self, llm_request: LlmRequest, stream: bool = False) -> AsyncGenerator[LlmResponse, None]:
-        if self.delay:
-            await asyncio.sleep(self.delay)
-        answer = script(self.agent_key, _results(llm_request), set(llm_request.tools_dict or {}))
-        parts = [types.Part(text=answer)] if isinstance(answer, str) else [types.Part.from_function_call(name=n, args=a) for n, a in answer]
-        usage = types.GenerateContentResponseUsageMetadata(prompt_token_count=0, candidates_token_count=0, total_token_count=0)
-        yield LlmResponse(content=types.Content(role="model", parts=parts), usage_metadata=usage)
+    def answer(self, results: dict, tools: set[str]) -> list[tuple[str, dict]] | str:
+        return script(self.agent_key, results, tools)

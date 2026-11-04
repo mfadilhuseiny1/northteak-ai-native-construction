@@ -2,7 +2,7 @@
 import { API_URL } from "@/lib/api";
 import type { AipEvent, Rec, Run } from "@/components/aip/aipRun";
 
-/* SiteSwarm: the firm orchestration, the signal ledger and the semantic layer, the risk register and the pre-agent review. */
+/* NorthTeak: the firm orchestration, the signal ledger and the semantic layer, the risk register and the pre-agent review. */
 
 async function req<T = Rec>(path: string, init?: RequestInit): Promise<T> {
   const r = await fetch(`${API_URL}${path}`, { cache: "no-store", ...init });
@@ -36,7 +36,7 @@ export type OrchestrationVersion = { nama: string; ringkas: string; tambahan: st
 export const REVIEWED: string[] = [];
 /** Each orchestration's badge before a review's name: its title and its colours. */
 export const VERSI_BADGE: Record<string, [string, string]> = {
-  muse: ["Muse", "bg-[#9d8cff]/20 text-[#c9c0ff]"],
+  muse: ["Muse", "bg-[#f5b82e]/20 text-[#c9c0ff]"],
   mock: ["Offline mock", "bg-white/10 text-[#abb3bf]"],
 };
 /** The pre-agent review before it runs: the set, what is kept, the last calibration. */
@@ -88,11 +88,7 @@ export const firm = {
   team: () => req<Team>("/api/aip/konsultan/tim"),
   // from the start form: its name and focus; in a project, the project's brief and IT settings (fokus null: the project's)
   startEngagement: (f: { nama: string; fokus: string | null; proyek: string | null; versi?: string }) =>
-    post<{ run: string; jumlah_agen: number }>("/api/aip/konsultan", { nama: f.nama, fokus: f.fokus, proyek: f.proyek, versi: f.versi ?? "1.0" }),
-  // the pre-agent review: its state for the start form, and a calibration-only run
-  reviewSummary: (m: { saring?: string; periksa?: string; versi?: string }, batas?: number | null) =>
-    req<ReviewSummary>(`/api/aip/telaah/ringkasan?${new URLSearchParams({ ...(m.saring ? { saring: m.saring } : {}), ...(m.periksa ? { periksa: m.periksa } : {}),
-      ...(m.versi ? { versi: m.versi } : {}), ...(batas ? { batas_usd: String(batas) } : {}) })}`),
+    post<{ run: string; jumlah_agen: number }>("/api/aip/konsultan", { nama: f.nama, fokus: f.fokus, proyek: f.proyek, versi: f.versi ?? "muse" }),
   // a review as an animation only: phase 1 projected from the calibration, later phases from the project's latest finished review as it ran; no model is called
   simulation: (proyek?: string | null) => {
     const k = proyek ?? "";
@@ -104,17 +100,12 @@ export const firm = {
     }
     return p;
   },
-  calibrate: (proyek: string | null, versi = "1.1") =>
-    post<{ run: string; model: { saring: string; periksa: string }; n: number }>("/api/aip/telaah/kalibrasi", { proyek, versi }),
   config: () => req<FirmConfig>("/api/aip/konsultan/konfigurasi"),
   sources: () => req<Sources>("/api/aip/konsultan/sumber"),
   projects: () => req<Project[]>("/api/aip/konsultan/proyek"),
   createProject: (f: ProjectForm) => post<Project>("/api/aip/konsultan/proyek", f),
   updateProject: (id: string, f: ProjectForm) =>
     req<Project>(`/api/aip/konsultan/proyek/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(f) }),
-  // the review's long report: chapters, numbered exhibits, the commentary once written
-  fullReport: (run: string) => req<FullReport>(`/api/aip/konsultan/${run}/laporan-lengkap`),
-  writeNotes: (run: string) => post<{ status: string }>(`/api/aip/konsultan/${run}/laporan-lengkap/narasi`, {}),
   // a project off the list with its reviews (their trails kept)
   deleteProject: (id: string) => req<{ dihapus: string; reviews: string[] }>(`/api/aip/konsultan/proyek/${id}`, { method: "DELETE" }),
   // a wrong or accidental review off the list (its trail kept for an administrator)
@@ -122,7 +113,6 @@ export const firm = {
   engagements: () => req<Rec[]>("/api/aip/konsultan/runs"),
   // the last finished review on the platform: the analysis the chat answers from ({ada: false} before the first)
   latest: () => req<{ ada: boolean; run?: string; pada?: string; biaya_usd?: number }>("/api/aip/konsultan/terakhir"),
-  rewriteReport: (runId: string) => post<{ run: string; sumber: string }>(`/api/aip/konsultan/${runId}/laporan`, {}),
   // the live risk register, or a review's; ringkas: list rows only
   box: (q: { kelompok?: string; review?: string; limit?: number; ringkas?: boolean } = {}) =>
     req<Box>(`/api/aip/register?${new URLSearchParams(Object.entries({ limit: q.kelompok ? 2000 : 60, ...q }).filter(([, v]) => v !== undefined && v !== "").map(([k, v]) => [k, String(v)]))}`),

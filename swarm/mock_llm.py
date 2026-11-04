@@ -1,20 +1,17 @@
-"""An offline model for ADK: scripted per agent, it plays the same tool calls a real model would, at no cost.
+"""An offline model: scripted per agent, it plays the same tool calls a real model would, at no cost.
 
-The whole ADK path runs for real (agents, parallel branches, tools, state, callbacks); only the model's answers are
+The whole path runs for real (agents, parallel branches, tools, state, limits); only the model's answers are
 scripted. A mock run proves the wiring and the checks. It says nothing about how accurate a real model would be.
 """
 
 from __future__ import annotations
 
-import asyncio
 import json
 from datetime import date, timedelta
-from typing import AsyncGenerator, Callable
-
-from google.adk.models import BaseLlm, LlmRequest, LlmResponse
-from google.genai import types
+from typing import Callable
 
 from . import generator
+from .llm import Scripted
 
 Results = dict[str, list[dict]]
 Brain = Callable[[Results], "list[tuple[str, dict]] | str"]
@@ -22,15 +19,6 @@ Brain = Callable[[Results], "list[tuple[str, dict]] | str"]
 
 def call(name: str, **args) -> tuple[str, dict]:
     return name, args
-
-
-def _results(request: LlmRequest) -> Results:
-    seen: Results = {}
-    for content in request.contents or []:
-        for part in content.parts or []:
-            if part.function_response:
-                seen.setdefault(part.function_response.name, []).append(part.function_response.response or {})
-    return seen
 
 
 def lead_plan(r: Results):
@@ -136,18 +124,10 @@ def lead_summary(r: Results):
 BRAINS: dict[str, Brain] = {"lead_plan": lead_plan, "field": field, "schedule": schedule, "documents": documents, "cost": cost, "verifier": verifier, "lead_summary": lead_summary}
 
 
-class MockLlm(BaseLlm):
-    brain: Brain
-    delay: float = 0.0
-    tokens: int = 0  # reported per call: lets a test run into the spending limit
+class MockLlm(Scripted):
+    def __init__(self, model: str = "mock", brain: Brain = lambda r: "", delay: float = 0.0, tokens: int = 0):  # tokens, reported per call, let a test run into the spending limit
+        super().__init__(model, delay, tokens)
+        self.brain = brain
 
-    async def generate_content_async(self, llm_request: LlmRequest, stream: bool = False) -> AsyncGenerator[LlmResponse, None]:
-        if self.delay:
-            await asyncio.sleep(self.delay)
-        answer = self.brain(_results(llm_request))
-        if isinstance(answer, str):
-            parts = [types.Part(text=answer)]
-        else:
-            parts = [types.Part.from_function_call(name=name, args=args) for name, args in answer]
-        usage = types.GenerateContentResponseUsageMetadata(prompt_token_count=self.tokens, candidates_token_count=self.tokens, total_token_count=2 * self.tokens)
-        yield LlmResponse(content=types.Content(role="model", parts=parts), usage_metadata=usage)
+    def answer(self, results: Results, tools: set[str]) -> list[tuple[str, dict]] | str:
+        return self.brain(results)

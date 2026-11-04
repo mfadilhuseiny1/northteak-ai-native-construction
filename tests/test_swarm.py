@@ -257,13 +257,13 @@ def test_agent_visible_files_hold_no_scenario_or_true_progress():
 
 
 def test_tool_schemas_are_plain_for_any_model_family():
-    from google.adk.tools import FunctionTool
+    from swarm import llm
 
     for fns in tools.TOOLS.values():
         for fn in fns:
-            d = FunctionTool(fn)._get_declaration()
-            assert d.name == fn.__name__ and d.description
-            schema = d.parameters_json_schema or {}
+            d = llm.schema_of(fn)["function"]
+            assert d["name"] == fn.__name__ and d["description"] and "strict" not in d
+            schema = d.get("parameters") or {}
             for name, prop in (schema.get("properties") or {}).items():
                 assert prop["type"] in ("string", "number", "array", "integer", "boolean"), f"{fn.__name__}.{name}: {prop}"
                 if prop["type"] == "array":
@@ -363,29 +363,6 @@ def test_unreadable_vision_replies_count_as_not_visible(text):
     assert vision.result("P", vision.parse(text), "x")["visible"] is False
 
 
-def test_vertex_mode_never_exports_an_api_key(monkeypatch):
-    import os
-
-    from swarm import config
-
-    monkeypatch.setattr(config, "_env", {"GOOGLE_GENAI_USE_VERTEXAI": "TRUE", "GOOGLE_CLOUD_PROJECT": "p", "GOOGLE_API_KEY": "secret",
-                                         "GOOGLE_APPLICATION_CREDENTIALS": "other-service.json", "BLUESANDAI_VERTEX_CREDENTIALS": "login.json"})
-    for name in ("GOOGLE_API_KEY", "GOOGLE_GENAI_USE_VERTEXAI", "GOOGLE_CLOUD_PROJECT", "GOOGLE_CLOUD_QUOTA_PROJECT", "GOOGLE_CLOUD_LOCATION", "GOOGLE_APPLICATION_CREDENTIALS"):
-        monkeypatch.setenv(name, "before")
-    config.export_google_env()
-    assert "GOOGLE_API_KEY" not in os.environ and os.environ["GOOGLE_APPLICATION_CREDENTIALS"] == "login.json"
-    assert os.environ["GOOGLE_CLOUD_PROJECT"] == "p" and os.environ["GOOGLE_CLOUD_LOCATION"] == "global"
-
-
-def test_thinking_tokens_count_towards_the_spending_limit():
-    from google.genai import types
-
-    from swarm import config
-
-    assert config.output_tokens(types.GenerateContentResponseUsageMetadata(candidates_token_count=10, thoughts_token_count=5)) == 15
-    assert config.output_tokens(types.GenerateContentResponseUsageMetadata(candidates_token_count=10)) == 10
-
-
 def test_vision_pct_is_computed_by_code():
     assert vision.result("P", vision.parse('{"visible": true, "installed": 6, "total": 10, "pct": 99}'), "x")["pct"] == 60.0
 
@@ -423,16 +400,16 @@ def test_a_finished_run_can_be_replayed_after_a_restart(client, monkeypatch, tmp
         again = [line for line in stream.iter_lines() if line.startswith("data: ")]
     assert again == first and client.get(f"/api/runs/{run_id}").json()["report"]["status"] == "complete"
     assert client.get("/api/runs/run-..%2F..%2Fsecret").status_code == 404
-    other = {"id": "run-abc", "mode": "gemini", "case": "another case", "events": [], "report": None}
+    other = {"id": "run-abc", "mode": "muse", "case": "another case", "events": [], "report": None}
     (tmp_path / "run-abc.json").write_text(json.dumps(other), encoding="utf-8")
     assert client.get("/api/runs/latest").json()["id"] == run_id  # a run on another case is not offered, even a real one
 
 
 def test_real_run_cannot_start_without_a_key_or_confirmation(client, monkeypatch):
-    monkeypatch.setattr(server.config, "gemini_ready", lambda: False)
-    assert client.post("/api/runs", json={"mode": "gemini", "confirm_paid": True}).status_code == 400
-    monkeypatch.setattr(server.config, "gemini_ready", lambda: True)
-    assert client.post("/api/runs", json={"mode": "gemini"}).status_code == 400
+    monkeypatch.setattr(server.config, "muse_ready", lambda: False)
+    assert client.post("/api/runs", json={"mode": "muse", "confirm_paid": True}).status_code == 400
+    monkeypatch.setattr(server.config, "muse_ready", lambda: True)
+    assert client.post("/api/runs", json={"mode": "muse"}).status_code == 400
     assert client.post("/api/runs", json={"mode": "nope"}).status_code == 400
 
 

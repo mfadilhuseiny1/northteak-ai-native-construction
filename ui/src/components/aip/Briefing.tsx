@@ -105,10 +105,10 @@ const PRIORITY: Record<string, string> = { immediate: STATUS.tinggi, "this week"
 export function BriefingHero({ b, verdict, revised, onRef, children }: { b: Briefing; verdict?: AipEvent; revised?: boolean; onRef: (rid: string) => void; children?: ReactNode }) {
   const checks = verdict ? { passed: Number(verdict.passed ?? 0), total: Number(verdict.total ?? 0) } : null;
   return (
-    <section className="overflow-hidden rounded-xl border border-white/[.08] bg-gradient-to-br from-[#1f2a3a] via-[#1c2127] to-[#1c2127]">
+    <section className="overflow-hidden rounded-xl border border-white/[.08] bg-gradient-to-br from-[#1f2a3a] via-[#1c2733] to-[#1c2733]">
       <div className="px-5 pb-4 pt-4">
         <div className="flex flex-wrap items-center gap-2 text-[10.5px]">
-          <span className="rounded-full bg-[#9d8cff]/15 px-2 py-0.5 font-medium uppercase tracking-wide text-[#c9c0ff]">Recovery plan</span>
+          <span className="rounded-full bg-[#f5b82e]/15 px-2 py-0.5 font-medium uppercase tracking-wide text-[#c9c0ff]">Recovery plan</span>
           {checks && checks.total > 0 && (
             <span className={`flex items-center gap-1 rounded-full px-2 py-0.5 font-medium ${checks.passed === checks.total ? "bg-emerald-500/15 text-emerald-300" : "bg-[#fab219]/15 text-[#f6c86b]"}`}>
               <Icon name={checks.passed === checks.total ? "check" : "alert"} className="h-3 w-3" />
@@ -123,7 +123,7 @@ export function BriefingHero({ b, verdict, revised, onRef, children }: { b: Brie
       {b.angka_kunci.length > 0 && (
         <div className="grid gap-px border-t border-white/[.06] bg-white/[.06] sm:grid-cols-2 xl:grid-cols-4">
           {b.angka_kunci.map((k, i) => (
-            <div key={i} className="bg-[#1c2127] px-5 py-3.5">
+            <div key={i} className="bg-[#1c2733] px-5 py-3.5">
               <p className="text-[11px] text-[#abb3bf]">{k.label}</p>
               <p className="mt-1 flex items-baseline gap-1.5">
                 <span className="text-[26px] font-semibold leading-none text-white">{k.nilai}</span>
@@ -148,7 +148,7 @@ export function Findings({ b, onRef }: { b: Briefing; onRef: (rid: string) => vo
         {b.temuan.map((t, i) => {
           const lv = LEVEL[t.tingkat] ?? LEVEL.info;
           return (
-            <article key={i} className="relative overflow-hidden rounded-lg border border-white/[.07] bg-[#1c2127] py-3 pl-4 pr-3.5">
+            <article key={i} className="relative overflow-hidden rounded-lg border border-white/[.07] bg-[#1c2733] py-3 pl-4 pr-3.5">
               <span className="absolute inset-y-0 left-0 w-[3px]" style={{ background: STATUS[t.tingkat] ?? STATUS.info }} />
               <p className="flex items-center gap-1.5 text-[10.5px] font-medium" style={{ color: STATUS[t.tingkat] ?? STATUS.info }}>
                 <Icon name={lv.icon} className="h-3 w-3" />{lv.label}
@@ -166,8 +166,8 @@ export function Findings({ b, onRef }: { b: Briefing; onRef: (rid: string) => vo
 export function Recommendations({ b, children }: { b: Briefing; children?: ReactNode }) {
   if (!b.rekomendasi.length && !children) return null;
   return (
-    <section className="rounded-lg border border-white/[.07] bg-[#1c2127] p-4">
-      <h3 className="flex items-center gap-1.5 text-[13px] font-semibold text-white"><Icon name="check" className="h-3.5 w-3.5 text-[#9d8cff]" />Recommendations for the project manager</h3>
+    <section className="rounded-lg border border-white/[.07] bg-[#1c2733] p-4">
+      <h3 className="flex items-center gap-1.5 text-[13px] font-semibold text-white"><Icon name="check" className="h-3.5 w-3.5 text-[#f5b82e]" />Recommendations for the project manager</h3>
       <p className="mt-0.5 text-[11px] text-[#8f99a8]">Analysts only propose; every action is decided and carried out by people.</p>
       <ol className="mt-3 space-y-2.5">
         {b.rekomendasi.map((r, i) => (
@@ -264,13 +264,13 @@ export function Progress({ stage, done, activity, fast, audit }: { stage?: strin
   const stages = (fast ? STAGES.filter((s) => s.key !== "awam") : STAGES).map((s) => (audit && s.key === "evidence" ? { ...s, label: "Project pack" } : s));
   const at = stage === "revise" ? 3 : Math.max(0, stages.findIndex((s) => s.key === stage));
   return (
-    <section className="rounded-xl border border-white/[.08] bg-[#1c2127] p-4">
+    <section className="rounded-xl border border-white/[.08] bg-[#1c2733] p-4">
       <ol className="flex flex-wrap items-center gap-x-1 gap-y-2">
         {stages.map((s, i) => {
           const state = done || i < at ? "done" : i === at ? "now" : "next";
           return (
             <li key={s.key} className="flex items-center gap-1">
-              <span className={`flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold ${state === "done" ? "bg-emerald-500/20 text-emerald-300" : state === "now" ? "bg-[#9d8cff]/25 text-white" : "bg-white/5 text-[#8f99a8]"}`}>
+              <span className={`flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold ${state === "done" ? "bg-emerald-500/20 text-emerald-300" : state === "now" ? "bg-[#f5b82e]/25 text-white" : "bg-white/5 text-[#8f99a8]"}`}>
                 {state === "done" ? <Icon name="check" className="h-3 w-3" /> : state === "now" ? <span className="h-2 w-2 animate-pulse rounded-full bg-[#c9c0ff]" /> : i + 1}
               </span>
               <span className={`text-[11.5px] ${state === "now" ? "font-medium text-white" : state === "done" ? "text-[#c5cbd3]" : "text-[#8f99a8]"}`}>{s.label}{stage === "revise" && i === 3 ? " · revision" : ""}{stage === "verify" && i === 0 ? " · verification (/verify)" : ""}</span>

@@ -19,7 +19,7 @@ const HUB = { x: 600, y: 372, w: 560, h: 34 };
 const CARD = { y: 432, w: 262, h: 166 };
 // A machine check working before the plan: its chip sits under the data bar, not as a gate between the data and the agents
 const TELAAH = { x: HUB.x, y: HUB.y + HUB.h / 2 + 18 };
-const TELAAH_COLOR = "#c084fc";
+const TELAAH_COLOR = "#e879a8";
 const CARDS = [
   { key: "indikasi", label: "Signals", x: 30, hint: "auto rules + analyst signals with evidence" },
   { key: "ml", label: "Schedule & cost impact", x: 326, hint: "options priced by code" },
@@ -52,7 +52,7 @@ const PLAN_PHASES: [string, string, string][] = [
   ["investigasi", "Section planning", "One planner per section writes its operations and procedures, on the national standard's norms."],
   ["sintesis", "Integration", "Leads merge the sections, place inspections and handling, assign crews, find waste and settle what disagrees."],
   ["qa", "QA & red team", "A reviewer and the red team, on the other model, try to break the plan."],
-  ["laporan", "OPC & procedure", "The chart and procedure go to a person to approve; the validator judges them against the contract."],
+  ["laporan", "WBS & procedure", "The WBS and procedure go to a person to approve; the validator judges them against the contract."],
 ];
 const PLAN_CARDS: Record<string, [string, string]> = {
   indikasi: ["Findings", "what in the package does not agree"],
@@ -60,7 +60,7 @@ const PLAN_CARDS: Record<string, [string, string]> = {
   box: ["Findings by kind", "what must be settled first"],
   keputusan: ["Work plan", "sections planned → a person approves"],
 };
-const PHASE_COLOR = [TELAAH_COLOR, "#9d8cff", "#3987e5", "#c98500", "#d55181", "#199e70", "#8f99a8", "#e5e8eb"];
+const PHASE_COLOR = [TELAAH_COLOR, "#f5b82e", "#3987e5", "#c98500", "#d55181", "#199e70", "#8f99a8", "#e5e8eb"];
 const SPEEDS = [1, 5, 15, 40, 100];
 const KINDS: [string, string][] = [["all", "All"], ["tool", "Read data"], ["tag", "Signal"], ["handoff", "Handoff"], ["validation", "Validation"],
   ["decision", "Decision"], ["machine", "Machine"], ["error", "Error"]];
@@ -239,7 +239,7 @@ function apply(L: Live, e: AipEvent, i: number, at: number, rt: number, who: (k:
           const h = (e.hasil ?? {}) as Rec;
           log("machine", "", h.status === "selesai"
             ? `decision check: ${Number(h.ditelaah ?? 0).toLocaleString("en-GB")} items checked, ${Number(h.tag ?? 0).toLocaleString("en-GB")} flagged (weak)`
-            : `decision check ${String(h.status ?? "berhenti")}: ${((h.alasan ?? []) as string[]).join("; ") || "-"} — continues as before`, "#9d8cff");
+            : `decision check ${String(h.status ?? "berhenti")}: ${((h.alasan ?? []) as string[]).join("; ") || "-"} — continues as before`, "#f5b82e");
         }
       }
       break;
@@ -269,7 +269,7 @@ function apply(L: Live, e: AipEvent, i: number, at: number, rt: number, who: (k:
       break;
     case "pelajaran":
       L.lessons++;
-      log("validation", "", `new lesson for skill ${e.skill} (${e.status})`, "#9d8cff");
+      log("validation", "", `new lesson for skill ${e.skill} (${e.status})`, "#f5b82e");
       break;
     case "salinan":  // a report rewrite: what follows up to the report phase is the source review's trail, copied
       log("phase", "", `phases 0–5 copied from review ${e.sumber} (not rerun); only the report is rewritten`, "#e5e8eb");
@@ -311,7 +311,7 @@ function packetsOf(e: AipEvent, pos: Record<string, Pos>, who: (k: string) => Fi
       const top: XY = { x: HUB.x, y: HUB.y - HUB.h / 2 }, chip: XY = { x: TELAAH.x, y: TELAAH.y };
       const along = () => ({ x: HUB.x - HUB.w / 2 + 30 + Math.random() * (HUB.w - 60), y: HUB.y });
       if (e.tahap === "saring" || e.tahap === "periksa")
-        for (let i = 0; i < 3; i++) go(along(), along(), e.tahap === "saring" ? TELAAH_COLOR : "#9d8cff", 2.2, 900 + i * 150);
+        for (let i = 0; i < 3; i++) go(along(), along(), e.tahap === "saring" ? TELAAH_COLOR : "#f5b82e", 2.2, 900 + i * 150);
       if (e.tahap === "kalibrasi") go(top, at("partner"), TELAAH_COLOR, 3.2, 1200);
       if (e.tahap === "selesai") { burst(chip, (i) => card("indikasi", (i - 3) * 22), TELAAH_COLOR, 7); go(top, at("partner"), TELAAH_COLOR, 3.2, 1300); }
       break;
@@ -658,10 +658,10 @@ export function AgentAnimation({ full = false, initialRun, embedded = false, pla
   return (
     <div ref={root} className={`flex min-h-0 flex-1 flex-col overflow-hidden bg-[#12161b] text-[12px] text-[#e5e8eb] ${full ? "h-screen" : ""} `}>
       {/* the run and the transport */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-white/5 bg-[#1c2127] px-3 py-2">
-        <p className="mr-1 flex items-center gap-1.5 text-[13px] font-semibold text-white"><Icon name="play" className="h-3.5 w-3.5 text-[#9d8cff]" />{embedded ? "Firm chart" : "Multi-agent system animation"}</p>
+      <div className="flex flex-wrap items-center gap-2 border-b border-white/5 bg-[#1c2733] px-3 py-2">
+        <p className="mr-1 flex items-center gap-1.5 text-[13px] font-semibold text-white"><Icon name="play" className="h-3.5 w-3.5 text-[#f5b82e]" />{embedded ? "Firm chart" : "Multi-agent system animation"}</p>
         {!embedded && <select value={file ? "" : sel ?? ""} onChange={(e) => { loadedFor.current = null; setFile(null); setSel(e.target.value); setFocus(null); }}
-          className="rounded-sm border border-white/15 bg-[#111418] px-1.5 py-0.5 text-[11px] text-[#d3d8de] outline-none" title="AI Agent Swarm review to replay">
+          className="rounded-sm border border-white/15 bg-[#151e28] px-1.5 py-0.5 text-[11px] text-[#d3d8de] outline-none" title="AI Agent Swarm review to replay">
           {file && <option value="">file · {file}</option>}
           {/* a run opened by its link that the list does not hold (the list shows the signed-in user's own runs) */}
           {!file && sel && run?.id === sel && !runs.some((r) => r.id === sel) && (
@@ -674,12 +674,12 @@ export function AgentAnimation({ full = false, initialRun, embedded = false, pla
         <button onClick={() => opener.current?.click()} title="play a saved replay file"
           className="flex items-center gap-1 rounded border border-white/15 px-2 py-0.5 text-[11px] text-[#d3d8de] hover:bg-white/10"><Icon name="upload" className="h-3 w-3" />Open replay</button>
         <input ref={opener} type="file" accept=".json,application/json" className="hidden" onChange={(e) => { openReplay(e.target.files?.[0]); e.target.value = ""; }} />
-        {run?.simulasi && <span className="rounded-full bg-[#c084fc]/20 px-2 py-0.5 text-[10px] font-semibold text-[#e9d5ff]"
+        {run?.simulasi && <span className="rounded-full bg-[#e879a8]/20 px-2 py-0.5 text-[10px] font-semibold text-[#e9d5ff]"
           title="animation only: the check phase is a projection from the last calibration; later phases are the source review's real trail; no model is called">SIMULATION · no model calls</span>}
         <div className="flex items-center gap-0.5">
           <button onClick={() => { seek(0); setPlaying(true); }} title="restart from the beginning" className="rounded p-1 hover:bg-white/10"><Icon name="restore" className="h-3.5 w-3.5" /></button>
           <button onClick={() => { if (bound) { demoSwarm.togglePause(); return; } if (clock.current >= tl.total) seek(0); setPlaying((p) => !p); }} title="play / pause (space)"
-            className="flex items-center gap-1 rounded-sm bg-[#5b5fd6] px-2.5 py-0.5 font-medium text-white hover:bg-[#6a6ee0]">
+            className="flex items-center gap-1 rounded-sm bg-[#d99a16] px-2.5 py-0.5 font-medium text-white hover:bg-[#6a6ee0]">
             <Icon name={on ? "pause" : "play"} className="h-3 w-3" />{on ? "Pause" : "Play"}
           </button>
         </div>
@@ -694,7 +694,7 @@ export function AgentAnimation({ full = false, initialRun, embedded = false, pla
         {!full && !demo && <a href={`/aip/animation?embed=1${sel ? `&run=${sel}` : ""}`} target="_blank" rel="noreferrer" title="full screen for presentation" className="rounded p-1 text-[#abb3bf] hover:bg-white/10"><Icon name="external" className="h-3.5 w-3.5" /></a>}
       </div>
       {/* the timeline: the phases, the moments that matter, the playhead */}
-      <div className="border-b border-white/5 bg-[#161a1f] px-3 pb-2 pt-1.5">
+      <div className="border-b border-white/5 bg-[#111820] px-3 pb-2 pt-1.5">
         <div className="relative h-7 cursor-pointer select-none" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); seek(((e.clientX - r.left) / r.width) * tl.total); }}>
           {phases.map(([k, label], i) => {
             const s = phaseSpans[k];
@@ -805,7 +805,7 @@ export function AgentAnimation({ full = false, initialRun, embedded = false, pla
                 const lit = c.key === "indikasi" ? L.tagN + L.auto > 0 : c.key === "ml" ? !!L.ml || techsDone > 0 : c.key === "box" ? !!L.box : recTotal > 0 || L.report;
                 return (
                   <g key={c.key} transform={`translate(${c.x},${CARD.y})`} className="cursor-pointer" onClick={() => setFocus(active ? null : { card: c.key })}>
-                    <rect width={CARD.w} height={CARD.h} rx={8} fill="#1c2127" stroke={active ? "#ffffff" : lit ? "#4b5563" : "#2a3038"} strokeWidth={active ? 2 : 1} />
+                    <rect width={CARD.w} height={CARD.h} rx={8} fill="#1c2733" stroke={active ? "#ffffff" : lit ? "#4b5563" : "#2a3038"} strokeWidth={active ? 2 : 1} />
                     <text x={12} y={20} className="fill-white text-[12.5px] font-semibold">{isPlan ? PLAN_CARDS[c.key][0] : c.label}</text>
                     <text x={12} y={34} className="fill-[#8f99a8] text-[9.5px]">{isPlan ? PLAN_CARDS[c.key][1] : c.hint}</text>
                     {c.key === "indikasi" && (
@@ -861,7 +861,7 @@ export function AgentAnimation({ full = false, initialRun, embedded = false, pla
                           </g>
                         ))}
                         <text x={12} y={126} className="fill-[#c5cbd3] text-[9.5px]">{L.final ? `report validator: ${L.final.passed}/${L.final.total}` : "report validator: waiting"}{L.report ? " · report handed over" : ""}</text>
-                        <text x={12} y={142} className="fill-[#8f99a8] text-[9.5px]">{isPlan ? "a person approves it, in the Work plans tab" : "the project manager decides, in the Decisions tab"}</text>
+                        <text x={12} y={142} className="fill-[#8f99a8] text-[9.5px]">{isPlan ? "a person approves it, in Project & WBS" : "the project manager decides, in the Control Tower"}</text>
                         
                       </g>
                     )}
@@ -872,7 +872,7 @@ export function AgentAnimation({ full = false, initialRun, embedded = false, pla
               {pos.scrutiny && (
                 <g transform={`translate(${pos.scrutiny.x},${pos.scrutiny.y})`} className="cursor-pointer" onClick={() => setFocus({ agent: "scrutiny" })}
                   onPointerEnter={point("scrutiny")} onPointerMove={point("scrutiny")} onPointerLeave={() => setHover(null)}>
-                  <rect x={-8} y={-8} width={16} height={16} transform="rotate(45)" fill="#232a33" stroke="#b8a9ff" strokeWidth={2} />
+                  <rect x={-8} y={-8} width={16} height={16} transform="rotate(45)" fill="#1c2733" stroke="#b8a9ff" strokeWidth={2} />
                   <text y={24} textAnchor="middle" className="fill-[#c5cbd3] text-[10px]">Scrutiny · code</text>
                   {L.scrut[1] > 0 && <text y={-14} textAnchor="middle" className="fill-[#b8a9ff] text-[9.5px] tabular-nums">{L.scrut[0]}/{L.scrut[1]}</text>}
                 </g>
@@ -913,7 +913,7 @@ export function AgentAnimation({ full = false, initialRun, embedded = false, pla
             // the hover card: who the agent is, what its kind of agent does, its own assignment, and its state now
             const wide = hover.w;
             const style = { top: hover.y + 14, ...(hover.x > wide - 340 ? { right: wide - hover.x + 14 } : { left: hover.x + 14 }) };
-            const box = "pointer-events-none absolute z-30 rounded-lg border border-white/15 bg-[#111418] px-3 py-2 text-[11.5px] shadow-2xl";
+            const box = "pointer-events-none absolute z-30 rounded-lg border border-white/15 bg-[#151e28] px-3 py-2 text-[11.5px] shadow-2xl";
             if (hover.key === "scrutiny") return (
               <div className={`${box} w-[300px]`} style={style}>
                 <p className="font-semibold text-white">Scrutiny validator</p>
@@ -953,7 +953,7 @@ export function AgentAnimation({ full = false, initialRun, embedded = false, pla
         </div>
 
         {/* the interaction log, or what was clicked */}
-        <aside className={`flex min-h-0 shrink-0 flex-col bg-[#1c2127] ${stacked ? "h-[260px] w-full border-t border-black/30" : embedded ? "relative w-[380px] border-l border-black/30" : "w-[380px] border-l border-black/30 max-xl:h-[360px] max-xl:w-full max-xl:border-l-0 max-xl:border-t"}`}>
+        <aside className={`flex min-h-0 shrink-0 flex-col bg-[#1c2733] ${stacked ? "h-[260px] w-full border-t border-black/30" : embedded ? "relative w-[380px] border-l border-black/30" : "w-[380px] border-l border-black/30 max-xl:h-[360px] max-xl:w-full max-xl:border-l-0 max-xl:border-t"}`}>
           <div className={embedded && !stacked ? "absolute inset-0 flex min-h-0 flex-col" : "contents"}>
           {focus && (
             <div className="max-h-[50%] shrink-0 overflow-y-auto border-b border-white/5 p-3">
@@ -991,7 +991,7 @@ export function AgentAnimation({ full = false, initialRun, embedded = false, pla
               )}
               {focus.card === "keputusan" && (
                 <div className="space-y-1 text-[11px] text-[#c5cbd3]">
-                  <p>{isPlan ? "Each section planner writes its operations and procedures. The chart goes to a person, who approves it in the Work plans tab." : "Option analysts recommend an option ruling per item (rejected only if Schedule, Cost and Constraints are all met); the project manager decides in the Decisions tab."}</p>
+                  <p>{isPlan ? "Each section planner writes its operations and procedures. The WBS goes to a person, who approves it in Project & WBS." : "Option analysts recommend an option ruling per item (rejected only if Schedule, Cost and Constraints are all met); the project manager decides in Decisions."}</p>
                   <ul className="space-y-0.5">{L.log.filter((l) => l.kind === "decision" && l.key !== "partner").slice(-12).map((l) => <li key={l.i} className="truncate" title={l.text}>{l.text}</li>)}</ul>
                 </div>
               )}

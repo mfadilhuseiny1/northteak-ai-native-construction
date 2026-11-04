@@ -10,7 +10,7 @@ import { firm, type FirmConfig, type Project, type ProjectForm as ProjectFields,
    at once and cost limit are the firm's defaults (the API still takes them), the data source is a readiness line,
    not a setting. */
 
-const field = "w-full rounded-sm border border-white/15 bg-[#111418] px-2 py-1.5 text-[12px] text-[#e5e8eb] outline-none focus:border-[#5b5fd6]";
+const field = "w-full rounded-sm border border-white/15 bg-[#151e28] px-2 py-1.5 text-[12px] text-[#e5e8eb] outline-none focus:border-[#d99a16]";
 /** A cost limit in whole dollars where it is whole ("$20", not "$20.000", which reads as twenty thousand in some locales). */
 export const usdLimit = (n?: number | null) => (n == null ? "—" : `$${Number.isInteger(n) ? n : n.toFixed(2)}`);
 const modelLabel = (cfg: FirmConfig | null, id?: string) => cfg?.model.find((m) => m.id === id)?.label ?? modelName(id);
@@ -52,12 +52,12 @@ export function NetworkOrb({ size = 340, busy = false }: { size?: number; busy?:
       const t = (now - t0) / 1000, a = 0.6 + t * (busy ? 0.32 : 0.1), spin = t * 0.25;
       ctx.clearRect(0, 0, size, size);
       const haze = ctx.createRadialGradient(cx, cy, R * 0.1, cx, cy, R * 1.45);
-      haze.addColorStop(0, "rgba(91,95,214,0.10)"); haze.addColorStop(0.7, "rgba(91,95,214,0.04)"); haze.addColorStop(1, "rgba(91,95,214,0)");
+      haze.addColorStop(0, "rgba(217,154,22,0.10)"); haze.addColorStop(0.7, "rgba(217,154,22,0.04)"); haze.addColorStop(1, "rgba(217,154,22,0)");
       ctx.fillStyle = haze; ctx.fillRect(0, 0, size, size);
       // the ring, brighter on the side the light turns to
       const ringR = R * 0.8, lx = Math.cos(spin) * ringR, ly = Math.sin(spin) * ringR;
       const light = ctx.createLinearGradient(cx + lx, cy + ly, cx - lx, cy - ly);
-      light.addColorStop(0, "rgba(176,156,255,0.95)"); light.addColorStop(0.45, "rgba(124,108,240,0.4)"); light.addColorStop(1, "rgba(91,95,214,0.06)");
+      light.addColorStop(0, "rgba(176,156,255,0.95)"); light.addColorStop(0.45, "rgba(124,108,240,0.4)"); light.addColorStop(1, "rgba(217,154,22,0.06)");
       ctx.save();
       ctx.shadowColor = "rgba(139,120,255,0.85)"; ctx.shadowBlur = 30; ctx.strokeStyle = light; ctx.lineWidth = 10;
       ctx.beginPath(); ctx.arc(cx, cy, ringR, 0, Math.PI * 2); ctx.stroke();
@@ -121,12 +121,12 @@ export function ProjectHome({ cfg, project, count, busy, running, onStart, onCre
           <div className="mt-4"><ConfigChips cfg={cfg} project={project} onEdit={onEdit} /></div>
           <button disabled={busy || running || (cfg ? !cfg.sumber.siap : false)} onClick={onStart}
             title={running ? "one review is already running" : cfg && !cfg.sumber.siap ? `data source not ready: ${cfg.sumber.kurang.join(", ")}` : undefined}
-            className="mt-6 flex items-center gap-2 rounded-md bg-[#5b5fd6] px-5 py-2.5 text-[13px] font-semibold text-white shadow-[0_0_24px_rgba(91,95,214,0.45)] hover:bg-[#6a6ee0] disabled:opacity-40 disabled:shadow-none">
+            className="mt-6 flex items-center gap-2 rounded-md bg-[#d99a16] px-5 py-2.5 text-[13px] font-semibold text-white shadow-[0_0_24px_rgba(217,154,22,0.45)] hover:bg-[#6a6ee0] disabled:opacity-40 disabled:shadow-none">
             <Icon name="play" className="h-3.5 w-3.5" />Start new review
           </button>
           <p className="mt-2 max-w-[520px] text-center text-[11px] text-[#8f99a8]">
             {count ? `${count} reviews in this project (list on the left). ` : "No reviews in this project yet. "}
-            A disruption review's recovery plan arrives in the Decisions tab, and a planning review's chart in the Work plans tab. Nothing changes and nothing is sent until you approve it.
+            A disruption review's recovery plan arrives in Decisions, and a planning review's WBS in Project & WBS. Nothing changes and nothing is sent until you approve it.
           </p>
         </>
       ) : (
@@ -135,7 +135,7 @@ export function ProjectHome({ cfg, project, count, busy, running, onStart, onCre
           <p className="mt-1.5 max-w-[520px] text-center text-[12px] leading-relaxed text-[#abb3bf]">
             Name a project, then start a review. Data, AI models and other settings are already set up.
           </p>
-          <button onClick={onCreate} className="mt-6 flex items-center gap-2 rounded-md bg-[#5b5fd6] px-5 py-2.5 text-[13px] font-semibold text-white shadow-[0_0_24px_rgba(91,95,214,0.45)] hover:bg-[#6a6ee0]">
+          <button onClick={onCreate} className="mt-6 flex items-center gap-2 rounded-md bg-[#d99a16] px-5 py-2.5 text-[13px] font-semibold text-white shadow-[0_0_24px_rgba(217,154,22,0.45)] hover:bg-[#6a6ee0]">
             <Icon name="plus" className="h-3.5 w-3.5" />Create new project
           </button>
         </>
@@ -173,7 +173,7 @@ export function ProjectFormDialog({ cfg, project, onSaved, onClose }: { cfg: Fir
   const label = "mt-3 block text-[11.5px] font-medium text-[#d3d8de]";
   return (
     <Modal id="proyek-judul" onClose={onClose}>
-      <form className="w-full max-w-[560px] rounded-lg border border-white/10 bg-[#1c2127] p-5 shadow-2xl" onSubmit={(e) => { e.preventDefault(); if (!bad) save(); }}>
+      <form className="w-full max-w-[560px] rounded-lg border border-white/10 bg-[#1c2733] p-5 shadow-2xl" onSubmit={(e) => { e.preventDefault(); if (!bad) save(); }}>
         <p id="proyek-judul" className="text-[15px] font-semibold text-white">{project ? `Edit project · ${project.nama}` : "New project"}</p>
         <label htmlFor="pr-nama" className={label}>Project name</label>
         <input id="pr-nama" autoFocus value={nama} onChange={(e) => setNama(e.target.value)} maxLength={120} placeholder="e.g. Riverside Tower — disruption" className={`${field} mt-1`} />
@@ -187,7 +187,7 @@ export function ProjectFormDialog({ cfg, project, onSaved, onClose }: { cfg: Fir
         <div className="mt-5 flex items-center justify-end gap-2">
           {(bad && nama) || err ? <p className="mr-auto text-[11.5px] text-[#ffb4b4]">{err || bad}</p> : null}
           <button type="button" onClick={onClose} className="rounded-sm border border-white/15 px-3 py-1.5 text-[12px] text-[#d3d8de] hover:bg-white/10">Cancel</button>
-          <button type="submit" disabled={busy || !!bad || !cfg} className="flex items-center gap-1 rounded-sm bg-[#5b5fd6] px-3 py-1.5 text-[12px] font-medium text-white hover:bg-[#6a6ee0] disabled:opacity-40">
+          <button type="submit" disabled={busy || !!bad || !cfg} className="flex items-center gap-1 rounded-sm bg-[#d99a16] px-3 py-1.5 text-[12px] font-medium text-white hover:bg-[#6a6ee0] disabled:opacity-40">
             <Icon name={project ? "save" : "plus"} className="h-3 w-3" />{busy ? "Saving…" : project ? "Save" : "Create project"}
           </button>
         </div>
@@ -214,7 +214,7 @@ export function StartForm({ cfg, project, count, agents, last, busy, err, onStar
   const mins = last?.created_at && last?.finished_at ? Math.round((Date.parse(String(last.finished_at)) - Date.parse(String(last.created_at))) / 60000) : null;
   return (
     <Modal id="mulai-judul" onClose={onClose}>
-      <form className="w-full max-w-[640px] rounded-lg border border-white/10 bg-[#1c2127] p-5 shadow-2xl"
+      <form className="w-full max-w-[640px] rounded-lg border border-white/10 bg-[#1c2733] p-5 shadow-2xl"
         onSubmit={(e) => { e.preventDefault(); if (!bad) onStart({ nama: nama.trim(), fokus: fokus.trim(), versi }); }}>
         <p id="mulai-judul" className="text-[15px] font-semibold text-white">New disruption review · {project.nama}</p>
         <p className="mt-1 text-[11.5px] text-[#abb3bf]">
@@ -229,7 +229,7 @@ export function StartForm({ cfg, project, count, agents, last, busy, err, onStar
         <div role="radiogroup" aria-labelledby="pg-versi" className={`mt-1 grid gap-2 ${versions.length > 2 ? "grid-cols-3" : "grid-cols-2"}`}>
           {versions.map(([id, v]) => (
             <button key={id} type="button" role="radio" aria-checked={versi === id} onClick={() => setVersi(id)}
-              className={`rounded border p-2 text-left ${versi === id ? "border-[#9d8cff] bg-[#9d8cff]/10" : "border-white/15 hover:bg-white/5"}`}>
+              className={`rounded border p-2 text-left ${versi === id ? "border-[#f5b82e] bg-[#f5b82e]/10" : "border-white/15 hover:bg-white/5"}`}>
               <span className="block text-[12.5px] font-semibold text-white">
                 {v.nama}{id === DEFAULT_VERSION && <span className="ml-1 text-[10.5px] font-normal text-[#c9c0ff]">(Default)</span>}
               </span>
@@ -241,7 +241,7 @@ export function StartForm({ cfg, project, count, agents, last, busy, err, onStar
         {(bad && nama) || err ? <p className="mt-3 text-[11.5px] text-[#ffb4b4]">{err || bad}</p> : null}
         <div className="mt-5 flex justify-end gap-2">
           <button type="button" onClick={onClose} className="rounded-sm border border-white/15 px-3 py-1.5 text-[12px] text-[#d3d8de] hover:bg-white/10">Cancel</button>
-          <button type="submit" disabled={busy || !!bad} className="flex items-center gap-1 rounded-sm bg-[#5b5fd6] px-3 py-1.5 text-[12px] font-medium text-white hover:bg-[#6a6ee0] disabled:opacity-40">
+          <button type="submit" disabled={busy || !!bad} className="flex items-center gap-1 rounded-sm bg-[#d99a16] px-3 py-1.5 text-[12px] font-medium text-white hover:bg-[#6a6ee0] disabled:opacity-40">
             <Icon name="play" className="h-3 w-3" />{busy ? "Assembling firm…" : `Start: ${versions.find(([id]) => id === versi)?.[1].nama ?? ""}`}
           </button>
         </div>

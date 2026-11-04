@@ -1,4 +1,4 @@
-"""Offline tests of the main job: a consultant's planning documents into an OPC, with the workforce, material and waste of every step. No model is called. They prove the arithmetic, the rules and the wiring, not how well a real model plans."""
+"""Offline tests of the main job: a consultant's planning documents into a WBS, with the workforce, material and waste of every step. No model is called. They prove the arithmetic, the rules and the wiring, not how well a real model plans."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
-from swarm import firm, firm_api, norms as N, opc, planner, planning_case as PC, project as P
+from swarm import firm, firm_api, norms as N, planner, planning_case as PC, project as P, wbs
 
 
 def _close() -> None:
@@ -62,8 +62,8 @@ def step(f, name: str) -> dict:
     return next(s for s in f.result["steps"] if s["name"].startswith(name))
 
 
-def chart(rates=None, crews=None, itp=None) -> opc.Chart:
-    return opc.Chart("Test", ["A50"], [{"id": "a", "name": "A", "by": "besi"}, {"id": "b", "name": "B", "by": "self"}], rates or PC.RATES, PC.BOQ, 7, crews or {"besi": 16, "self": 30}, itp or [], 14)
+def breakdown(rates=None, crews=None, itp=None) -> wbs.Breakdown:
+    return wbs.Breakdown("Test", ["A50"], [{"id": "a", "name": "A", "by": "besi"}, {"id": "b", "name": "B", "by": "self"}], rates or PC.RATES, PC.BOQ, 7, crews or {"besi": 16, "self": 30}, itp or [], 14)
 
 
 # ------------------------------------------------------------------------------------------------ the standard
@@ -98,18 +98,18 @@ def test_rebar_waste_is_what_the_standard_allows_and_unstated_waste_is_not_inven
 
 @pytest.mark.parametrize("text,value", [("12*0.6*0.6*3.6", 15.552), ("12*4*0.6*3.6", 103.68), ("(1+2)*3", 9), ("10/4", 2.5), ("-2+5", 3), ("3,600/1000", 3.6), ("2×3", 6)])
 def test_a_sum_is_worked_out_by_code(text, value):
-    assert opc.evaluate(text)[0] == pytest.approx(value)
+    assert wbs.evaluate(text)[0] == pytest.approx(value)
 
 
 @pytest.mark.parametrize("text", ["__import__('os').system('x')", "open('.env')", "2**99", "1/0", "a+1", "", "1;2", "[1,2]", "1" * 301])
 def test_anything_but_a_plain_sum_is_refused(text):
     with pytest.raises(ValueError):
-        opc.evaluate(text)
+        wbs.evaluate(text)
 
 
 def test_a_figure_the_agent_did_not_read_is_refused_but_units_and_geometry_are_fine():
-    known = opc.figures_in("C1: 12 columns, 600 x 600 mm, height 3,600 mm")
-    c = chart()
+    known = wbs.figures_in("C1: 12 columns, 600 x 600 mm, height 3,600 mm")
+    c = breakdown()
     assert c.add_quantity("Q", "Concrete", "m3", "12*0.6*0.6*3.6", known, "", ["X"], "a")["value"] == 15.552
     assert c.add_quantity("Q2", "Form", "m2", "12*4*0.6*3.6", known, "", ["X"], "a")["value"] == 103.68
     with pytest.raises(ValueError, match="77"):
@@ -123,9 +123,9 @@ def test_a_figure_the_agent_did_not_read_is_refused_but_units_and_geometry_are_f
 # ------------------------------------------------------------------------------------------------ the calculator
 
 
-def built() -> opc.Chart:
+def built() -> wbs.Breakdown:
     """One norm over two steps, worked out here by hand in the test below."""
-    c = chart()
+    c = breakdown()
     c.add_quantity("Q", "Rebar", "kg", "1000", {1000.0}, "L4-03", ["X"], "a")
     c.add_step("cut", "a", "operation", "Cut", [], "How.", ["X"], "a", "SNI-6.17", "Q", 25, ["rebar"])
     c.add_step("tie", "a", "operation", "Tie", ["cut"], "How.", ["X"], "a", "SNI-6.17", "Q", 75, ["tie_wire"])
@@ -164,7 +164,7 @@ def test_shares_are_scaled_so_totals_stay_those_of_the_standard_and_it_says_so()
 
 
 def test_every_material_lands_on_exactly_one_step_whatever_the_agents_claim():
-    c = chart()
+    c = breakdown()
     c.add_quantity("Q", "Rebar", "kg", "1000", {1000.0}, "", ["X"], "a")
     c.add_step("one", "a", "operation", "One", [], "How.", ["X"], "a", "SNI-6.17", "Q", 40, ["rebar"])
     c.add_step("two", "a", "operation", "Two", ["one"], "How.", ["X"], "a", "SNI-6.17", "Q", 60, ["rebar"])
@@ -176,7 +176,7 @@ def test_every_material_lands_on_exactly_one_step_whatever_the_agents_claim():
 
 
 def test_a_feeder_runs_as_late_as_it_can_so_nothing_waits_in_stock():
-    c = chart()
+    c = breakdown()
     c.add_step("long", "b", "operation", "Long", [], "How.", ["X"], "a", crew=[{"role": "Pekerja", "count": 2}], hours=14)
     c.add_step("short", "a", "operation", "Short", [], "How.", ["X"], "a", crew=[{"role": "Pekerja", "count": 2}], hours=2)
     c.add_step("end", "b", "operation", "End", ["long", "short"], "How.", ["X"], "a", crew=[{"role": "Pekerja", "count": 2}], hours=1)
@@ -187,7 +187,7 @@ def test_a_feeder_runs_as_late_as_it_can_so_nothing_waits_in_stock():
 
 
 def test_the_crew_peak_is_people_there_at_one_moment_not_everyone_that_day():
-    c = chart()
+    c = breakdown()
     c.add_step("first", "a", "handling", "First", [], "How.", ["X"], "a", crew=[{"role": "Pekerja", "count": 10}], hours=3)
     c.add_step("second", "a", "handling", "Second", ["first"], "How.", ["X"], "a", crew=[{"role": "Pekerja", "count": 12}], hours=3)
     c.number()
@@ -197,11 +197,11 @@ def test_the_crew_peak_is_people_there_at_one_moment_not_everyone_that_day():
 
 @pytest.mark.parametrize("size,oh,expected", [(7, {"Pekerja": 1, "Tukang": 1}, 7), (1, {"Pekerja": 1, "Tukang": 1}, 1), (22, {"Pekerja": 0.66, "Tukang kayu": 0.33}, 22), (5, {"Pekerja": 1.65, "Tukang batu": 0.275}, 5)])
 def test_a_crew_always_adds_up(size, oh, expected):
-    assert sum(c["count"] for c in opc.split_crew(size, oh)) == expected
+    assert sum(c["count"] for c in wbs.split_crew(size, oh)) == expected
 
 
 def test_a_step_is_refused_with_a_reason():
-    c = chart()
+    c = breakdown()
     c.add_quantity("Q", "Rebar", "kg", "1000", {1000.0}, "", ["X"], "a")
     good = {"section": "a", "kind": "operation", "name": "N", "after": [], "procedure": "How.", "evidence": ["X"], "agent": "a"}
     with pytest.raises(ValueError, match="no section"):
@@ -225,7 +225,7 @@ def test_a_step_is_refused_with_a_reason():
 
 
 def test_inserting_a_step_makes_what_followed_wait_for_it():
-    c = chart()
+    c = breakdown()
     for ref, after in (("a1", []), ("a2", ["a1"])):
         c.add_step(ref, "a", "operation", ref, after, "How.", ["X"], "a")
     c.add_step("check", "a", "inspection", "Check", ["a1"], "How.", ["X"], "a")
@@ -234,15 +234,15 @@ def test_inserting_a_step_makes_what_followed_wait_for_it():
 
 
 def test_removing_a_step_keeps_the_chain_whole():
-    c = chart()
+    c = breakdown()
     for ref, after in (("a1", []), ("a2", ["a1"]), ("a3", ["a2"])):
         c.add_step(ref, "a", "operation", ref, after, "How.", ["X"], "a")
     c.remove("a2")
     assert c.steps["a3"]["after"] == ["a1"]
 
 
-def test_checks_catch_a_broken_chart():
-    c = chart(itp=["HP-1"])
+def test_checks_catch_a_broken_breakdown():
+    c = breakdown(itp=["HP-1"])
     c.add_step("a1", "a", "operation", "One", ["ghost"], "How.", ["X"], "a")
     c.add_step("a2", "a", "operation", "Two", [], "How.", [], "a")
     c.add_step("a3", "a", "inspection", "Look", ["a2"], "How.", ["X"], "a")
@@ -256,7 +256,7 @@ def test_checks_catch_a_broken_chart():
 
 
 def test_a_loop_is_reported_and_does_not_hang():
-    c = chart()
+    c = breakdown()
     c.add_step("a1", "a", "operation", "One", ["a2"], "How.", ["X"], "a")
     c.add_step("a2", "a", "operation", "Two", ["a1"], "How.", ["X"], "a")
     c.number()
@@ -266,7 +266,7 @@ def test_a_loop_is_reported_and_does_not_hang():
 # ------------------------------------------------------------------------------------------------ the scripted review
 
 
-def test_the_scripted_review_builds_the_chart_without_errors(review):
+def test_the_scripted_review_builds_the_breakdown_without_errors(review):
     f, events = review
     assert not [e for e in events if e["type"] == "error"]
     t = f.result["totals"]
@@ -275,7 +275,7 @@ def test_the_scripted_review_builds_the_chart_without_errors(review):
     assert f.result["steps"][0]["id"] == "O-1"
 
 
-def test_the_chart_has_the_shape_of_an_opc(review):
+def test_the_tasks_link_the_way_the_work_happens(review):
     f = review[0]
     checks = {c["rule"]: c for c in f.result["checks"]}
     assert checks["one_end"]["ok"] and checks["links"]["ok"] and checks["itp"]["ok"] and checks["inspect_before"]["ok"] and checks["quantities_used"]["ok"]
@@ -331,13 +331,13 @@ def test_the_planner_only_reads_the_records():
     from pathlib import Path
 
     text = Path(planner.__file__).read_text(encoding="utf-8")
-    assert set(re.findall(r"\bproject\.([a-zA-Z_]+)", text)) <= {"plan_documents", "schedule", "subcontractors", "all_of", "documents", "as_seeded"}
+    assert set(re.findall(r"\bproject\.([a-zA-Z_]+)", text)) <= {"plan_documents", "schedule", "subcontractors", "all_of", "documents", "as_seeded", "activity_heads"}
 
 
 def test_evidence_must_have_been_read(review):
     f = planner.PlanningFirm(firm_api.model_of("mock", "plan"), 5, PC.BRIEF, mock=True)
     firm._emit.set(lambda e: None)
-    f.chart = chart()
+    f.breakdown = breakdown()
     add = f.quantity_tool("doc_drawings")
     assert "refused" in add("Q", "Concrete", "m3", "1", "", ["PLAN-NOT-READ"])
     assert "refused" in add("Q", "Concrete", "m3", "1", "", [])
@@ -362,7 +362,7 @@ def test_approving_sends_the_plan_to_every_record_it_touches(review):
     done = P.decide_plan(rec["id"], "approve", "Go.")
     assert done["status"] == "approved" and done["decided_by"] == P.PM
     items = P.all_of("work_item")
-    assert all(w["status"] == "open" for w in items) and sum("Level 4 columns:" in w["title"] for w in items) == 4
+    assert all(w["status"] == "open" for w in items) and sum(1 for w in items if w.get("step")) == len(rec["plan"]["steps"]), "every task of the plan is a card on the board"
     planned = {i["id"]: i for i in P.all_of("inspection") if i["status"] == "planned"}
     assert set(planned) == set(PC.ITP_IDS) and planned["HP-21"]["hold_point"] and planned["HP-21"]["next"]
     requests = [o for o in P.all_of("po") if o["status"] == "requested"]
@@ -420,12 +420,12 @@ def test_a_shorter_window_after_a_recovery_plan_flags_the_work_plan(review):
 
 def test_the_procedure_document_comes_from_the_same_figures(review):
     rec = P.record_plan("run-aaaaaa", review[0], "mock")
-    text = opc.procedure_markdown(rec)
+    text = wbs.procedure_markdown(rec)
     for s in rec["plan"]["steps"]:
         assert f"### {s['id']} {s['name']}" in text
     assert "SNI 7394:2008" in text and "hold point" in text and f"Rp {rec['plan']['totals']['waste_cost']:,}" in text
-    table = opc.table_csv(rec).splitlines()
-    assert table[0].startswith("step,name,kind") and len(table) > len(rec["plan"]["steps"])
+    table = wbs.table_csv(rec).splitlines()
+    assert table[0].startswith("wbs,step,name,kind") and len(table) > len(rec["plan"]["steps"])
 
 
 # ------------------------------------------------------------------------------------------------ through the API the screens use
@@ -456,18 +456,20 @@ def test_the_whole_loop_through_the_api(client):
     assert next(e for e in r["events"] if e["type"] == "firm")["jenis"] == "plan"
     plans = client.get("/api/project/plans").json()["plans"]
     assert len(plans) == 1 and plans[0]["status"] == "pending" and plans[0]["run"] == run_id
+    drawn = next(e for e in r["events"] if e["type"] == "engagement")["wbs"]  # the report draws its WBS from the run, which outlives the plan record
+    assert drawn["sections"] == plans[0]["plan"]["sections"] and [s["id"] for s in drawn["steps"]] == [s["id"] for s in plans[0]["plan"]["steps"]]
     assert any(x["status"] == "draft" and x["drafted_by"] == "doc_revisions" for x in client.get("/api/rfis").json()["rfis"])
     pid = plans[0]["id"]
     assert "### O-1" in client.get(f"/api/project/plans/{pid}/procedure.md").text
-    assert client.get(f"/api/project/plans/{pid}/table.csv").text.startswith("step,name")
+    assert client.get(f"/api/project/plans/{pid}/table.csv").text.startswith("wbs,step,name")
     assert client.post(f"/api/project/plans/{pid}/approve", json={"note": "Go."}).status_code == 200
     assert client.post(f"/api/project/plans/{pid}/approve", json={}).status_code == 409
     o = client.get("/api/project/overview").json()
-    assert o["latest_plan"]["status"] == "approved" and o["counts"]["open_work_items"] == 9
+    assert o["latest_plan"]["status"] == "approved" and o["counts"]["open_work_items"] == 18 + 5, "18 tasks and 5 items from the agents"
     assert client.post(f"/api/project/plans/{pid}/steps/O-1/actual", json={"man_hours": 50, "materials": {"rebar": 2500}}).status_code == 200
     assert client.post(f"/api/project/plans/{pid}/steps/O-99/actual", json={}).status_code == 404
-    assert client.post("/api/project/plans/OPC-none/approve", json={}).status_code == 404
-    assert client.get("/api/project/plans/OPC-none/procedure.md").status_code == 404
+    assert client.post("/api/project/plans/WBS-none/approve", json={}).status_code == 404
+    assert client.get("/api/project/plans/WBS-none/procedure.md").status_code == 404
 
 
 def test_a_disruption_review_still_runs_as_before(client):
@@ -478,3 +480,24 @@ def test_a_disruption_review_still_runs_as_before(client):
     assert client.get(f"/api/aip/runs/{run_id}?after=0").json()["run"]["status"] == "succeeded"
     assert client.get("/api/project/decisions").json()["decisions"][0]["recommended"] == "O3"
     assert client.get("/api/project/plans").json()["plans"] == []
+def test_a_wait_after_a_step_holds_the_next_one_and_counts_in_the_days():
+    c = breakdown()
+    c.add_quantity("Q", "Rebar", "kg", "100", {100.0}, "", ["X"], "a")
+    crew = [{"role": "Pekerja", "count": 2}]
+    c.add_step("pour", "a", "operation", "Pour", [], "How.", ["X"], "a", "SNI-6.17", "Q", 90, ["rebar"], crew=crew, hours=7, wait_days=7)
+    c.add_step("strike", "a", "operation", "Strike", ["pour"], "How.", ["X"], "a", "SNI-6.17", "Q", 10, [], crew=crew, hours=7)
+    c.number()
+    p = c.plan()
+    rows = {s["ref"]: s for s in p["steps"]}
+    assert rows["strike"]["start_h"] - rows["pour"]["finish_h"] == 49, "seven days of curing at seven working hours a day, then the next step may start"
+    assert p["totals"]["days"] == round(rows["strike"]["finish_h"] / 7, 1)
+    assert p["totals"]["wait_days"] == 7
+
+
+def test_a_boq_line_of_zero_quantity_does_not_crash_the_plan():
+    c = wbs.Breakdown("Test", ["A50"], [{"id": "a", "name": "A", "by": "besi"}], PC.RATES, [{"id": "B0", "item": "Nothing yet", "unit": "kg", "qty": 0, "rate": 100}], 7, {"besi": 16}, [], 14)
+    c.add_quantity("Q", "Rebar", "kg", "10", {10.0}, "B0", ["X"], "a")
+    c.add_step("one", "a", "operation", "One", [], "How.", ["X"], "a", "SNI-6.17", "Q", 100, ["rebar"], crew=[{"role": "Pekerja", "count": 2}], hours=7)
+    c.number()
+    q = c.plan()["quantities"][0]
+    assert q["boq_qty"] == 0 and q["boq_diff_pct"] is None

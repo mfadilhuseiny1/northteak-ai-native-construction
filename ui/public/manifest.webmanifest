@@ -1,0 +1,11 @@
+{
+  "name": "NorthTeak: site",
+  "short_name": "NorthTeak",
+  "description": "Tasks, daily logs and photos from site",
+  "start_url": "/field",
+  "scope": "/field",
+  "display": "standalone",
+  "background_color": "#111820",
+  "theme_color": "#111820",
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

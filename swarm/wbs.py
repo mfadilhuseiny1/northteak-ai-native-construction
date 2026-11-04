@@ -1,6 +1,6 @@
-"""An Operation Process Chart as data: operations, inspections and handling in order, each with its procedure, workforce, material and waste.
+"""A Work Breakdown Structure as data: a work item broken down into sections and tasks (operations, inspections and handling), each with its procedure, workforce, material and waste, and the links its critical path needs.
 
-Agents decide the steps and write the procedures. Everything with a number in it is worked out here: a quantity from the sum an agent wrote, workforce and material from the norm it chose, waste and cost from the tables, time from the crew it assigned.
+Agents decide the tasks and write the procedures. Everything with a number in it is worked out here: a quantity from the sum an agent wrote, workforce and material from the norm it chose, waste and cost from the tables, time from the crew it assigned.
 """
 
 from __future__ import annotations
@@ -74,12 +74,40 @@ def split_crew(size: int, oh: dict[str, float]) -> list[dict]:
     return [{"role": role, "count": n} for role, n in counts.items() if n]
 
 
-class Chart:
-    """One work item's chart while agents build it. Refusals are ValueErrors whose text goes back to the agent."""
+def code_tasks(steps: list[dict], sections: list[dict], activities: list[str], heads: dict[str, dict] | None = None) -> list[dict]:
+    """Hangs the tasks on the breakdown: programme activity, then section, then task. Writes each task's activity and WBS code, and returns the tree.
 
-    def __init__(self, title: str, activities: list[str], sections: list[dict], rates: dict, boq: list[dict], window_days: float, crews: dict[str, int], itp_ids: list[str], programme_crew: int | None = None):
+    A task takes its section's activity, or else the latest activity of what it waits for, so a section that spans two activities splits where its work moves on. Steps come in the order the work happens."""
+    heads, place = heads or {}, {a: i for i, a in enumerate(activities)}
+    fixed = {s["id"]: s.get("activity") for s in sections}
+    seen: dict[str, str] = {}
+    for t in steps:
+        mine = fixed.get(t["section"])
+        if mine not in place:
+            mine = max((seen[a] for a in t["after"] if a in seen), key=lambda a: place[a], default=activities[0] if activities else "")
+        t["activity"] = seen[t["id"]] = mine
+        t["code"] = ""
+    tree = []
+    for i, aid in enumerate(activities, 1):
+        head = heads.get(aid) or {}
+        node = {"activity": aid, "code": head.get("code") or f"1.{i}", "name": head.get("name") or aid, "sections": []}
+        for s in sections:
+            tasks = [t for t in steps if t["activity"] == aid and t["section"] == s["id"]]
+            if tasks:
+                sec = {"id": s["id"], "name": s["name"], "by": s.get("by", ""), "code": f"{node['code']}.{len(node['sections']) + 1}", "tasks": [t["id"] for t in tasks]}
+                for n, t in enumerate(tasks, 1):
+                    t["code"] = f"{sec['code']}.{n}"
+                node["sections"].append(sec)
+        tree.append(node)
+    return tree
+
+
+class Breakdown:
+    """One work item's breakdown while agents build it. Refusals are ValueErrors whose text goes back to the agent."""
+
+    def __init__(self, title: str, activities: list[str], sections: list[dict], rates: dict, boq: list[dict], window_days: float, crews: dict[str, int], itp_ids: list[str], programme_crew: int | None = None, heads: dict[str, dict] | None = None):
         self.title, self.activities, self.sections, self.rates, self.boq = title, activities, sections, rates, boq
-        self.window_days, self.crews, self.itp_ids, self.programme_crew = window_days, crews, itp_ids, programme_crew
+        self.window_days, self.crews, self.itp_ids, self.programme_crew, self.heads = window_days, crews, itp_ids, programme_crew, heads
         self.quantities: dict[str, dict] = {}
         self.steps: dict[str, dict] = {}
         self.ids: dict[str, str] = {}  # final id -> ref, once numbered
@@ -200,7 +228,7 @@ class Chart:
             self.ids[f"{p}-{counts[p]}"] = r
 
     def plan(self) -> dict:
-        """The chart with every figure worked out."""
+        """The breakdown with every figure worked out."""
         order, stuck = self._order()
         ref_id = {r: i for i, r in self.ids.items()}
         id_of = lambda r: ref_id.get(r, r)  # noqa: E731
@@ -263,7 +291,7 @@ class Chart:
             rows[r]["seq"] = i + 1
         after_of = {r: [a for a in self.steps[r]["after"] if a in self.steps] for r in self.steps}
         for r in order:
-            starts = [rows[a]["start_h"] if self.steps[r]["with_previous"] else rows[a]["finish_h"] for a in after_of[r]]
+            starts = [rows[a]["start_h"] if self.steps[r]["with_previous"] else rows[a]["finish_h"] + rows[a]["wait_days"] * N.HOURS_PER_OH for a in after_of[r]]
             rows[r]["start_h"] = round(max(starts, default=0.0), 2)
             rows[r]["finish_h"] = round(rows[r]["start_h"] + rows[r]["hours"], 2)
         for r in stuck:
@@ -272,7 +300,7 @@ class Chart:
         latest: dict[str, float] = {}
         for r in reversed(order):  # a feeder runs as late as it can: concrete is batched just before the pour, and nothing waits in stock
             followers = [x for x in self.steps if r in after_of[x] and x in latest]
-            latest[r] = min((latest[f] if self.steps[f]["with_previous"] else latest[f] - rows[r]["hours"] for f in followers), default=end - rows[r]["hours"])
+            latest[r] = min((latest[f] if self.steps[f]["with_previous"] else latest[f] - rows[r]["wait_days"] * N.HOURS_PER_OH - rows[r]["hours"] for f in followers), default=end - rows[r]["hours"])
             rows[r]["critical"] = latest[r] - rows[r]["start_h"] < 0.01
             rows[r]["start_h"] = max(0.0, round(latest[r], 2))
             rows[r]["finish_h"] = round(rows[r]["start_h"] + rows[r]["hours"], 2)
@@ -314,7 +342,7 @@ class Chart:
         quantities = []
         for q in self.quantities.values():
             b = next((b for b in self.boq if b["id"] == q["boq_item"]), None)
-            diff = round((q["value"] - b["qty"]) / b["qty"] * 100, 1) if b else None
+            diff = round((q["value"] - b["qty"]) / b["qty"] * 100, 1) if b and b["qty"] else None
             quantities.append({**q, "boq_qty": b["qty"] if b else None, "boq_diff_pct": diff, "boq_rate": b["rate"] if b else None, "boq_exposure_rp": round((q["value"] - b["qty"]) * b["rate"]) if b else 0})
         labour_cost = sum(x["labour_cost"] for x in rows.values())
         material_cost = sum(x["material_cost"] for x in rows.values())
@@ -323,13 +351,15 @@ class Chart:
         totals = {"steps": len(rows), "operations": sum(1 for x in rows.values() if x["kind"] == "operation"), "inspections": sum(1 for x in rows.values() if x["kind"] == "inspection"), "handling": sum(1 for x in rows.values() if x["kind"] == "handling"),
                   "man_hours": round(sum(x["man_hours"] for x in rows.values()), 1), "oh": round(sum(t["oh"] for t in trades.values()), 1), "labour_cost": labour_cost, "material_cost": material_cost, "waste_cost": waste_cost, "cost": labour_cost + material_cost, "boq_value": boq_value, "margin": boq_value - labour_cost - material_cost,
                   "days": round(days, 1), "window_days": self.window_days, "peak_crew": peak_total, "peak_by": peak, "crews": self.crews, "programme_crew": self.programme_crew, "wait_days": sum(x["wait_days"] for x in rows.values()), "hours_per_oh": N.HOURS_PER_OH}
-        plan = {"title": self.title, "activities": self.activities, "sections": self.sections, "steps": sorted(rows.values(), key=lambda x: x["seq"]), "quantities": quantities, "materials": [{**m, **{k: round(m[k], 3) for k in ("net", "waste", "gross")}} for m in materials.values()],
+        steps = sorted(rows.values(), key=lambda x: x["seq"])
+        tree = code_tasks(steps, self.sections, self.activities, self.heads)
+        plan = {"title": self.title, "activities": self.activities, "sections": self.sections, "tree": tree, "steps": steps, "quantities": quantities, "materials": [{**m, **{k: round(m[k], 3) for k in ("net", "waste", "gross")}} for m in materials.values()],
                 "workforce": [{**t, "oh": round(t["oh"], 1), "man_hours": round(t["man_hours"], 1)} for t in trades.values()], "crew_by_day": by_day, "totals": totals, "notes": notes, "waste_flags": [{**f, "step": id_of(f["step"])} for f in self.waste_flags], "source": N.SOURCE}
         plan["checks"] = self.checks(plan, stuck)
         return plan
 
     def checks(self, plan: dict, stuck: list[str]) -> list[dict]:
-        """What code can say about the chart: each one a fact for a person to read, not a refusal."""
+        """What code can say about the breakdown: each one a fact for a person to read, not a refusal."""
         steps, t = plan["steps"], plan["totals"]
         out: list[dict] = []
 
@@ -340,7 +370,7 @@ class Chart:
         add("links", not dangling, "Every link points at a real step." if not dangling else f"Links to steps that do not exist: {', '.join(f'{r} after {a}' for r, a in dangling)}.")
         leads_on = {a for s in steps for a in s["after"]}
         sinks = [s["id"] for s in steps if s["id"] not in leads_on]
-        add("one_end", not stuck and len(sinks) == 1, f"The chart has no loops and ends in one step, {sinks[0]}." if not stuck and len(sinks) == 1 else f"The chart must end in one step with no loops. It ends in: {', '.join(sinks) or 'nothing'}{'; in a loop: ' + ', '.join(stuck) if stuck else ''}.")
+        add("one_end", not stuck and len(sinks) == 1, f"The tasks have no loops and end in one task, {sinks[0]}." if not stuck and len(sinks) == 1 else f"The tasks must end in one task with no loops. They end in: {', '.join(sinks) or 'nothing'}{'; in a loop: ' + ', '.join(stuck) if stuck else ''}.")
         used = {s["quantity"] for s in steps if s["quantity"]}
         idle = [q["id"] for q in plan["quantities"] if q["id"] not in used]
         add("quantities_used", not idle, "Every quantity is used by a step." if not idle else f"Quantities no step uses: {', '.join(idle)}.")
@@ -349,11 +379,11 @@ class Chart:
         guessed = [s["id"] for s in steps if s["kind"] == "operation" and not s["norm"] and s["man_hours"]]
         add("norms", not guessed, "Every operation's workforce comes from the standard." if not guessed else f"These operations use an agent's estimate, not the standard: {', '.join(guessed)}.")
         missing = [i for i in self.itp_ids if not any(s["itp"] == i for s in steps)]
-        add("itp", not missing, "Every item in the inspection plan is on the chart." if not missing else f"Inspection plan items not on the chart: {', '.join(missing)}.")
+        add("itp", not missing, "Every item in the inspection plan is in the WBS." if not missing else f"Inspection plan items not in the WBS: {', '.join(missing)}.")
         late = [s["id"] for s in steps if s["kind"] == "inspection" and s["id"] in sinks and not s["wait_days"]]
         add("inspect_before", not late, "Inspections come before the work they protect." if not late else f"These inspections have nothing after them, so they cannot stop anything: {', '.join(late)}.")
         for q in plan["quantities"]:
-            if q["boq_qty"] is not None:
+            if q["boq_qty"]:
                 ok = abs(q["boq_diff_pct"]) <= TOLERANCE
                 add(f"boq_{q['id']}", ok, f"{q['element']} agrees with the BoQ: {q['value']:,.1f} against {q['boq_qty']:,} {q['unit']}." if ok else f"{q['element']} is {q['boq_diff_pct']:+}% against the BoQ: {q['value']:,.1f} against {q['boq_qty']:,} {q['unit']}, about Rp {q['boq_exposure_rp']:,} at the BoQ rate.")
         fits = not t["window_days"] or t["days"] <= t["window_days"]
@@ -367,14 +397,14 @@ class Chart:
 
 
 def procedure_markdown(rec: dict) -> str:
-    """The plan as a site document: code lays it out from the figures, so the document cannot disagree with the chart."""
+    """The plan as a site document: code lays it out from the figures, so the document cannot disagree with the WBS."""
     plan, sections = rec["plan"], {s["id"]: s for s in rec["plan"]["sections"]}
     t = plan["totals"]
     lines = [f"# Work plan: {plan['title']}", "", f"Status: {rec['status']}. Activities {', '.join(plan['activities'])}. Workforce and material per SNI 7394:2008; a working day is {t['hours_per_oh']} hours.", "",
              f"**{t['operations']} operations, {t['inspections']} inspections, {t['handling']} handling steps. {t['man_hours']:,} man-hours over {t['days']} working days. Peak crew {t['peak_crew']}. Planned cost Rp {t['cost']:,}, of which material waste Rp {t['waste_cost']:,}.**", "", "## Procedure", ""]
     for s in plan["steps"]:
         lines.append(f"### {s['id']} {s['name']}")
-        lines.append(f"*{sections.get(s['section'], {}).get('name', s['section'])}. By {s['by'] or 'to be assigned'}. Source: {', '.join(s['evidence']) or 'none'}. Basis: {s['basis']}.*")
+        lines.append(f"*WBS {s.get('code', '')}. {sections.get(s['section'], {}).get('name', s['section'])}. By {s['by'] or 'to be assigned'}. Source: {', '.join(s['evidence']) or 'none'}. Basis: {s['basis']}.*")
         lines.append("")
         lines.append(s["procedure"])
         if s["kind"] == "inspection":
@@ -399,10 +429,10 @@ def table_csv(rec: dict) -> str:
     """One row per step and material, for a spreadsheet."""
     out = io.StringIO()
     w = csv.writer(out)
-    w.writerow(["step", "name", "kind", "section", "by", "crew", "hours", "man_hours", "labour_cost_rp", "material", "unit", "net", "waste_pct", "waste", "to_order", "material_cost_rp", "waste_cost_rp", "basis"])
+    w.writerow(["wbs", "step", "name", "kind", "section", "by", "crew", "hours", "man_hours", "labour_cost_rp", "material", "unit", "net", "waste_pct", "waste", "to_order", "material_cost_rp", "waste_cost_rp", "basis"])
     for s in rec["plan"]["steps"]:
         crew = "; ".join(f"{c['count']} {c['role']}" for c in s["crew"])
-        head = [s["id"], s["name"], s["kind"], s["section"], s["by"], crew, s["hours"], s["man_hours"], s["labour_cost"]]
+        head = [s.get("code", ""), s["id"], s["name"], s["kind"], s["section"], s["by"], crew, s["hours"], s["man_hours"], s["labour_cost"]]
         if not s["materials"]:
             w.writerow([*head, "", "", "", "", "", "", "", "", s["basis"]])
         for m in s["materials"]:

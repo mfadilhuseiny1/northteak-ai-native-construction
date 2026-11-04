@@ -7,3 +7,5 @@ __pycache__/
 data/
 .env.*
 !.env.example
+# the tender packages stay on this machine: they name real people and carry tax numbers, signatures and bank details (docs/README.md)
+docs/*/

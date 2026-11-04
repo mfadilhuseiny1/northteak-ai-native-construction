@@ -244,6 +244,10 @@ def generate(out: Path | None = None, realistic: bool | None = None) -> Path:
     if realistic is None:
         realistic = log_texts.exists() and photo_dir.exists()
     wording = json.loads(log_texts.read_text(encoding="utf-8")) if realistic else {}
+    if realistic:  # every photo the scenes need, checked before the old data is touched
+        missing = [f"P-{ln.code}-{suffix}.jpg" for ln in LINES if ln.code in SCENES for suffix in SCENES[ln.code] if not (photo_dir / f"P-{ln.code}-{suffix}.jpg").exists()]
+        if missing:
+            raise FileNotFoundError(f"realistic photos missing in {photo_dir}: {', '.join(missing)}")
     if out.exists():
         shutil.rmtree(out)
     (out / "photos").mkdir(parents=True)
@@ -317,8 +321,12 @@ def generate(out: Path | None = None, realistic: bool | None = None) -> Path:
 
 
 def ensure() -> Path:
-    if not (DATA_DIR / "_hidden" / "log_quantities.json").exists():
-        generate()
+    names = ("project.json", "boq.json", "claim.json", "schedule.json", "daily_logs.json", "change_orders.json", "photos.json", "_hidden/vision_annotations.json", "_hidden/log_quantities.json", "_hidden/answer_key.json")
+    try:
+        for name in names:
+            json.loads((DATA_DIR / name).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        generate()  # a missing or corrupt file is a reason to rebuild, not to fail later inside a run
     return DATA_DIR
 
 
