@@ -52,6 +52,7 @@ export function ReviewFlow({ rec, sections, reviews, documents, picked, onPick, 
           <p className="mt-1.5 text-[11.5px] leading-snug text-[#8f99a8]">{documents?.set_aside ?? 0} set aside, each with its reason on Home</p>
           <span className="mt-auto flex flex-col items-start gap-1 pt-2 text-[11.5px]">
             <button onClick={() => onJump("tender")} className="text-[#9cc7f5] hover:underline">Can we bid?</button>
+            <button onClick={() => onJump("equipment")} className="text-[#9cc7f5] hover:underline">Equipment to rent</button>
             <button onClick={() => onJump("checklist")} className="text-[#9cc7f5] hover:underline">Contract checklist</button>
           </span>
         </div>

@@ -1,8 +1,9 @@
 "use client";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { Icon, type IconName } from "@/components/Icon";
 import { api, FocusContext, GoContext, notifyChanged, quiet, type Focus, type Rec } from "@/components/site/kit";
+import { useTampilBiaya } from "@/components/aip/costToggle";
 import { WbsModule } from "@/components/site/WbsModule";
 import { ReportsModule } from "@/components/site/ReportsModule";
 import { DemoTour } from "@/components/site/DemoTour";
@@ -17,7 +18,7 @@ import { TowerModule } from "@/components/site/TowerModule";
 import { AnalysisModule } from "@/components/site/AnalysisModule";
 import { AnalysisView } from "@/components/site/AnalysisView";
 import { HomeModule } from "@/components/site/HomeModule";
-import { OperatorChat } from "@/components/site/OperatorChat";
+import { forgetThread, OperatorChat } from "@/components/site/OperatorChat";
 import { ReviewModule } from "@/components/site/ReviewModule";
 import { SourceDrawer } from "@/components/site/SourceDrawer";
 import { CriticalModule } from "@/components/site/CriticalModule";
@@ -55,13 +56,43 @@ function readRoute() {
 function ProjectSwitch() {
   const [list, setList] = useState<Rec | null>(null);
   useEffect(() => { api("/api/projects").then(setList).catch(() => {}); }, []);
-  const open = async (id: string) => { await api(`/api/projects/${id}/open`, {}); window.location.hash = ""; window.location.reload(); };
+  const open = async (id: string) => { await api(`/api/projects/${id}/open`, {}); forgetThread(); window.location.hash = ""; window.location.reload(); };
   if (!list) return null;
   const rows = list.projects as Rec[];
   return (
     <select aria-label="Project" value={list.active} onChange={(e) => void open(e.target.value).catch((x) => window.alert((x as Error).message))} className="max-w-[190px] shrink-0 rounded border max-[1500px]:max-w-[140px] border-white/15 bg-black/20 px-1.5 py-0.5 text-[11.5px] text-white">
       {rows.map((p) => <option key={p.id} value={p.id} className="bg-[#1c2733]">{String(p.name).replace(" (fictional)", "")}</option>)}
     </select>
+  );
+}
+
+/** The language the agents write in and the screens read in: English or Indonesian. What is already on file in the other one waits for the translator, a paid agent, so a person starts it. */
+function LanguageSwitch() {
+  const [lang, setLang] = useState("");
+  const [left, setLeft] = useState<Rec | null>(null);
+  const costs = useTampilBiaya();
+  const look = useCallback(() => api("/api/project/translate").then(setLeft).catch(() => {}), []);
+  useEffect(() => { api("/api/language").then((r) => setLang(String(r.language))).catch(() => {}); void look(); }, [look]);
+  useEffect(() => {
+    if (!left?.running) return;
+    const t = window.setTimeout(() => void api("/api/project/translate").then((r) => (r.running ? setLeft(r) : window.location.reload())).catch(() => {}), 3000);
+    return () => window.clearTimeout(t);
+  }, [left]);
+  if (!lang) return null;
+  const name = lang === "id" ? "Indonesian" : "English";
+  const choose = (code: string) => { if (code !== lang) void api("/api/language", { language: code }).then(() => window.location.reload()).catch((x) => window.alert((x as Error).message)); };
+  const translate = () => {
+    if (!left || !window.confirm(`Translate ${left.waiting} texts on file into ${name} with Muse Spark${costs ? `, for about $${Number(left.usd).toFixed(2)}` : ""}? Nothing on file changes: switching back shows them as written.`)) return;
+    void api("/api/project/translate", {}).then(() => setLeft({ ...left, running: true })).catch((x) => window.alert((x as Error).message));
+  };
+  return (
+    <span className="flex shrink-0 items-center gap-1">
+      <span role="group" aria-label="Language" title="The language the agents write in and the screens read in" className="flex overflow-hidden rounded border border-white/15 text-[11px] font-semibold">
+        {["en", "id"].map((code) => <button key={code} onClick={() => choose(code)} aria-pressed={lang === code} className={`px-1.5 py-0.5 uppercase ${lang === code ? "bg-white/15 text-white" : "text-[#7d8b9b] hover:text-white"}`}>{code}</button>)}
+      </span>
+      {left?.running ? <span className="whitespace-nowrap text-[11px] text-[#abb3bf]">Translating…</span>
+        : Number(left?.waiting) > 0 && left?.muse_ready ? <button onClick={translate} title={`${left.waiting} texts on file are not in ${name} yet`} className="whitespace-nowrap rounded border border-white/15 px-1.5 py-0.5 text-[11px] text-[#abb3bf] hover:text-white">Translate</button> : null}
+    </span>
   );
 }
 
@@ -114,6 +145,29 @@ function App() {
   const focusValue = useMemo(() => ({ focus, setFocus }), [focus]);
   const live = useSwarmLive();
   const badge: Record<string, number> = { review: counts.pending_plans ?? 0 };
+  const navRef = useRef<HTMLElement>(null);
+  // how many words the header gives up, measured rather than set by the window's width: what fits depends on the project's name and the buttons beside the tabs. See data-tight in globals.css
+  const fit = useCallback(() => {
+    const nav = navRef.current;
+    const header = nav?.parentElement;
+    if (!nav || !header) return;
+    for (const tight of ["0", "1", "2", "3", "4"]) {
+      header.dataset.tight = tight;
+      if (nav.scrollWidth <= nav.clientWidth) break;
+    }
+  }, []);
+  useLayoutEffect(fit, [fit, route.tab, badge.review, live, own]);
+  useEffect(() => {
+    const nav = navRef.current;
+    if (!nav?.parentElement) return;
+    let frame = 0;
+    const later = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(fit); };  // in the next frame, or the observer would see its own change
+    const o = new ResizeObserver(later);
+    o.observe(nav.parentElement);
+    o.observe(nav);
+    void document.fonts.ready.then(later);
+    return () => { o.disconnect(); cancelAnimationFrame(frame); };
+  }, [fit]);
   const setup = route.tab === "home" || route.tab === "review";
   const showCopilot = copilot ?? (route.tab === "review" && own === true && wide);  // Home has the conversation and the documents side by side, so the copilot opens there only when asked
   useEffect(() => { if (showCopilot) setHeld(true); }, [showCopilot]);
@@ -127,17 +181,17 @@ function App() {
       <FocusContext.Provider value={focusValue}>
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-[#111820] text-[#f6f7f9]">
           <header className="flex h-12 shrink-0 items-center gap-3 border-b border-black/50 bg-[#151e28] px-3 text-[12px] shadow-[0_1px_0_rgb(255_255_255/.04)_inset]">
-            <span className="flex shrink-0 items-center gap-2 whitespace-nowrap"><span className="flex h-7 w-7 items-center justify-center rounded-md bg-[#f5b82e] shadow-[0_2px_8px_rgb(245_184_46/.35)]"><Icon name="sparkle" className="h-4 w-4 text-[#171106]" /></span><span className="leading-none max-[1500px]:hidden"><span className="block text-[13px] font-bold tracking-tight text-white">SiteSwarm</span><span className="mt-0.5 block text-[9px] font-medium uppercase tracking-[.14em] text-[#7d8b9b]">AI construction control</span></span></span>
-            <nav className="no-scrollbar mx-auto flex min-w-0 items-center gap-2 overflow-x-auto">
+            <span className="flex shrink-0 items-center gap-2 whitespace-nowrap"><span aria-hidden className="logo-mark h-7 w-9 text-white" /><span className="drop-2 leading-none"><span className="block text-[13px] font-bold tracking-tight text-white">NorthTeak</span><span className="mt-0.5 block text-[9px] font-medium uppercase tracking-[.14em] text-[#7d8b9b]">AI construction control</span></span></span>
+            <nav ref={navRef} className="no-scrollbar mx-auto flex min-w-0 items-center gap-2 overflow-x-auto">
               <button onClick={() => go("home")} aria-current={route.tab === "home" ? "page" : undefined} className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border px-3 py-1.5 text-[12.5px] font-bold ${route.tab === "home" ? "border-[#f5b82e] bg-[#f5b82e] text-[#171106] shadow-[0_2px_10px_rgb(245_184_46/.30)]" : "border-[#f5b82e]/70 text-[#f5b82e] hover:bg-[#f5b82e]/15"}`}><Icon name="home" className="h-4 w-4" />Home</button>
               {GROUPS.map(([group, tabs]) => (
                 <span key={group} className="flex shrink-0 items-center gap-0.5 border-l border-white/10 pl-2">
-                  <span className="mr-1 text-[9.5px] uppercase tracking-wider text-[#6b7480] max-[1800px]:hidden">{group}</span>
+                  <span className="drop-1 mr-1 text-[9.5px] uppercase tracking-wider text-[#6b7480]">{group}</span>
                   {tabs.map(([k, label, icon]) => {
                     const on = route.tab === k;
                     return (
-                      <button key={k} onClick={() => go(k)} aria-current={on ? "page" : undefined} title={label} aria-label={label} className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 py-1.5 max-[1700px]:px-2 ${on ? "bg-[#f5b82e] font-semibold text-[#171106] shadow-[0_2px_10px_rgb(245_184_46/.30)]" : "text-[#c3ccd6] hover:bg-white/[.07] hover:text-white"}`}>
-                        <Icon name={icon} className="h-3.5 w-3.5" /><span className={on ? "" : "max-[1700px]:hidden"}>{label}</span>
+                      <button key={k} onClick={() => go(k)} aria-current={on ? "page" : undefined} title={label} aria-label={label} className={`snug flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 py-1.5 ${on ? "bg-[#f5b82e] font-semibold text-[#171106] shadow-[0_2px_10px_rgb(245_184_46/.30)]" : "text-[#c3ccd6] hover:bg-white/[.07] hover:text-white"}`}>
+                        <Icon name={icon} className="h-3.5 w-3.5" /><span className={on ? "" : "drop-4"}>{label}</span>
                         {badge[k] > 0 && <span className={`rounded-full px-1.5 text-[10px] font-bold ${on ? "bg-[#171106] text-[#f5b82e]" : "bg-[#fab219] text-black"}`}>{badge[k]}</span>}
                         {k === "swarm" && live && <span title="The agents are working" className={`h-2 w-2 animate-pulse rounded-full ${on ? "bg-[#171106]" : "bg-[#e5484d]"}`} />}
                       </button>
@@ -148,9 +202,10 @@ function App() {
             </nav>
             <button onClick={() => setDemo(true)} title="A three-minute guided demo: each step opens its screen and says what to show" className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-[#f5b82e]/50 px-2.5 py-1 font-medium text-[#f5b82e] hover:bg-[#f5b82e]/10"><Icon name="play" className="h-3.5 w-3.5" />Demo</button>
             <button onClick={toggleCopilot} aria-pressed={showCopilot} title="Ask about this project. It reads the live records and only advises." className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border px-2.5 py-1 font-medium ${showCopilot ? "border-[#2dd4ee] bg-[#2dd4ee] text-[#062a33]" : "border-[#2dd4ee]/50 text-[#2dd4ee] hover:bg-[#2dd4ee]/10"}`}><Icon name="sparkle" className="h-3.5 w-3.5" />AI Copilot</button>
+            <LanguageSwitch />
             <ProjectSwitch />
             <TeamButton />
-            {own === false && <span className="shrink-0 text-[11px] text-[#abb3bf] max-[1750px]:hidden">Synthetic data. No real project, company or person.</span>}
+            {own === false && <span className="drop-2 shrink-0 text-[11px] text-[#abb3bf]">Synthetic data. No real project, company or person.</span>}
           </header>
           {working && !["home", "review", "swarm", "site", "exchange"].includes(route.tab) && (
             <div className="flex shrink-0 items-center gap-2 border-b border-[#2dd4ee]/30 bg-[#2dd4ee]/[.08] px-3 py-1.5 text-[11.5px] text-[#bdf0f8]">

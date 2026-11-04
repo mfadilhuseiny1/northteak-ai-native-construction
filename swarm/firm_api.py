@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from . import accounts, config, firm, llm, memory, model3d, operator, package, package_firm, planner, planning_case, project
+from . import accounts, config, firm, llm, memory, model3d, operator, package, package_firm, planner, planning_case, project, translator
 from .mock_firm import MockFirmLlm
 from .mock_package import MockPackageLlm
 from .mock_plan import MockPlanLlm
@@ -27,9 +27,11 @@ STORE = config.ROOT / "data" / "firm"
 MOCK_DELAY = 0.5
 SAVE_EVERY = 20  # seconds between saves of a run still going
 MAX_USD = float(config.setting("SWARM_MAX_USD", "150"))  # the Meta API credit
-app = FastAPI(title="SiteSwarm")
+app = FastAPI(title="NorthTeak")
 app.add_middleware(accounts.Gate)
+app.middleware("http")(translator.in_language)
 app.include_router(project_router)
+app.include_router(translator.router)
 RUNS: dict[str, dict] = {}
 TASKS: dict[str, asyncio.Task] = {}
 PROJECTS: dict[str, dict] = {}
@@ -226,6 +228,8 @@ async def start(body: Start) -> dict:
         raise HTTPException(400, "versi must be mock or muse")
     if any(r["run"]["status"] == "running" for r in RUNS.values()):
         raise HTTPException(409, "one review is already running")
+    if project.busy == "translator":
+        raise HTTPException(409, "the translator is at work on this project: wait for it to finish")
     if body.jenis == "package":
         if not project.is_blank():
             raise HTTPException(409, "the scenario has its own package: use a work plan here. To plan from your own documents, start a project of your own")

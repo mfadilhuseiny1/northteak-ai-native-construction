@@ -709,7 +709,7 @@ Read the documents and messages, look for what the ruling missed, then call red_
             return {"rulings": self.rulings, "red_team": self.attacks, "pick_by_code": chosen, "drafts": self.drafts, "proposed_work_items": self.proposed}
 
         text = f"""{self.head(self.team['partner'])}
-Call read_rulings, then write the recovery plan for the project manager, in plain English, in three parts with these headings:
+Call read_rulings, then write the recovery plan for the project manager, in plain words, in three parts with these headings:
 ## What happened
 ## What I recommend, and why ({chosen or 'no option stands'})
 ## Actions by who and when

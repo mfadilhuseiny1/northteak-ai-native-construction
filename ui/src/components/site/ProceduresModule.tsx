@@ -116,7 +116,7 @@ export function ProceduresModule() {
       </Bar>
       <Problem err={err} />
       <div className="flex min-h-0 flex-1 overflow-hidden">
-        <div className="w-[290px] shrink-0 overflow-y-auto border-r border-black/30 bg-[#1c2733] py-1">
+        <div className="w-[290px] shrink-0 overflow-y-auto border-r border-black/30 bg-[#1c2733] py-1 max-md:w-[150px]">
           {duties.length > 0 && (
             <button onClick={() => setSel("before")} aria-current={first ? "true" : undefined} className={`flex w-full items-baseline gap-1.5 px-3 py-1 text-left hover:bg-white/5 ${first ? "bg-white/10 text-white" : "text-[#d3d8de]"}`}>
               <Icon name="doc" className="h-3 w-3 shrink-0 self-center text-[#8f99a8]" /><span className="min-w-0 flex-1">Contract and regulations</span><span className="text-[10.5px] tabular-nums text-[#8f99a8]">{duties.length}</span>

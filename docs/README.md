@@ -1,12 +1,12 @@
 # Real tender documents
 
-Public tender documents from two Indonesian university building projects, collected on 2026-11-03 to try SiteSwarm on real planning documents.
+Public tender documents from four Indonesian public building projects, collected on 2026-11-03 and 2026-11-04 to try NorthTeak on real planning documents. Only [the two added last](#two-more-packages-added-2026-11-04) have structural drawings and records from the contract being carried out.
 
-To try one, start a project of your own in the app and upload the whole folder under **Documents**. The app does not read these files until someone does that. **Plan it with Muse** then sends the pages the agents need to the Meta Model API. [tests/test_package.py](../tests/test_package.py) also reads them, on this machine with a scripted model. [PROVENANCE.md](../PROVENANCE.md) says what is real and what is not.
+To try one, start a project of your own in the app and upload the whole folder under **Documents**. The app does not read these files until someone does that. **Plan it with Muse** then sends the pages the agents need to the Meta Model API. [tests/test_package.py](../tests/test_package.py) also reads the Unair and UGM packages, on this machine with a scripted model. [PROVENANCE.md](../PROVENANCE.md) says what is real and what is not.
 
-Both universities published these on their public-information (PPID) portals. The files are unchanged and name real officials and companies. The award records also show company tax numbers (NPWP), and some files carry signatures, so review them before this repository is made public.
+The owners published these on their public-information (PPID) portals. The files are unchanged and name real officials and companies. The award records also show company tax numbers (NPWP), and some files carry signatures, so review them before this repository is made public.
 
-## The two packages
+## The first two packages
 
 | | Unair: Airlangga Edupreneur Center, Tahap 1 | UGM: Gedung Pascasarjana FTP |
 |---|---|---|
@@ -87,3 +87,81 @@ Looked for on 2026-11-03 and not found in public:
 - **UGM's detailed BoQ and unit-price analysis.**
 - **UGM's signed contract and execution records.** The [contract register](https://ppid.ugm.ac.id/daftar-dokumen-kontrak-pengadaan-barang-dan-jasa/) lists the contract (PT Tigamas Mitra Selaras, 7.02/VIII/PPP-KP/UGM/2024, 2024-08-07) at Rp 43,462,005,000, with no file link found. That is Rp 1.41 billion above the winning bid and above the budget ceiling, and the register does not say why.
 - **A student internship report on the AEC project** at [UPN Jatim](https://repository.upnjatim.ac.id/58753/). The site reset the connection, and search results describe its attachments as restricted to repository staff.
+
+## Two more packages, added 2026-11-04
+
+Neither has been through the app's analysis or sent to the Meta Model API.
+
+| | UNP: Gedung II Hospitality Training Center | KKP: Laboratorium Pengujian Mutu, Wilayah Timur |
+|---|---|---|
+| Folder | [unp-gedung-ii-hospitality-training-center-2024/](unp-gedung-ii-hospitality-training-center-2024/) | [kkp-laboratorium-mutu-makassar-2026/](kkp-laboratorium-mutu-makassar-2026/) |
+| Source | [Dokumen pengadaan](https://ppid.unp.ac.id/dokumen-pengadaan-barang-dan-jasa/), one page per document type | [Tahap pemilihan](https://ppid.kkp.go.id/laporan-dan-pbj/tahap/pemilihan/), package O, and [tahap pelaksanaan](https://ppid.kkp.go.id/laporan-dan-pbj/tahap/pelaksanaan/), package L |
+| Owner | Universitas Negeri Padang | Balai PPMHKP Makassar, Ministry of Marine Affairs and Fisheries |
+| Location | Kampus Air Tawar, Padang | Jl. Dakota 24, Sudiang, Makassar |
+| Building | 5 floors and a roof, with guest rooms | 3 floors, 1,000 m2 |
+| Budget ceiling (pagu) | Rp 48,000,000,000 | Rp 8,739,000,000 |
+| Owner's estimate (HPS) | Rp 47,968,783,000 | Rp 8,738,970,000 |
+| Contract | Rp 44,131,280,300, PT Bhinneka Citra Prima | Rp 6,991,176,000, CV Muthia Karya Mandiri |
+| Time for completion | 300 calendar days, 21 February to 17 December 2025 | 180 calendar days, to 25 December 2026 |
+| Size | 24 files, 93 MB | 16 files, 76 MB |
+| Strongest part | 479 drawing sheets, the 140-page RKS, and a BoQ that gives bar sizes | The signed 26-week S-curve, drawings with a text layer, and the volume back-up |
+
+### What each one gives the app
+
+| Kind | UNP | KKP |
+|---|---|---|
+| `scope` | `KAK-HTC.pdf`, 347 pages. Its first 187 pages repeat `DKH-Ged-II-HTC.pdf`, and the RKS starts on page 208 | `1.a.KAK...pdf`, 13 pages |
+| `drawing` | `Gambar-Rencana-...pdf`, 479 sheets of architecture, structure and MEP, image only. **Every sheet is numbered AR**, even the foundation, column, beam and slab plans (AR-1, AR-2, AR-10), so go by the sheet title | `1.c.GAMBAR...pdf`, 150 sheets of architecture, structure and MEP. 143 give some text and 128 more than a line or two, including column and beam sizes and the beam rebar schedule |
+| `spec` | The RKS in `KAK-HTC.pdf`: piling, concrete, slump of 12 to 14 cm. `Spesifikasi-...pdf` adds a 19-page materials list | Thin: the 13-page document has no slump or cover requirements. Concrete grade K-300 is on the drawings |
+| `boq` | `DKH-Ged-II-HTC.pdf`: 906 rows on pages 2 to 29. Beam rows give bar sizes, such as 20D22. **Prices are blank** | `7._Daftar-...pdf`, 111 pages: volume back-up with formulas and sketches up to page 27, the BoQ from page 28 with work codes, volumes and bar sizes, then rates. **Prices are blank** in the recap and the BoQ and analysis pages checked |
+| `programme` | None. `Jadwal-...pdf` is only a link, and it opens the bidding timetable | Page 72 of `Laporan_Pelaksanaan_Timur.pdf`: 26 weeks, weights per work group, plan against actual, signed by the PPK. A scan, so a person has to enter it. `jadwal_...pdf` gives only scope and duration |
+| `estimate` | `HPS-...pdf`, a one-page scan with totals by work group | `HPS_Wilayah_Timur.pdf` is a screenshot of the tender's winner page, with no breakdown |
+| `contract` | Draft, 69 pages. Signed contract, a 4-page scan, and a one-page summary | Draft, 61 pages. Signed contract, a 64-page scan with one page of text |
+| `rates` | Unit-price analysis on pages 31 to 187 of the DKH: coefficients, no prices | Unit-price analysis in the same file as the BoQ: coefficients, no prices |
+| `itp`, `method` | None. The contract asks the contractor to write them | None. The contract asks the contractor to write them |
+
+### Records from the work itself
+
+- **KKP, `Laporan_Pelaksanaan_Timur.pdf`:** the supervising consultant's first monthly report, 185 pages, for 29 June to 26 July 2026. At day 28 of 180, the plan was 3.188%, actual was 5.727%, and deviation was +2.539%. Page 60 sets the plan for weeks 5 to 8. Pages 75 to 89 list the work items with volume, weight and progress in clean text, easier to read than the BoQ file. It also holds attendance sheets with photos of people, daily weather, material tests and the minutes of a progress meeting. Only the first month is published.
+- **UNP, `Laporan-Pelaksanaan-Pek-HTC.pdf`:** a progress report for week 26, 11 to 17 August 2025, with weights by work group and 35.044% complete, about 177 of the 300 days in. `Surat-Tagihan-...pdf` is the payment claim that follows it.
+
+### Real questions already in these documents
+
+Nobody planted these. They have not been checked with the owners, so treat them as questions, not confirmed errors.
+
+| Package | Where | What |
+|---|---|---|
+| KKP | Column K1 | The drawings (PDF pages 55 and 56) say 450x500. The BoQ on page 31 and the volume back-up on page 2 say 450x450, and the back-up says 400x400 on pages 5 and 7 |
+| KKP | BoQ page 31 | Stray spreadsheet cells sit beside the table: `#REF!` and 577,500,000,000, which is far above the Rp 8.7 billion estimate |
+| KKP | Start date | The contract summary says 30 June 2026. The report gives the SPMK as 29 June 2026 |
+| UNP | Sheet AR-2.01, PDF page 48 | The same foundation sheet prints both "Mutu Beton K-250" and "Mutu Beton K300". The RKS only suggests a grade between K250 and K300 |
+| UNP | Foundation | Not an error, but it binds the plan: `KAK-HTC.pdf` requires the patented KJRB foundation (patent 43873) to be subcontracted to a licence holder. `Sertifikat-atau-Lisensi-Pondasi.pdf` is the patent |
+
+### How the app handles them on 2026-11-04
+
+- **KKP drawings:** read, with text from 143 of the 150 pages. The PDF reader stops on pages 110 to 113, so those four sheets come out empty, and three more have no text.
+- **UNP BoQ:** sorts as `boq`, and code reads its 906 rows from pages 2 to 29, with no prices.
+- **KKP BoQ:** code reads 0 rows, although the file holds a real BoQ from page 28. The layout reading that keeps a table's rows together returns nothing for any of its 111 pages, and the plain reading gives the descriptions apart from their volumes. Pages 75 to 89 of `Laporan_Pelaksanaan_Timur.pdf` are the readable source of the same work items.
+- **UNP drawings:** image only, so they are set aside as pictures.
+- **Files that go to the model and hold company or personal data:** `Ringkasan-Kontrak-...pdf` shows the contractor's tax number, and `Laporan_Pelaksanaan_Timur.pdf` holds names. Set them aside if that matters.
+
+### What is in the folders
+
+- **KKP:** every file its two portal pages link, except one. The page links the same file as both KAK and specification, so one copy is kept. Items the page marks as not required are not files.
+- **UNP:** every file its pages link for this package. The maintenance bond row links the advance payment bond again, so there is no maintenance bond here. `Persetujuan-Lingkungan-...pdf` is the environmental approval for the campus.
+- **Payment and bank files:** `Jaminan-*`, `04._Jaminan-*`, `SPM-dan-SP2D-*` and `Surat-Tagihan-*` are bank guarantees and payment records, and the claim shows a bank account number. They are scans, so the app does not send them, but review them before this repository is made public.
+- **Size:** `Gambar-Rencana-Gedung-II-HTC.pdf` is 53 MB. The app takes up to 64 MB per file, and GitHub warns above 50 MB.
+
+### Still missing from these two
+
+No soil investigation or structural calculations turned up in the text of either set. The scanned pages were sampled, not read in full. UNP has no construction schedule, and KKP has no monthly report after the first.
+
+### Looked at and passed over
+
+| Package | Why |
+|---|---|
+| [UNP Gedung Kuliah FT](https://ppid.unp.ac.id/gambar-rancangan-pekerjaan/) | A 530-page KAK and RKS, but its 50 drawing pages cover one building's architecture, out of three buildings. The schedule file is only a link |
+| [KKP Gedung Administrasi II](https://ppid.kkp.go.id/laporan-dan-pbj/tahap/pemilihan/) | Its 8 "drawing" pages are renderings |
+| [RS Moewardi Critical Center, Tahap II](https://ppid.rsmoewardi.com/wp-content/uploads/2024/08/Gambar-Pembangunan-Gedung-Critical-Center-dan-Pelayanan-Penunjang-Tahap-II.pdf) | The drawing file is 8 floor plans. No BoQ or schedule file was found |
+| [Unair](https://ppid.unair.ac.id/dokumen-barjas/) 2022 package | The drawing file is one page |
+| [Unsoed FIB 2025 and FT 2026](https://ppid.unsoed.ac.id/dokumen-pbj-tahap-pemilihan/), [Unsil FKIP](https://ppid.unsil.ac.id/tahap-pemilihan-pembangunan-gedung-fakultas-keguruan-dan-ilmu-pendidikan/) | Not checked. Unsoed refused the connection and Unsil returned 403 on 2026-11-04. Both list drawings and may be worth trying in a browser |

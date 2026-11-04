@@ -83,7 +83,7 @@ def _blockers(w: dict, ctx: dict) -> list[dict]:
     """Why this card cannot simply go on. stop: a rule says no. Otherwise it is a warning a person can weigh."""
     if w["status"] == "done":
         return []
-    out = [{**b, "stop": True} for b in P.stops_of(w)]
+    out = [{**b, "stop": True} for b in P.stops_of(w, ctx["rec"], ctx["steps"])]
     step = ctx["steps"].get(w.get("step")) if w.get("plan") == (ctx["rec"] or {}).get("id") else None
     for a in step["after"] if step else []:
         t = ctx["by_step"].get(a)
@@ -253,13 +253,13 @@ def board() -> dict:
     acts = ctx["acts"]
 
     def cpm_key(c: dict) -> tuple:
-        a = acts.get(c.get("activity") or {}) or {}
+        a = acts.get(c.get("activity") or "") or {}
         return (not c["critical"], c.get("start") or a.get("start") or "9999-99-99", a.get("float_days", 9999), c.get("wbs") or c["id"])
 
     queue = sorted((c for c in cards if c["status"] in ("open", "doing", "review")), key=cpm_key)
     for n, c in enumerate(queue, 1):
         c["cpm_rank"] = n
-        a = acts.get(c.get("activity") or {}) or {}
+        a = acts.get(c.get("activity") or "") or {}
         c["float_days"] = a.get("float_days")
     top = next((c for c in queue if c["critical"]), None)
     owners = sorted({c["owner"] for c in cards if c.get("owner")})

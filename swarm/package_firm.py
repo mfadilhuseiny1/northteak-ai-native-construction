@@ -8,6 +8,7 @@
     procedures  one planner per work package reads those pages and writes its tasks and procedures
     links       the planning engineer says what must finish before what: the critical path network. Code keeps the schedule's dates, works out the float, and draws the WBS and the network
     review      a reviewer on the other model looks for where the documents disagree
+    equipment   the illustrator says what each machine the documents list looks like, Muse Image draws it, and SAM 3.1 must find it in the drawing. Code reads the list itself, with its quantities
     questions   the RFI coordinator joins what every agent wants to ask into one ranked list a consultant can answer. Code checks that no draft is lost and no figure is added
     summary     the project director writes the executive summary from what the others found, using code's figures
     plan        code puts it together, and a person approves it
@@ -25,12 +26,12 @@ import re
 from pathlib import Path
 from typing import Any
 
-from . import firm as F, package as K, project, regulations as REG
+from . import equipment as EQ, firm as F, language as L, package as K, project, regulations as REG, translator as TR
 from .firm import RULES, SPARK, WONDER, emit, numbers_in, parse_json  # noqa: F401 - SPARK is still the orchestrator's
 from .planner import SIGNALS
 
-STAGES = [("sort", "Sorting the package"), ("read", "Reading the schedule and the prices"), ("rules", "Checking against Indonesian regulations"), ("wbs", "Writing the WBS"), ("pages", "Finding the pages for each work package"), ("procedures", "Writing the procedures"), ("links", "Building the critical path network"), ("review", "Checking the documents against each other"), ("questions", "Joining the questions for the consultant"), ("summary", "Writing the executive summary"), ("plan", "Putting the plan together"), ("model3d", "Building the 3D timeline")]
-BY = {"sort": "Code", "read": "Code", "rules": "Code", "wbs": "Planning engineer", "pages": "Document controller", "procedures": "Planners", "links": "Planning engineer", "review": "QA reviewer", "questions": "RFI coordinator", "summary": "Project director", "plan": "Code", "model3d": "Code"}  # who does each stage, as the screen shows it while it runs
+STAGES = [("sort", "Sorting the package"), ("read", "Reading the schedule and the prices"), ("rules", "Checking against Indonesian regulations"), ("wbs", "Writing the WBS"), ("pages", "Finding the pages for each work package"), ("procedures", "Writing the procedures"), ("links", "Building the critical path network"), ("review", "Checking the documents against each other"), ("equipment", "Drawing the equipment to rent"), ("questions", "Joining the questions for the consultant"), ("summary", "Writing the executive summary"), ("translate", "Translating the documents' names"), ("plan", "Putting the plan together"), ("model3d", "Building the 3D timeline")]
+BY = {"sort": "Code", "read": "Code", "rules": "Code", "wbs": "Planning engineer", "pages": "Document controller", "procedures": "Planners", "links": "Planning engineer", "review": "QA reviewer", "equipment": "Equipment illustrator", "questions": "RFI coordinator", "summary": "Project director", "translate": "Translator", "plan": "Code", "model3d": "Code"}  # who does each stage, as the screen shows it while it runs
 HOURS_A_DAY = 7  # the working day the norms use. Dates count calendar days, as the schedule does
 MOST_PAGES = 40
 MOST_TEXT = 60_000
@@ -41,7 +42,6 @@ TOLD = 8_000  # the most of a person's own words that every agent is told. All o
 MODEL = WONDER  # measured on 2026-11-03 against Spark on the same pages: Wonder plans the work in the order a site builds it, and quotes the specification's own rules for each inspection. About $0.25 a work package at high effort, against $0.04
 EFFORT = "high"
 TOKENS = 32_000  # thinking counts against it, and a work package's tasks are long
-LANGUAGE = "Write in the language of the documents: a foreman has to read this."
 PHYSICAL = "Go by what the work physically needs, not by this schedule's weeks. Where the schedule has work the other way round from what it needs, still give the physical order, and do not invent a reason that makes the schedule's order look right: code leaves the dates alone, sets that link aside and asks a person."
 KINDS = ("operation", "inspection", "handling")
 PREFIX = {"operation": "O", "inspection": "I", "handling": "H"}
@@ -57,6 +57,8 @@ def roster() -> tuple[list[dict], list[dict]]:
             {"key": "reviewer", "name": "QA reviewer", "peran": "looks for where the documents disagree", "lini": "qa", "jenjang": "manajer", "induk": "partner", "model": MODEL, "peran_kode": "qa"},
             {"key": "rfi", "name": "RFI coordinator", "peran": "turns everything the agents want to ask into one short ranked list a consultant can answer", "lini": "contract", "jenjang": "manajer", "induk": "partner", "model": MODEL, "peran_kode": "qa"},
             {"key": "director", "name": "Project director", "peran": "writes the executive summary of the project for the people who decide on it", "lini": "pimpinan", "jenjang": "manajer", "induk": "partner", "model": MODEL, "peran_kode": "qa"}]
+    team.append({"key": "illustrator", "name": "Equipment illustrator", "peran": "says what each machine the documents list looks like, so that Muse Image can draw it and SAM 3.1 can check the drawing", "lini": "site", "jenjang": "manajer", "induk": "partner", "model": SPARK, "peran_kode": "planner"})
+    team.append({"key": "translator", "name": "Translator", "peran": "puts the names the documents give the work into the language the screens are set to, while code goes on matching the documents' own words", "lini": "contract", "jenjang": "manajer", "induk": "partner", "model": SPARK, "peran_kode": "qa"})
     return team, []
 
 
@@ -265,7 +267,6 @@ Read the documents in the message, and write the project's work breakdown: its t
 - A work package is what one crew is given to do: on each floor, its columns, its beams and slabs, its stairs. Not each type of column or beam: those are the rows of a work package, not work packages of their own.
 - Name each work package in a few words, as a site would say it. Never list types, rows or materials in its name.""" if self.boq_lines else ""}
 If they give no weekly schedule, estimate the weeks from the order the work must happen in, and set "estimated" to true.{allowed} weight is your estimate of its share of the whole job's cost, in percent.
-{LANGUAGE}
 Answer with JSON only: {{"estimated": false, "accounts": [{{"name": "the group", "packages": [{{"name": "the work", "weight": 2.5, "start_week": 1, "finish_week": 4}}]}}]}}""", text, "accounts") or {}
         rows: list[dict] = []
         accounts = [x for x in raw.get("accounts") or [] if isinstance(x, dict) and _text(x.get("name"))]
@@ -314,7 +315,6 @@ Answer with JSON only: {{"estimated": false, "accounts": [{{"name": "the group",
 Write this project's work breakdown from the documents in the message: its control accounts, and under each the work packages a crew is given. The master schedule in the message is a contract document, as code read it, and its rows keep their numbers, weeks and weights whatever you write.
 - Put every row of the schedule into your breakdown by its number, once.
 - Add any work the documents require that no row of the schedule covers, quoting the words that require it, letter for letter. Ordinary parts of a row are not missing work, and neither is anything the documents do not ask for.
-{LANGUAGE}
 Answer with JSON only: {{"accounts": [{{"name": "the control account", "packages": [{{"row": "the row's number", "name": "the work"}}]}}], "not_in_schedule": [{{"work": "what is missing", "doc": "the document's id", "page": 12, "quote": "the exact words", "why": "short"}}]}}""", f"The master schedule:\n{listed}\n\n" + "\n\n".join(parts)[:MOST_TEXT], "accounts")
         if raw is None:
             if not self.stopped:
@@ -344,7 +344,7 @@ Answer with JSON only: {{"accounts": [{{"name": "the control account", "packages
                 continue
             kept += 1
             self.add_check(f"wbs_gap_{kept}", False, f"The planning engineer says the documents require {work}, and no row of the master schedule covers it: “{quote}” ({titles[at[0]]}, page {at[1]}). It is not in the plan until a person says where it belongs.")
-            self.code_questions.append({"subject": f"Tidak ada di master schedule: {work}"[:90], "question": f"Dokumen meminta {work} ({titles[at[0]]}, hlm. {at[1]}), tetapi tidak ada barisnya di master schedule. Pekerjaan ini masuk paket yang mana?", "to": "Konsultan Pengawas/PPK", "impact": _text(g.get("why"))})
+            self.code_questions.append({"subject": L.say(f"Not in the master schedule: {work}", f"Tidak ada di master schedule: {work}")[:90], "question": L.say(f"The documents require {work} ({titles[at[0]]}, page {at[1]}), but the master schedule has no row for it. Which work package does it belong to?", f"Dokumen meminta {work} ({titles[at[0]]}, hlm. {at[1]}), tetapi tidak ada barisnya di master schedule. Pekerjaan ini masuk paket yang mana?"), "to": L.say("Supervision consultant (Konsultan Pengawas) / PPK", "Konsultan Pengawas/PPK"), "impact": _text(g.get("why"))})
         if dropped:
             self.add_check("wbs_quotes", False, f"Code dropped {dropped} of the planning engineer's additions: the words it quoted are not in the documents.")
         self.stage("wbs", "done", note=f"{len(rows) - len(left)} of {len(rows)} rows placed, {kept} piece{'' if kept == 1 else 's'} of work the schedule does not have")
@@ -475,10 +475,17 @@ Answer with JSON only: {{"pages": {{"the work package's number": [{{"doc": "the 
                     found[piece["no"]] = pages
                 if not pieces:
                     packages.append(w)
-                    found[w["no"]] = self.valid_ranges(raw.get(w["no"]), by_id) or self.search(w, sources)
+                    found[w["no"]] = self.valid_ranges(raw.get(w["no"]), by_id) or self.search(w, sources) or self.boq_pages(w, self.boq_lines)
             a["packages"] = packages
         self.stage("pages", "done", note=f"{sum(1 for v in found.values() if v)} of {len(found)} have pages to read")
         return found
+
+    @staticmethod
+    def boq_pages(w: dict, lines: list[dict]) -> list[dict]:
+        """Last of all, the BoQ's own section for the work, where code read a heading in the work's words. A BoQ names a section once, so a word search misses it, and its rows say what and how much: more than nothing to plan from."""
+        words = [x for x in re.findall(r"[^\W\d_]{4,}", w["name"].lower()) if x not in ORDINARY]
+        rows = [x for x in lines if words and all(word in f"{x['section']} {x['group']}".lower() for word in words)]
+        return [{"doc": doc, "from": min(x["page"] for x in rows if x["doc"] == doc), "to": max(x["page"] for x in rows if x["doc"] == doc)} for doc in dict.fromkeys(x["doc"] for x in rows)]
 
     @staticmethod
     def search(w: dict, sources: list[dict]) -> list[dict]:
@@ -526,7 +533,6 @@ Read the pages in the message, each marked with its document and page. Break the
 - Use only figures the pages state. If a crew needs something the pages do not give, such as a size, a quantity or a bar spacing, do not guess: ask it in "questions". Ask only what would really stop this crew and no page settles, each gathering what belongs together, and at most 3. Many packages need one or none, so do not fill the list: a question nobody needs costs the consultant's patience for the ones that matter.
 - crew and share_pct are your estimates: who is needed, and how much of this package's time the task takes.
 - {REG.PLANNER}
-{LANGUAGE}
 Answer with JSON only:
 {{"scope": "what this package covers, in two sentences", "deliverable": "what exists when it is finished", "acceptance": "how it is accepted, from the pages", "responsible": "the one role on the contractor's team that answers for it, in a few words", "assumptions": ["what you had to assume"],
 "sections": [{{"name": "the section", "tasks": [{{"ref": "t1", "kind": "operation, inspection or handling", "name": "the task, starting with a verb", "after": ["refs of the tasks that must finish first"], "share_pct": 20, "crew": [{{"role": "the trade", "count": 4}}], "equipment": ["what it needs"], "materials": ["each material, with its specification from the pages"], "procedure": ["first step", "next step"], "safety": "what can hurt someone, and how to prevent it", "criteria": "for an inspection: what passes", "hold_point": false, "sources": [{{"doc": "the document's id", "page": 67, "quote": "the exact words"}}]}}]}}],
@@ -691,7 +697,7 @@ Answer with JSON only: {{{{"links": [{{{{"before": "a work package's number", "a
         if against:
             self.add_check("links", False, f"The planning engineer thinks these run in the wrong order in {self.rows_from}, which has {', '.join(f"{a['no']} before {b['no']}" for a, b in against[:6])}. Code keeps those dates, so those links are not in the critical path until a person settles the order.")
             if self.rows_from == "the master schedule":  # with no schedule these are the engineer's own estimates: nothing for the consultant to answer
-                self.code_questions.append({"subject": "Urutan pekerjaan di master schedule", "question": f"Master schedule menempatkan {', '.join(f"{a['no']} {a['name']} (M-{a['start_week']} s/d M-{a['finish_week']}) sebelum {b['no']} {b['name']} (M-{b['start_week']} s/d M-{b['finish_week']})" for a, b in against[:6])}, padahal secara fisik urutannya sebaliknya. Urutan mana yang berlaku, dan apakah jadwalnya perlu diubah?", "to": "Konsultan Pengawas/PPK", "impact": "Menentukan lintasan kritis dan tanggal mulai pekerjaan yang terkait."})
+                self.code_questions.append({"subject": L.say("Order of work in the master schedule", "Urutan pekerjaan di master schedule"), "question": L.say(f"The master schedule puts {', '.join(f"{a['no']} {a['name']} (weeks {a['start_week']} to {a['finish_week']}) before {b['no']} {b['name']} (weeks {b['start_week']} to {b['finish_week']})" for a, b in against[:6])}, though physically the order is the other way round. Which order holds, and does the schedule need to change?", f"Master schedule menempatkan {', '.join(f"{a['no']} {a['name']} (M-{a['start_week']} s/d M-{a['finish_week']}) sebelum {b['no']} {b['name']} (M-{b['start_week']} s/d M-{b['finish_week']})" for a, b in against[:6])}, padahal secara fisik urutannya sebaliknya. Urutan mana yang berlaku, dan apakah jadwalnya perlu diubah?"), "to": L.say("Supervision consultant (Konsultan Pengawas) / PPK", "Konsultan Pengawas/PPK"), "impact": L.say("It decides the critical path and when the linked work can start.", "Menentukan lintasan kritis dan tanggal mulai pekerjaan yang terkait.")})
         loose = loose_ends()
         if loose:
             self.add_check("links_open", False, f"{_many(len(loose), 'work package has', 'work packages have')} nothing linked after {'it' if len(loose) == 1 else 'them'}, so {'its' if len(loose) == 1 else 'their'} float says little: {', '.join(w['no'] for w in loose[:8])}{' and more' if len(loose) > 8 else ''}.")
@@ -716,7 +722,6 @@ Answer with JSON only: {{{{"links": [{{{{"before": "a work package's number", "a
         a = self.team["reviewer"]
         raw = await self.answer_of("reviewer", f"""{self.head(a)}
 Read the pages in the message, each marked with its document and page. Find where the documents disagree with each other, and what a contractor who has won this job must settle before work starts. Quote each side letter for letter. Do not report what is merely unusual, or what only mattered for winning the tender, such as bidders' certificates. Tags: {', '.join(SIGNALS)}.
-{LANGUAGE}
 Answer with JSON only: {{"findings": [{{"tag": "DOCUMENT_CONFLICT", "subject": "short", "note": "what disagrees, and why it matters on site", "sources": [{{"doc": "the document's id", "page": 67, "quote": "the exact words"}}]}}], "questions": [{{"subject": "short", "question": "what only someone outside can settle", "to": "who should answer", "why": "what it holds up"}}]}}""", "\n\n".join(parts), "findings")
         if raw is None and not self.stopped:
             self.add_check("review_read", False, "The reviewer's answer could not be read, so nothing was compared. That does not mean the documents agree.")
@@ -752,6 +757,40 @@ Answer with JSON only: {{"findings": [{{"tag": "DOCUMENT_CONFLICT", "subject": "
         """Everything the agents and code want to ask, each on the work it came from."""
         return [{**q, "activity": w["no"]} for w in work for q in (self.written.get(w["no"]) or {}).get("questions") or []] + [{**q, "activity": ""} for q in [*getattr(self, "review_questions", []), *self.code_questions]]
 
+    async def translate_names(self, s: dict) -> None:
+        """The names the documents give the work, in the language the screens are set to. Code goes on finding pages and BoQ lines by the documents' own words; the screens show the translation."""
+        self.stage("translate", "running")
+        lang = L.current()
+        names = list(dict.fromkeys([a["name"] for a in s["accounts"]] + [w["name"] for a in s["accounts"] for w in a["packages"]]))
+        todo = [n for n in names if TR.foreign(n, lang)]
+        if self.mock or not todo or self.stopped:
+            self.stage("translate", "done", note="offline, so nothing was translated" if self.mock and todo else "every name is already in the language chosen" if not todo else "not translated: the run was stopped")
+            return
+        try:
+            done = await TR.translate(todo, lang)
+        except (RuntimeError, ValueError, OSError) as e:
+            self.stage("translate", "done", note=f"not translated: {str(e)[:200]}")
+            return
+        self.usage.setdefault("translator", {"usd": 0.0, "calls": 0, "prompt": 0, "output": 0, "model": SPARK})["usd"] += done["usd"]
+        self.spent += done["usd"]
+        self.stage("translate", "done", note=f"{done['translated']} of {_many(len(todo), 'name', 'names')} put into {L.LANGUAGES[lang]}")
+
+    async def draw_equipment(self) -> None:
+        """A picture of each machine the documents list, for the project manager who has to rent it. Offline nothing is drawn. A drawing that fails leaves a blank on the list and costs the plan nothing, so it never stops the run."""
+        self.stage("equipment", "running")
+        todo = EQ.missing()
+        if self.mock or not todo or self.stopped:
+            self.stage("equipment", "done", note="offline, so nothing was drawn" if self.mock and todo else "every picture was already drawn" if not todo else "not drawn: the run was stopped")
+            return
+        try:
+            done = await EQ.draw(lambda machines: self.answer_of("illustrator", f"{self.head(self.team['illustrator'])}\n\n{EQ.LOOKS}", machines, "machines"))
+        except (RuntimeError, ValueError, OSError) as e:
+            self.stage("equipment", "done", note=f"not drawn: {str(e)[:200]}")
+            return
+        self.usage.setdefault("illustrator", {"usd": 0.0, "calls": 0, "prompt": 0, "output": 0, "model": SPARK})["usd"] += done["usd"]
+        self.spent += done["usd"]
+        self.stage("equipment", "done", note=f"{_many(len(done['drawn']), 'picture', 'pictures')} drawn and found by SAM" + (f", {len(done['failed'])} not: {', '.join(x['name'] for x in done['failed'])}" if done["failed"] else ""))
+
     async def join_questions(self, work: list[dict]) -> None:
         """One short ranked list. Planners cannot see each other, so one gap comes up in every package. The agent joins and ranks; code keeps every draft it leaves out, and flags a figure no draft gave."""
         drafts = self.all_asked(work)
@@ -776,7 +815,6 @@ The message numbers everything the agents on this contract want to ask. Each pla
 - "to" is the one role that answers it.
 - level says what a project manager does about it. "stop": phone about it this week, because work starting soon cannot go ahead without it, or the price or the contract turns on it. At most a quarter of the list is "stop": if everything is urgent, nothing is. "rework": work can start on a stated assumption, but a wrong one means redoing it or paying for it. "clarify": a sensible default exists, and the answer only confirms it.
 - "dropped" is only for a draft that is not for anyone outside to settle, because the contractor decides it himself or a draft shows it is already settled, with the reason. Not because it seems small, and not to shorten the list. Every other number goes in a question.
-{LANGUAGE}
 Answer with JSON only: {{"questions": [{{"subject": "short, and says what it is about", "ask": "one plain sentence", "needs": ["one thing the answer must state"], "why": "what waits on it", "to": "the one role that answers", "level": "stop, rework or clarify", "from": [1, 2, 3]}}], "dropped": [{{"from": 7, "why": "the reason"}}]}}""", f"What the package does not have, already known:\n{lacking}\n\nThe drafts:\n{listed}", "questions")
         if raw is None:
             if not self.stopped:
@@ -863,7 +901,6 @@ What code flagged:
 Write the executive summary of this project for the people who decide on it, from what the message gives you. Say what is being built, how long it runs and what it is worth, how the work is organised, and what most needs a decision before work starts. Be plain and specific, and do not pad it. Name real things from the message rather than speaking in general.
 - Use only the figures in the message, as they are written there. Do not work out new ones.
 - "watch" is at most 5 things, most serious first, that someone must settle or check. Each says what, and why it matters.
-{LANGUAGE}
 Answer with JSON only: {{"summary": "two short paragraphs, separated by a blank line", "watch": ["what to settle, and why it matters"]}}""", facts, "summary")
         if raw is None or not _text(raw.get("summary")):
             if not self.stopped:
@@ -911,7 +948,7 @@ Answer with JSON only: {{"summary": "two short paragraphs, separated by a blank 
                 self.add_check(f"failed_{w['no']}", False, f"{w['no']} {w['name']} has no procedures: " + ("no page of the documents describes it, so a planner had nothing to rest on. Ask the consultant for its specification." if w in self.pageless else "its planner's answer could not be read."))
         if self.pageless:
             names = ", ".join(w["name"] for w in self.pageless)
-            self.code_questions.append({"subject": "Pekerjaan tanpa spesifikasi di dokumen", "question": f"Dokumen menyebut {names}, tetapi tidak ada halaman yang menjelaskan cara, mutu atau jumlahnya. Mohon spesifikasi dan gambar untuk pekerjaan ini.", "to": "Konsultan Pengawas/PPK", "impact": "Tanpa ini prosedur, biaya dan pemeriksaannya tidak bisa disusun."})
+            self.code_questions.append({"subject": L.say("Work with no specification in the documents", "Pekerjaan tanpa spesifikasi di dokumen"), "question": L.say(f"The documents name {names}, but no page says how it is done, to what quality or how much. Please send the specification and drawings for this work.", f"Dokumen menyebut {names}, tetapi tidak ada halaman yang menjelaskan cara, mutu atau jumlahnya. Mohon spesifikasi dan gambar untuk pekerjaan ini."), "to": L.say("Supervision consultant (Konsultan Pengawas) / PPK", "Konsultan Pengawas/PPK"), "impact": L.say("Without it, its procedures, cost and inspections cannot be written.", "Tanpa ini prosedur, biaya dan pemeriksaannya tidak bisa disusun.")})
         kept, dropped = self.quotes["kept"], self.quotes["dropped"]
         if kept or dropped:
             self.add_check("quotes", not dropped, f"Code checked {kept + dropped} quotations against their pages, and every one is there." if not dropped else f"Code checked {kept + dropped} quotations against their pages and dropped {dropped}: those words are not in the documents.")
@@ -975,7 +1012,9 @@ Answer with JSON only: {{"summary": "two short paragraphs, separated by a blank 
         self.stage("procedures", "done", done=len(self.written), of=total, note=f"{len(self.written)} of {total} written")
         links = await self.link(work)
         await self.review()
+        await self.draw_equipment()
         await self.join_questions(work)
         await self.write_summary(s, work, links)
+        await self.translate_names(s)
         self.finish(s, work, links)
         emit({"type": "done"})

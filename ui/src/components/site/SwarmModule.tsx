@@ -26,10 +26,10 @@ const LOOK: Record<State, { fill: string; stroke: string; word: string; tone: To
 };
 const STAGE_STATE: Record<string, State> = { running: "working", done: "done", failed: "failed" };
 const AGENT_STATE: Record<string, State> = { antre: "queued", bekerja: "working", selesai: "done", gagal: "failed" };
-const ICON: Record<string, IconName> = { sort: "filter", read: "table", rules: "logic", wbs: "pipeline", pages: "search", links: "graph", review: "eye", questions: "comment", summary: "report", plan: "layers", model3d: "cube" };
-const TASK: Record<string, string> = { sort: "Sorts the package", read: "Reads schedule and prices", rules: "Applies the regulations", wbs: "Writes the WBS", pages: "Finds the pages", links: "Links the work", review: "Cross-checks the documents", questions: "Joins the questions", summary: "Writes the summary", plan: "Puts the plan together", model3d: "Builds the 3D timeline" };
-const AGENT: Record<string, string> = { wbs: "engineer", pages: "controller", links: "engineer", review: "reviewer", questions: "rfi", summary: "director" };
-const WORD: Record<string, string> = { sort: "Sort", read: "Read", rules: "Rules", wbs: "WBS", pages: "Pages", procedures: "Planners", links: "Links", review: "Review", questions: "Questions", summary: "Summary", plan: "Plan", model3d: "3D" };
+const ICON: Record<string, IconName> = { sort: "filter", read: "table", rules: "logic", wbs: "pipeline", pages: "search", links: "graph", review: "eye", equipment: "image", questions: "comment", summary: "report", plan: "layers", model3d: "cube" };
+const TASK: Record<string, string> = { sort: "Sorts the package", read: "Reads schedule and prices", rules: "Applies the regulations", wbs: "Writes the WBS", pages: "Finds the pages", links: "Links the work", review: "Cross-checks the documents", equipment: "Draws the equipment", questions: "Joins the questions", summary: "Writes the summary", plan: "Puts the plan together", model3d: "Builds the 3D timeline" };
+const AGENT: Record<string, string> = { wbs: "engineer", pages: "controller", links: "engineer", review: "reviewer", equipment: "illustrator", questions: "rfi", summary: "director" };
+const WORD: Record<string, string> = { sort: "Sort", read: "Read", rules: "Rules", wbs: "WBS", pages: "Pages", procedures: "Planners", links: "Links", review: "Review", equipment: "Equipment", questions: "Questions", summary: "Summary", plan: "Plan", model3d: "3D" };
 const SPEEDS = [10, 30, 60];
 const LIT = 1.4;  // real seconds a planner stays lit after it finishes, whatever the replay's speed
 
@@ -229,17 +229,18 @@ function Track({ stats, end, at, onSeek }: { stats: ReturnType<typeof measure>; 
   const x = (t: number) => (t / span) * W, y = (n: number) => H - (n / Math.max(1, stats.peak)) * (H - 4);
   let d = `M0 ${H}`, last = 0;
   for (const [t, n] of stats.series) { d += ` L${x(t)} ${y(last)} L${x(t)} ${y(n)}`; last = n; }
-  d += ` L${x(Math.min(end, stats.end))} ${y(last)} L${x(Math.min(end, stats.end))} ${H} Z`;
+  d += ` L${x(end)} ${y(last)} L${x(end)} ${H} Z`;
   const pct = (t: number) => `${Math.min(100, (t / span) * 100)}%`;
+  const till = (s: Rec) => (s.closed ? s.end : end);  // a stage still going reaches the present, however long since it last said anything
   const working = (t: number) => { let n = 0; for (const [a, b] of stats.series) { if (a > t) break; n = b; } return n; };
-  const stageAt = (t: number) => (stats.spans as Rec[]).filter((s) => s.start <= t && t <= s.end).pop();
+  const stageAt = (t: number) => (stats.spans as Rec[]).filter((s) => s.start <= t && t <= till(s)).pop();
   return (
     <div ref={box} data-tour="swarm-track" className="relative h-[66px] select-none" onMouseMove={(e) => { const r = box.current?.getBoundingClientRect(); if (r) setPeek(((e.clientX - r.left) / r.width) * span); }} onMouseLeave={() => setPeek(null)}>
       <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="absolute inset-x-0 top-0 h-[44px] w-full" aria-hidden="true">
         <path d={d} fill={BLUE} fillOpacity={0.3} stroke={BLUE} strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
       </svg>
       <div className="absolute inset-x-0 top-[47px] h-[18px] overflow-hidden rounded-sm bg-white/[.05]">
-        {(stats.spans as Rec[]).map((s) => <span key={s.key} title={s.label} className="absolute inset-y-0 overflow-hidden whitespace-nowrap rounded-sm px-1 text-[10px] font-medium leading-[18px] text-white" style={{ left: pct(s.start), width: `max(3px, calc(${pct(s.end - s.start)} - 1px))`, background: s.by === "Code" ? "#5f6b79" : s.key === "procedures" ? "#2f6fbd" : "#6f62d6" }}>{WORD[s.key] ?? s.label}</span>)}
+        {(stats.spans as Rec[]).map((s) => <span key={s.key} title={s.label} className="absolute inset-y-0 overflow-hidden whitespace-nowrap rounded-sm px-1 text-[10px] font-medium leading-[18px] text-white" style={{ left: pct(s.start), width: `max(3px, calc(${pct(till(s) - s.start)} - 1px))`, background: s.by === "Code" ? "#5f6b79" : s.key === "procedures" ? "#2f6fbd" : "#6f62d6" }}>{WORD[s.key] ?? s.label}</span>)}
       </div>
       <span className="pointer-events-none absolute inset-y-0 w-[2px] bg-[#f5b82e]" style={{ left: pct(at) }}><span className="absolute -left-[4px] -top-[1px] h-[10px] w-[10px] rounded-full bg-[#f5b82e]" /></span>
       {peek != null && <span className="pointer-events-none absolute -top-[26px] z-10 -translate-x-1/2 whitespace-nowrap rounded bg-black/90 px-2 py-0.5 text-[11px] tabular-nums text-white" style={{ left: `clamp(90px, ${pct(peek)}, calc(100% - 90px))` }}>{clock(peek)} · {working(peek)} at work{stageAt(peek)?.label ? ` · ${stageAt(peek)?.label}` : ""}</span>}

@@ -13,6 +13,8 @@ Each quotation is the official text, with only the spacing that PDF extraction b
 from __future__ import annotations
 
 import re
+
+from . import language as L
 from typing import Any
 
 CHECKED = "2026-11-03"
@@ -125,6 +127,7 @@ def revoked(cites: dict[str, list[tuple[str, int]]]) -> list[dict]:
 # ------------------------------------------------------------------------------------------------ the safety risk level: Permen PUPR 10/2021 Pasal 34
 
 LEVELS = ("kecil", "sedang", "besar")
+SIZE = {"kecil": "small", "sedang": "medium", "besar": "large"}  # the regulation's words for each level, in English
 LIFTING = re.compile(r"tower crane(?:\s*/\s*mobile? crane)?|mobile? crane|crawler crane|truck crane|pesawat angkat|passenger hoist|\bcrane\b", re.I)  # "Tower Crane/Mobil Crane" allows either, and is quoted whole. Blasting, ayat (5) huruf e, is left to a person: its words also mean sandblasting, or a hazard in a list
 STATED = re.compile(r"risiko\s+keselamatan\s+konstruksi\s+(?:[\w/]+\s+){0,3}?(kecil|sedang|besar)\b", re.I)
 STAFF = {"kecil": ("Pasal 38 ayat (1)", "Dalam hal Pekerjaan Konstruksi memiliki Risiko Keselamatan Konstruksi kecil sebagaimana dimaksud dalam Pasal 34 ayat (3), perbandingan jumlah personil Keselamatan Konstruksi dengan jumlah tenaga kerja konstruksi berupa 1:60 (satu banding enam puluh) dengan paling sedikit 1 (satu) Petugas Keselamatan Konstruksi dalam tiap Pekerjaan Konstruksi.", 60),
@@ -194,9 +197,12 @@ def safety_risk(value: float | None, from_owner: bool, docs: list[dict]) -> dict
     agrees = bool(stated) and stated["level"] == level
     if stated:
         text += f" The documents say: “{stated['quote']}” ({stated['title']}, page {stated['page']})."
-    question = None if agrees else {"subject": "Tingkat Risiko Keselamatan Konstruksi", "to": "Pengguna Jasa",
-                                    "question": f"Tingkat Risiko Keselamatan Konstruksi mana yang ditetapkan Pengguna Jasa untuk pekerjaan ini: kecil, sedang, atau besar? Menurut kriteria Permen PUPR 10/2021 Pasal 34, pekerjaan ini termasuk risiko {level}: {'; '.join(alasan)}.",
-                                    "impact": "Tingkat risiko menentukan personel keselamatan konstruksi (Pasal 38) dan unit keselamatan konstruksi (Pasal 36), yang dituangkan dalam RKK dan disahkan pada rapat persiapan pelaksanaan kontrak (Pasal 21 ayat (5))."}
+    question = None if agrees else {
+        "subject": L.say("Construction safety risk level (Tingkat Risiko Keselamatan Konstruksi)", "Tingkat Risiko Keselamatan Konstruksi"), "to": L.say("The owner (Pengguna Jasa)", "Pengguna Jasa"),
+        "question": L.say(f"Which construction safety risk level does the owner set for this job: small (kecil), medium (sedang) or large (besar)? By the criteria of Permen PUPR 10/2021 Pasal 34 it is {SIZE[level]} ({level}), because {'; and '.join(why)}.",
+                          f"Tingkat Risiko Keselamatan Konstruksi mana yang ditetapkan Pengguna Jasa untuk pekerjaan ini: kecil, sedang, atau besar? Menurut kriteria Permen PUPR 10/2021 Pasal 34, pekerjaan ini termasuk risiko {level}: {'; '.join(alasan)}."),
+        "impact": L.say("The level sets the construction safety staff (Pasal 38) and the safety unit (Pasal 36), which go into the RKK, approved at the pre-construction meeting (Pasal 21 ayat (5)).",
+                        "Tingkat risiko menentukan personel keselamatan konstruksi (Pasal 38) dan unit keselamatan konstruksi (Pasal 36), yang dituangkan dalam RKK dan disahkan pada rapat persiapan pelaksanaan kontrak (Pasal 21 ayat (5)).")}
     return {"level": level, "by_value": by_value, "value": value, "lifting": lifting, "stated": stated, "agrees": agrees, "text": text, "question": question, "ratio": ratio,
             "rule": _rule(P10, article, quote), "owner_sets": _rule(P10, "Pasal 34 ayat (2)", OWNER_SETS)}
 

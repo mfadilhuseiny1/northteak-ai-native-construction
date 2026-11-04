@@ -48,15 +48,17 @@ function layout(root: WbsNode, hide: Set<string>, avail = Infinity): LaidOut {
     bandW += (band.length > 1 ? COL : 0) + c.w;
   }
   if (band.length) bands.push(band);
-  const width = Math.max(...bands.map((b) => b.reduce((n, c) => n + c.w, 0) + COL * (b.length - 1)));
+  const edge = bands.length > 1 ? RAIL / 2 : null;  // from band to band the trunk runs down the left edge: through the middle it would cross every box
+  const width = (edge === null ? 0 : RAIL) + Math.max(...bands.map((b) => b.reduce((n, c) => n + c.w, 0) + COL * (b.length - 1)));
   const top: Placed = { node: root, x: (width - W) / 2, y: 0, h: tall(root), row: false, kids: [] };
   const spine = top.x + W / 2;
   const boxes: Placed[] = [top], lines: Placed[] = [], extra: string[] = [];
   let y = tall(root) + BUS, lastBus = y - BUS / 2, height = y;
+  const firstBus = lastBus;
   for (const b of bands) {
     const bus = y - BUS / 2;
     lastBus = bus;
-    let x = 0, bottom = y;
+    let x = edge === null ? 0 : RAIL, bottom = y;
     const centers: number[] = [];
     for (const c of b) {
       const k = hang(c.node, x, y, hide);
@@ -66,12 +68,14 @@ function layout(root: WbsNode, hide: Set<string>, avail = Infinity): LaidOut {
       bottom = Math.max(bottom, k.bottom);
       x += c.w + COL;
     }
-    extra.push(`M${Math.min(spine, ...centers)} ${bus}H${Math.max(spine, ...centers)}`);
+    const ends = [...centers, ...(bus === firstBus ? [spine] : []), ...(edge === null ? [] : [edge])];
+    extra.push(`M${Math.min(...ends)} ${bus}H${Math.max(...ends)}`);
     for (const cx of centers) extra.push(`M${cx} ${bus}V${y}`);
     height = bottom;
     y = bottom + BUS;
   }
-  extra.push(`M${spine} ${tall(root)}V${lastBus}`);
+  extra.push(`M${spine} ${tall(root)}V${firstBus}`);
+  if (edge !== null) extra.push(`M${edge} ${firstBus}V${lastBus}`);
   return { top, width, height, boxes, lines, extra };
 }
 

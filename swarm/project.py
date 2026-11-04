@@ -422,6 +422,12 @@ def create_project(name: str, owner: str = "", contractor: str = "", location: s
         raise ValueError("a project needs a name")
     if busy:
         raise ValueError("the agents are working on the open project: wait for them, or stop them, before starting a new one")
+    try:  # a date that does not parse would be saved, and every view of the schedule would then fail on it
+        start, finish = (date.fromisoformat(d.strip()).isoformat() if d.strip() else "" for d in (start, finish))
+    except ValueError:
+        raise ValueError("the start and finish must be dates, such as 2026-11-05") from None
+    if start and finish and finish < start:
+        raise ValueError("the finish comes before the start")
     pid = "pj-" + hashlib.sha1(f"{name}{time.time()}".encode()).hexdigest()[:8]
     start = start or date.today().isoformat()
     info = {"name": name.strip(), "owner": owner, "contractor": contractor or "Main contractor", "location": location, "start": start, "finish": finish, "region": location, "currency": "IDR", "notice": ""}
@@ -574,6 +580,9 @@ def _would_loop(aid: str, predecessors: list[str], links: dict[str, list[str]]) 
     return False
 
 
+MOST_DAYS = 3650  # ten years: a longer duration, lag or wait is a slip of the keyboard, and was saved, and every view of the schedule then failed on a date past the year 9999
+
+
 def update_activity(aid: str, progress: int | None, duration: int | None, predecessors: list[str] | None = None, by: str | None = None, who: str = PM, earliest: str | None = None, lags: dict[str, int] | None = None) -> dict:
     """A person's change to one activity. earliest is the day it may start at the soonest, or "" for as soon as what it waits for allows. lags are the days between it and what it waits for: below zero, it starts that many days before the other finishes."""
     known = {a[0]: a for a in activity_rows()}
@@ -588,6 +597,8 @@ def update_activity(aid: str, progress: int | None, duration: int | None, predec
         set_meta("progress", values)
         details.append(f"progress {values[aid]}%")
     state = schedule_state()
+    if duration is not None and int(duration) > MOST_DAYS or lags is not None and any(abs(int(n)) > MOST_DAYS for n in lags.values()):
+        raise ValueError(f"a duration or a lag is at most {MOST_DAYS} days")
     if duration is not None:
         state["compress"][aid] = known[aid][2] - max(1, int(duration))
         if not state["compress"][aid]:
@@ -616,6 +627,8 @@ def update_activity(aid: str, progress: int | None, duration: int | None, predec
             raise ValueError("an earliest start is a date like 2027-03-01") from e
         if day is not None and day < 0:
             raise ValueError(f"it cannot start before the project does, on {project_start()}")
+        if day is not None and day > MOST_DAYS:
+            raise ValueError(f"it cannot start more than {MOST_DAYS} days after the project does")
         state.setdefault("not_before", {})[aid] = day
         details.append(f"earliest start {earliest}" if earliest else "no earliest start")
     if lags is not None:
@@ -647,6 +660,8 @@ def add_activity(name: str, package: str, duration: int, predecessors: list[str]
         raise ValueError(f"no such activity: {', '.join(bad)}")
     if not name.strip():
         raise ValueError("an activity needs a name")
+    if int(duration) > MOST_DAYS:
+        raise ValueError(f"a duration is at most {MOST_DAYS} days")
     rid = next_id("activity")
     put("activity", rid, {"id": rid, "name": name.strip(), "duration": max(1, int(duration)), "predecessors": list(predecessors or []), "by": by or "self"}, who, "added an activity", name)
     patch("package", package, {"activities": [*p["activities"], rid]}, who, "added an activity to a work package", rid)
@@ -1493,12 +1508,14 @@ def add_work_item(title: str, owner: str, due: str, activity: str = "", who: str
     return put("work_item", rid, {**extra, "id": rid, "title": title, "owner": owner, "due": due, "why": extra.get("why", ""), "activity": activity, "status": "open", "decision": "", "run": "", "created": TODAY, "done_on": "", "proposed_by": extra.get("proposed_by", who), "progress": 0}, who, "opened a work item", title)
 
 
-def stops_of(w: dict) -> list[dict]:
-    """What a rule says must clear before this task can go on: a hold point not signed, or an inspection that failed, anywhere upstream of it."""
-    rec = get("plan", w.get("plan") or "")
+def stops_of(w: dict, rec: dict | None = None, steps: dict[str, dict] | None = None) -> list[dict]:
+    """What a rule says must clear before this task can go on: a hold point not signed, or an inspection that failed, anywhere upstream of it.
+    A caller going through a whole board passes the task's plan and its steps, read once: a package's plan runs to megabytes."""
+    if rec is None or rec.get("id") != w.get("plan"):
+        rec, steps = get("plan", w.get("plan") or ""), None
     if not rec:
         return []
-    steps = {s["id"]: s for s in rec["plan"]["steps"]}
+    steps = steps if steps is not None else {s["id"]: s for s in rec["plan"]["steps"]}
     seen: set[str] = set()
     stack = list(steps.get(w.get("step"), {}).get("after") or [])
     while stack:

@@ -12,3 +12,4 @@ pytest
 httpx
 pypdf
 python-multipart
+paho-mqtt>=2,<3

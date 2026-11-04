@@ -12,8 +12,13 @@ import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js
 export type El = { id: string; code: string; name: string; account: string; kind: string; level: number | null; start: number; end: number; start_date: string; finish_date: string; critical: boolean };
 export type Floor = { index: number; name: string; elevation: number; height: number; planned: boolean };
 export type Model = { plan?: { title?: string } | null; pile?: string; start: string; days: number; width: number; depth: number; bay: number; basement_depth: number; storeys: Floor[]; top: number; roof: string; roof_covered?: boolean; crane: string; lift?: boolean; elements: El[]; read: Record<string, any>[]; assumed: string[]; absent?: string[] };
-export type Marker = { id: string; x: number; y: number; z: number; color: string; glyph: string; alert?: boolean; dim?: boolean };
-export type Scene = { update: (day: number, ghost: boolean) => Record<string, string>; focus: (ids: string[]) => void; overview: () => void; dispose: () => void; setFirstPerson: (on: boolean) => void; markers: (list: Marker[]) => void; look: (at: { x: number; y: number; z: number }) => void };
+export type Marker = { id: string; x: number; y: number; z: number; color: string; path?: string; alert?: boolean };  // path: an icon on a 24-unit grid, where there is room to tell one device from another
+type Point = { x: number; y: number; z: number };
+export type Tag = Point & { id: string; text: string; color: string; alert?: boolean; live?: boolean; quiet?: boolean };  // a device's reading, to stand beside it
+export type Clear = Point & { w: number; h: number };  // a box standing on a point, for readings to keep out of
+type Box = { x: number; y: number; w: number; h: number };
+export type Twin = { xray: (on: boolean) => void; open: (floor: { y: number; roof?: boolean } | null, at?: Point) => void; pin: (at: Point) => { el: HTMLDivElement; remove: () => void }; inset: (px: number) => void; shade: (floors: number[]) => void; tags: (list: Tag[], dot: number, clear: Clear[]) => void };
+export type Scene = { update: (day: number, ghost: boolean) => Record<string, string>; focus: (ids: string[]) => void; overview: () => void; dispose: () => void; setFirstPerson: (on: boolean) => void; markers: (list: Marker[]) => void; look: (at: Point) => void; twin: () => Twin };
 
 export const LOOK = { formwork: "#c9a46b", rebar: "#9a5531", fresh: "#878d93", concrete: "#d4d6d8", brick: "#b0603a", plaster: "#efe8da" };
 export const PIN = "#f59e0b";
@@ -348,15 +353,15 @@ export function buildScene(model: Model, holder: HTMLDivElement, onPick: (ids: s
   };
   const land = new THREE.Shape(rect(siteW * 8, siteD * 8));
   land.holes.push(hole(siteW, siteD));
-  flat(land, mat("#7d9a5c", { map: grain }), -0.02);
+  const surround: THREE.Mesh[] = [flat(land, mat("#7d9a5c", { map: grain }), -0.02)], greenery: THREE.Object3D[] = [];
   const siteShape = new THREE.Shape(rect(siteW, siteD));
   if (pit) siteShape.holes.push(hole(edgeX * 2, edgeZ * 2));
   const siteMat = mat("#7d9a5c", { map: grain });
-  flat(siteShape, siteMat, 0);
+  surround.push(flat(siteShape, siteMat, 0));
   // the street the site opens on to
-  add(block(siteW * 8, 0.03, 9, 3), mat("#55585b", { map: grain }), [], 0, -0.01, siteD / 2 + 7, false);
-  add(block(siteW * 8, 0.14, 2, 1), mat("#b9b8b2", { map: tex.paving }), [], 0, 0, siteD / 2 + 1.6, false);
-  add(keep(fuse(Array.from({ length: 40 }, (_, i) => raw(2.2, 0.01, 0.16).translate(-siteW * 1.5 + i * (siteW * 3 / 40), 0.03, 0)))), mat("#d9d9d4"), [], 0, 0, siteD / 2 + 7, false);
+  surround.push(add(block(siteW * 8, 0.03, 9, 3), mat("#55585b", { map: grain }), [], 0, -0.01, siteD / 2 + 7, false));
+  surround.push(add(block(siteW * 8, 0.14, 2, 1), mat("#b9b8b2", { map: tex.paving }), [], 0, 0, siteD / 2 + 1.6, false));
+  surround.push(add(keep(fuse(Array.from({ length: 40 }, (_, i) => raw(2.2, 0.01, 0.16).translate(-siteW * 1.5 + i * (siteW * 3 / 40), 0.03, 0)))), mat("#d9d9d4"), [], 0, 0, siteD / 2 + 7, false));
   const working = els.filter((e) => e.kind !== "other"), firstWork = working.length ? Math.min(...working.map((e) => e.start)) : 0;
   const external = of("external");
   const grass = new THREE.Color("#7d9a5c"), soil = new THREE.Color("#7f6549"), planted = new THREE.Color("#6f9a50");
@@ -1171,6 +1176,7 @@ export function buildScene(model: Model, holder: HTMLDivElement, onPick: (ids: s
       piece(g, crown, greens[i % 3], 0, 3, 0);
       piece(g, crownB, greens[(i + 1) % 3], 0.7, 2.3, 0.4);
       g.scale.setScalar(s);
+      greenery.push(g);
       return g;
     });
     parts.push((day) => {
@@ -1382,8 +1388,22 @@ export function buildScene(model: Model, holder: HTMLDivElement, onPick: (ids: s
   // ---------------------------------------------------------------------------------------------- clicking a part tells which work package builds it; dragging turns the view
   const ray = new THREE.Raycaster(), pointer = new THREE.Vector2();
   let pressed: [number, number] | null = null;
+  let overDevice = "", placed: (Box & { id: string })[] = [], placeTags: (() => void) | null = null;
+  const deviceAt = (ev: PointerEvent) => {  // the device under the pointer, by the reading beside it, which is on top, or by its dot
+    const box = renderer.domElement.getBoundingClientRect(), px = ev.clientX - box.left, py = ev.clientY - box.top;
+    pointer.set((px / box.width) * 2 - 1, -(py / box.height) * 2 + 1);
+    ray.setFromCamera(pointer, camera);
+    const reading = placed.find((b) => px >= b.x && px <= b.x + b.w && py >= b.y && py <= b.y + b.h);
+    if (reading) return reading.id;
+    return markerSprites.length ? (ray.intersectObjects(markerSprites, false)[0]?.object.userData.marker as string | undefined) ?? "" : "";
+  };
   const down = (ev: PointerEvent) => { pressed = [ev.clientX, ev.clientY]; if (fp.on) fp.drag = [ev.clientX, ev.clientY]; };
   const look = (ev: PointerEvent) => {
+    if (markerSprites.length && !ev.buttons && !fp.on) {
+      const over = deviceAt(ev);
+      renderer.domElement.style.cursor = over ? "pointer" : "";
+      if (over !== overDevice) { overDevice = over; kick(); }  // a reading that had no room comes up while the pointer is on its device
+    }
     if (!fp.on || !fp.drag) return;
     fp.yaw -= (ev.clientX - fp.drag[0]) * 0.0035;
     fp.pitch = Math.max(-1.35, Math.min(1.35, fp.pitch - (ev.clientY - fp.drag[1]) * 0.0035));
@@ -1392,11 +1412,8 @@ export function buildScene(model: Model, holder: HTMLDivElement, onPick: (ids: s
   const up = (ev: PointerEvent) => {
     fp.drag = null;
     if (!pressed || Math.hypot(ev.clientX - pressed[0], ev.clientY - pressed[1]) > 5) return;
-    const box = renderer.domElement.getBoundingClientRect();
-    pointer.set(((ev.clientX - box.left) / box.width) * 2 - 1, -((ev.clientY - box.top) / box.height) * 2 + 1);
-    ray.setFromCamera(pointer, camera);
-    const device = markerSprites.length ? ray.intersectObjects(markerSprites, false)[0] : undefined;
-    if (device) { onPick([`marker:${device.object.userData.marker}`]); return; }
+    const device = deviceAt(ev);
+    if (device) { onPick([`marker:${device}`]); return; }
     const hit = ray.intersectObjects(pickable.filter((m) => m.visible), false).find((h) => !((h.object as THREE.Mesh).material as THREE.Material).clippingPlanes?.some((p) => p.distanceToPoint(h.point) < -0.01));  // what is clipped away is not there yet
     onPick(hit ? (hit.object.userData.ids as string[]) : null);
   };
@@ -1405,7 +1422,7 @@ export function buildScene(model: Model, holder: HTMLDivElement, onPick: (ids: s
   renderer.domElement.addEventListener("pointerup", up);
 
   // the drawing happens only when something moves: the view, the crane swinging to its next job, or the camera going to a part
-  const render = () => { renderer.render(scene, camera); labels.render(scene, camera); };
+  const render = () => { renderer.render(scene, camera); labels.render(scene, camera); placeTags?.(); };
   let goal: { target: THREE.Vector3; position: THREE.Vector3 } | null = null, frameId = 0;
   const tick = (now = 0) => {
     const dt = fp.last ? Math.min(0.05, (now - fp.last) / 1000) : 0.016;
@@ -1448,23 +1465,28 @@ export function buildScene(model: Model, holder: HTMLDivElement, onPick: (ids: s
   };
   const kick = () => { if (!frameId) frameId = requestAnimationFrame(tick); };
 
-  // ---------------------------------------------------------------------------------------------- markers: devices over the building, drawn on top of it so none hides behind a wall, each one clickable
+  // ---------------------------------------------------------------------------------------------- markers: devices over the building, the same size on screen at any distance, drawn on top so none hides behind a wall, each one clickable
   const markerGroup = new THREE.Group();
   scene.add(markerGroup);
   const icons = new Map<string, THREE.CanvasTexture>();
   let markerSprites: THREE.Sprite[] = [];
   const iconOf = (m: Marker) => {
-    const key = `${m.color}|${m.glyph}|${m.alert ? 1 : 0}|${m.dim ? 1 : 0}`;
+    const key = `${m.color}|${m.path ?? ""}|${m.alert ? 1 : 0}`;
     const known = icons.get(key);
     if (known) return known;
     const c = document.createElement("canvas");
-    c.width = c.height = 64;
-    const g = c.getContext("2d")!;
-    g.globalAlpha = m.dim ? 0.35 : 1;
-    if (m.alert) { g.fillStyle = "rgba(229,72,77,.35)"; g.beginPath(); g.arc(32, 32, 31, 0, Math.PI * 2); g.fill(); }
-    g.fillStyle = "#0d131a"; g.beginPath(); g.arc(32, 32, 22, 0, Math.PI * 2); g.fill();
-    g.lineWidth = 5; g.strokeStyle = m.alert ? "#e5484d" : m.color; g.stroke();
-    g.fillStyle = "#ffffff"; g.font = "bold 22px Segoe UI, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(m.glyph, 32, 33);
+    c.width = c.height = 128;
+    const g = c.getContext("2d")!, ring = m.alert ? "#e5484d" : m.color, round = (r: number) => { g.beginPath(); g.arc(64, 64, r, 0, Math.PI * 2); };
+    if (m.alert) { g.fillStyle = "rgba(229,72,77,.28)"; round(62); g.fill(); }
+    if (m.path) {
+      g.fillStyle = "#101a24"; round(40); g.fill();
+      g.lineWidth = 6; g.strokeStyle = ring; g.stroke();
+      g.translate(64 - 30, 64 - 30); g.scale(2.5, 2.5);
+      g.strokeStyle = "#ffffff"; g.lineWidth = 2; g.lineCap = g.lineJoin = "round"; g.stroke(new Path2D(m.path));
+    } else {
+      g.fillStyle = ring; round(30); g.fill();
+      g.lineWidth = 9; g.strokeStyle = "#ffffff"; g.stroke();
+    }
     const t = new THREE.CanvasTexture(c);
     t.colorSpace = THREE.SRGBColorSpace;
     icons.set(key, t);
@@ -1472,18 +1494,20 @@ export function buildScene(model: Model, holder: HTMLDivElement, onPick: (ids: s
   };
   const setMarkers = (list: Marker[]) => {
     for (const sp of markerSprites) { markerGroup.remove(sp); (sp.material as THREE.SpriteMaterial).dispose(); }
+    const pixel = (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))) / Math.max(1, holder.clientHeight);  // how big one screen pixel is, for a sprite that keeps its size
     markerSprites = list.map((m) => {
-      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: iconOf(m), depthTest: false, depthWrite: false, transparent: true }));
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: iconOf(m), depthTest: false, depthWrite: false, transparent: true, sizeAttenuation: false }));
       sp.position.set(m.x, m.y, m.z);
-      const size = m.alert ? 2.8 : 1.9;
+      const size = (m.path ? 38 : 26) * (m.alert ? 1.5 : 1) * pixel;
       sp.scale.set(size, size, 1);
-      sp.renderOrder = 20;
+      sp.renderOrder = m.alert ? 21 : 20;
       sp.userData.marker = m.id;
       markerGroup.add(sp);
       return sp;
     });
     kick();
   };
+  let shift = 0;  // pixels the picture is moved left, to centre it in what a panel leaves free
   const stopGoing = () => { goal = null; };
   controls.addEventListener("start", stopGoing);
   controls.addEventListener("change", render);
@@ -1493,6 +1517,8 @@ export function buildScene(model: Model, holder: HTMLDivElement, onPick: (ids: s
     renderer.setSize(w, h);
     labels.setSize(w, h);
     camera.aspect = w / h;
+    if (shift) camera.setViewOffset(w, h, shift, 0, w, h);
+    else camera.clearViewOffset();
     camera.updateProjectionMatrix();
     render();
   };
@@ -1530,6 +1556,153 @@ export function buildScene(model: Model, holder: HTMLDivElement, onPick: (ids: s
   };
   // (no pointer lock: the cursor stays usable while in first person)
 
+  // ---------------------------------------------------------------------------------------------- the twin: the finished building as a calm studio model, for data to stand out on. It can go see-through, or open at a floor. One way: the timeline is not run again after this
+  const toTwin = (): Twin => {
+    scene.background = new THREE.Color("#e6ecf1");
+    scene.fog = new THREE.Fog("#e6ecf1", span * 1.9, span * 5.2);
+    for (const m of surround) m.visible = false;
+    const cut = new THREE.Plane(DOWN.clone(), 1e5), ghost = keep(new THREE.MeshBasicMaterial({ color: "#47708c", transparent: true, opacity: 0.09, depthWrite: false, clippingPlanes: [cut], fog: false }));
+    const calm = new Map<THREE.Material, THREE.Material>(), body: { m: THREE.Mesh; solid: THREE.Material; cast: boolean }[] = [];
+    const quiet = (s: { fragmentShader: string }) => { s.fragmentShader = s.fragmentShader.replace("#include <color_fragment>", "#include <color_fragment>\n  diffuseColor.rgb = mix(mix(vec3(dot(diffuseColor.rgb, vec3(.3, .59, .11))), diffuseColor.rgb, .12), vec3(.8, .83, .86), .3);"); };  // the site's brick and tile colours, nearly grey and lifted
+    scene.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh || Array.isArray(m.material) || surround.includes(m)) return;
+      let solid = calm.get(m.material);
+      if (!solid) {
+        solid = keep(m.material.clone());
+        solid.onBeforeCompile = quiet;
+        solid.clippingPlanes = [...(solid.clippingPlanes ?? []), cut];
+        solid.clipShadows = true;
+        solid.side = THREE.DoubleSide;  // inside an opened floor, the far side of a wall is seen
+        calm.set(m.material, solid);
+      }
+      m.material = solid;
+      body.push({ m, solid, cast: m.castShadow });
+    });
+    const studio = mat("#92a1ae", { roughness: 0.95, clippingPlanes: [cut] }), ground = add(keep(new THREE.CircleGeometry(span * 8, 64).rotateX(-Math.PI / 2)), studio, [], 0, -0.03, 0, false);
+    ground.receiveShadow = true;
+    const plates = new THREE.Group(), levels = [...above.map((f) => f.elevation), top, ...floors.filter((f) => f.index < 0).map((f) => f.elevation)], plateOf = new Map<number, THREE.MeshBasicMaterial>();
+    const box = keep(new THREE.BoxGeometry(W + 0.5, 0.16, D + 0.5)), outline = keep(new THREE.EdgesGeometry(box)), lineMat = keep(new THREE.LineBasicMaterial({ color: "#2a5470", transparent: true, opacity: 0.75, clippingPlanes: [cut], fog: false }));
+    for (const y of levels) {
+      const face = keep(new THREE.MeshBasicMaterial({ color: "#4b90b8", transparent: true, opacity: 0.1, depthWrite: false, side: THREE.DoubleSide, clippingPlanes: [cut], fog: false }));
+      const slab = new THREE.Mesh(box, face), edge = new THREE.LineSegments(outline, lineMat);
+      slab.position.y = edge.position.y = y;
+      slab.castShadow = true;
+      plates.add(slab, edge);
+      plateOf.set(y, face);
+    }
+    plates.visible = false;
+    scene.add(plates);
+    const trees = greenery.filter((t) => t.visible);
+    /** How far back to stand, looking at a point along a direction, for the building between two heights to fill what the panels leave free. */
+    const standOff = (target: THREE.Vector3, dir: THREE.Vector3, from: number, to: number, spareY: number) => {
+      const w = holder.clientWidth, h = holder.clientHeight, roomX = (w >= 900 ? w - 460 : w - 40) / w, roomY = (h - spareY) / h, probe = new THREE.PerspectiveCamera(camera.fov, camera.aspect, 0.5, span * 20), corner = V(0, 0, 0);
+      let near = span * 0.2, far = span * 8;
+      for (let i = 0; i < 16; i++) {
+        const d = (near + far) / 2;
+        probe.position.copy(target).addScaledVector(dir, d);
+        probe.lookAt(target);
+        probe.updateMatrixWorld();
+        let fits = true;
+        for (const x of [-W / 2, W / 2]) for (const z of [-D / 2, D / 2]) for (const y of [from, to]) { corner.set(x, y, z).project(probe); if (Math.abs(corner.x) > roomX || Math.abs(corner.y) > roomY) fits = false; }
+        if (fits) far = d;
+        else near = d;
+      }
+      return far;
+    };
+    const from = pit ? footing : 0, to = top + rise, along = V(Math.sin(turn) * Math.cos(tilt - 0.14), Math.sin(tilt - 0.14), Math.cos(turn) * Math.cos(tilt - 0.14));
+    wholeSite.target.set(0, (from + to) / 2, 0);
+    wholeSite.position.copy(wholeSite.target).addScaledVector(along, standOff(wholeSite.target, along, from, to, 150));
+    camera.position.copy(wholeSite.position);
+    controls.target.copy(wholeSite.target);
+    controls.update();
+    kick();
+    // the readings beside the devices, laid out like the names on a map: most important first, each takes the first free side of its device, and one with no room waits for a closer look or the pointer
+    const layer = document.createElement("div"), chips = new Map<string, { el: HTMLDivElement; tag: Tag; width: number; side: number }>(), at = new THREE.Vector3(), tall = 15;
+    layer.style.cssText = "position:absolute;inset:0;pointer-events:none;overflow:hidden";
+    holder.insertBefore(layer, labels.domElement);
+    keep({ dispose: () => layer.remove() });
+    let order: string[] = [], dotSize = 8, keepClear: Clear[] = [];
+    const onScreen = (p: Point) => { at.set(p.x, p.y, p.z).project(camera); return at.z < 1 ? { x: ((at.x + 1) / 2) * holder.clientWidth, y: ((1 - at.y) / 2) * holder.clientHeight } : null; };
+    placeTags = () => {
+      const taken: Box[] = [], free = (b: Box) => !taken.some((o) => b.x < o.x + o.w && o.x < b.x + b.w && b.y < o.y + o.h && o.y < b.y + b.h);
+      const items = order.map((id) => { const c = chips.get(id)!; return { id, c, p: onScreen(c.tag) }; });
+      for (const k of keepClear) { const p = onScreen(k); if (p) taken.push({ x: p.x - k.w / 2, y: p.y - k.h, w: k.w, h: k.h + dotSize }); }
+      for (const { p } of items) if (p) taken.push({ x: p.x - dotSize, y: p.y - dotSize, w: dotSize * 2, h: dotSize * 2 });  // no reading covers a device
+      const over = items.find((i) => i.id === overDevice), gap = dotSize + 2;
+      const side = (p: { x: number; y: number }, w: number, k: number): Box => {  // beside its dot, above or below it, then off its corners
+        const [x, y] = [[gap, -tall / 2], [-gap - w, -tall / 2], [-w / 2, -gap - tall], [-w / 2, gap], [gap, -tall - 2], [gap, 2], [-gap - w, -tall - 2], [-gap - w, 2]][k];
+        return { x: p.x + x, y: p.y + y, w, h: tall };
+      };
+      placed = [];
+      for (const { id, c, p } of over ? [over, ...items.filter((i) => i !== over)] : items) {
+        let box: Box | null = null;
+        for (let k = 0; p && k < 8 && !box; k++) { const s = (c.side + k) % 8, b = side(p, c.width, s); if (free(b)) { box = b; c.side = s; } }  // the side it already has comes first, so it does not jump as the view turns
+        if (!box && p && id === overDevice) box = side(p, c.width, c.side);
+        c.el.style.opacity = box ? "1" : "0";
+        c.el.style.zIndex = id === overDevice ? "1" : "";
+        if (!box) continue;
+        taken.push(box);
+        placed.push({ ...box, id });
+        c.el.style.transform = `translate(${Math.round(box.x)}px,${Math.round(box.y)}px)`;
+      }
+    };
+    return {
+      tags: (list, dot, clear) => {
+        if (dot !== dotSize) for (const c of chips.values()) c.width = 0;  // the texts change between a whole building and an opened floor
+        dotSize = dot;
+        keepClear = clear;
+        order = list.map((t) => t.id);
+        for (const [id, c] of chips) if (!order.includes(id)) { c.el.remove(); chips.delete(id); }
+        for (const tag of list) {
+          let c = chips.get(tag.id);
+          if (!c) {
+            const el = document.createElement("div");
+            el.dataset.device = tag.id;
+            el.style.cssText = `position:absolute;left:0;top:0;height:${tall}px;padding:0 4px;border-radius:4px;font-size:10.5px;line-height:${tall}px;font-weight:500;font-variant-numeric:tabular-nums;white-space:nowrap;box-shadow:0 1px 4px rgba(10,20,30,.3);opacity:0;transition:opacity .15s`;
+            layer.appendChild(el);
+            c = { el, tag, width: 0, side: 0 };
+            chips.set(tag.id, c);
+          }
+          c.tag = tag;
+          if (c.el.textContent !== tag.text) c.el.textContent = tag.text;
+          c.el.style.background = tag.alert ? "#e5484d" : tag.quiet ? "rgba(15,25,35,.5)" : "rgba(15,25,35,.88)";
+          c.el.style.color = tag.live ? "#7ff0b8" : tag.quiet ? "#e5e8eb" : "#ffffff";
+          c.el.style.borderLeft = `2px solid ${tag.color}`;
+        }
+        for (const c of chips.values()) c.width = Math.max(c.width, c.el.offsetWidth);  // it keeps the room it has had, so readings do not come and go as the figures change
+        kick();
+      },
+      xray: (on) => {
+        for (const b of body) { b.m.material = on ? ghost : b.solid; b.m.castShadow = !on && b.cast; }
+        plates.visible = on;
+        if (pit) { studio.transparent = on; studio.opacity = on ? 0.45 : 1; studio.depthWrite = !on; studio.needsUpdate = true; }  // a basement shows through the ground
+        kick();
+      },
+      open: (floor, at) => {
+        const opened = !!floor && !floor.roof;
+        cut.constant = opened ? floor.y + 1.7 : 1e5;
+        for (const t of trees) t.visible = !opened;
+        if (!floor) goal = { target: wholeSite.target.clone(), position: wholeSite.position.clone() };
+        else {
+          const dir = camera.position.clone().sub(controls.target).setY(0).setLength(0.95).setY(1.3).normalize(), target = V((at?.x ?? 0) * 0.25, floor.y + 1, (at?.z ?? 0) * 0.25);  // towards a device a little, for its card to stay on screen
+          goal = { target, position: target.clone().addScaledVector(dir, standOff(target, dir, floor.y, floor.y + 2, 190)) };
+        }
+        kick();
+      },
+      pin: (at) => {
+        const el = document.createElement("div"), object = new CSS2DObject(el);
+        object.position.set(at.x, at.y, at.z);
+        object.center.set(0.5, 1);  // what is pinned stands on the point, with its foot at the device
+        scene.add(object);
+        render();  // at once, not on the next frame: what is pinned is what was just asked for
+        return { el, remove: () => { scene.remove(object); kick(); } };
+      },
+      inset: (px) => { shift = Math.round(px); resize(); },
+      shade: (ys) => { for (const [y, face] of plateOf) { face.color.set(ys.includes(y) ? "#e5484d" : "#4b90b8"); face.opacity = ys.includes(y) ? 0.2 : 0.1; } kick(); },
+    };
+  };
+
   return {
     update: (day, ghost) => {
       today = day;
@@ -1561,6 +1734,7 @@ export function buildScene(model: Model, holder: HTMLDivElement, onPick: (ids: s
     },
     setFirstPerson: setFp,
     markers: setMarkers,
+    twin: toTwin,
     look: (at) => {
       const target = new THREE.Vector3(at.x, at.y, at.z), off = camera.position.clone().sub(controls.target);
       goal = { target, position: target.clone().add(off.setLength(Math.min(off.length(), span * 1.1))) };

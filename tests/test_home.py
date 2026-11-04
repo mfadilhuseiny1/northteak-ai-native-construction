@@ -172,6 +172,17 @@ def test_a_project_cannot_be_created_or_changed_under_a_running_analysis(client,
     assert card(client, after["active"])["running"]
 
 
+def test_a_project_needs_real_dates(client):
+    """A start that was not a date was saved, and opened, and every view of the schedule then failed on it."""
+    before = client.get("/api/projects").json()
+    for bad in ({"start": "test"}, {"start": "2026-13-45"}, {"finish": "soon"}, {"start": "2027-02-01", "finish": "2027-01-01"}):
+        r = client.post("/api/projects", json={"name": "Bad dates", "template": False, **bad})
+        assert r.status_code == 409 and ("must be dates" in r.json()["detail"] or "before the start" in r.json()["detail"]), bad
+    assert client.get("/api/projects").json() == before, "nothing is made"
+    pid = client.post("/api/projects", json={"name": "Good dates", "start": " 2027-01-04 ", "finish": "2027-12-31", "template": False}).json()["active"]
+    assert card(client, pid)["start"] == "2027-01-04" and client.get("/api/project/schedule").status_code == 200
+
+
 def test_projects_are_listed_without_opening_them(client):
     first = new_project(client, "Pertama")
     client.post("/api/project/brief", json={"text": BRIEF})

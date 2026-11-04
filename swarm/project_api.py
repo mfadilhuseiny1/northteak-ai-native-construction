@@ -14,7 +14,7 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, PlainTextResponse
 from pydantic import BaseModel, BeforeValidator
 
-from . import extract, memory, model3d, module_agents as A, modules as M, package as K, project as P, wbs
+from . import extract, language, memory, model3d, module_agents as A, modules as M, package as K, project as P, wbs
 from .data import ProjectData
 
 router = APIRouter()
@@ -89,6 +89,10 @@ class NewMilestone(BaseModel):
     name: str
     activity: str
     contract_date: str
+
+
+class LanguageChoice(BaseModel):
+    language: str
 
 
 class NewProject(BaseModel):
@@ -570,6 +574,18 @@ def create_project(body: NewProject) -> dict:
     return guarded(P.create_project, body.name, body.owner, body.contractor, body.location, body.start, body.finish, body.template)
 
 
+@router.get("/api/language")
+def get_language() -> dict:
+    """What the agents write in, for every project: their own words, while what they quote stays as the documents have it."""
+    return {"language": language.current(), "languages": language.LANGUAGES}
+
+
+@router.post("/api/language")
+def set_language(body: LanguageChoice) -> dict:
+    """From the next run on. What earlier runs wrote stays as it was written."""
+    return {"language": guarded(language.choose, body.language), "languages": language.LANGUAGES}
+
+
 @router.post("/api/projects/{pid}/open")
 def open_project(pid: str) -> dict:
     return guarded(P.open_project, pid)
@@ -1026,8 +1042,10 @@ from . import contract_admin  # noqa: E402 - its routes join these, and it impor
 from . import accounts, outside, reports, scorecard, standards, submittals  # noqa: E402 - the same
 from . import tender  # noqa: E402 - the same
 from . import twin  # noqa: E402 - the same
+from . import equipment  # noqa: E402 - the same
 
 router.include_router(contract_admin.router)
+router.include_router(equipment.router)
 router.include_router(reports.router)
 router.include_router(submittals.router)
 router.include_router(outside.router)

@@ -24,7 +24,7 @@ from openai.types.chat.chat_completion import Choice
 from openai.types.chat.chat_completion_message_function_tool_call import ChatCompletionMessageFunctionToolCall, Function
 from openai.types.completion_usage import CompletionUsage
 
-from . import config
+from . import config, language
 
 camel.disable_logging()  # a failed call reaches the caller, which reports it where the review shows it
 
@@ -132,8 +132,9 @@ def _tool(fn: Callable) -> FunctionTool:
     return tool
 
 
-async def turn(model: BaseModelBackend, instruction: str, tools: list[Callable], prompt: str, calls: int, on_usage: Callable[[int, int], None] | None = None, gate: Callable[[], None] | None = None) -> str:
-    """One agent's turn, with fresh memory: at most `calls` model calls. The report is its last message alone, never what it said between tool calls. on_usage(prompt, output) hears every model call as it ends. gate runs before each one, and raises to stop the turn."""
+async def turn(model: BaseModelBackend, instruction: str, tools: list[Callable], prompt: str, calls: int, on_usage: Callable[[int, int], None] | None = None, gate: Callable[[], None] | None = None, own_language: bool = True) -> str:
+    """One agent's turn, with fresh memory: at most `calls` model calls. The report is its last message alone, never what it said between tool calls. on_usage(prompt, output) hears every model call as it ends. gate runs before each one, and raises to stop the turn.
+    Every agent is told last the language the screens are set to, except one whose instructions name the language themselves: the translator."""
     if gate:
         arun = model.arun
 
@@ -147,7 +148,7 @@ async def turn(model: BaseModelBackend, instruction: str, tools: list[Callable],
             used = payload["request_usage"]
             on_usage(used["prompt_tokens"], used["completion_tokens"])
 
-    agent = ChatAgent(system_message=instruction, model=model, tools=[_tool(t) for t in tools], max_iteration=calls, summarize_threshold=None, token_limit=2_000_000, retry_attempts=1, on_request_usage=heard)  # summarizing would add model calls nobody asked for
+    agent = ChatAgent(system_message=f"{instruction}\n\n{language.rule()}" if own_language else instruction, model=model, tools=[_tool(t) for t in tools], max_iteration=calls, summarize_threshold=None, token_limit=2_000_000, retry_attempts=1, on_request_usage=heard)  # summarizing would add model calls nobody asked for
     response = await agent.astep(prompt)
     if response.terminated:
         raise TurnLimit(f"the turn ended early: {', '.join(response.info.get('termination_reasons') or ['no reason given'])}")

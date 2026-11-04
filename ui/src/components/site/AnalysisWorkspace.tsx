@@ -42,7 +42,7 @@ export function Repository({ review, act, activities, missing, canAdd }: { revie
   const [memory, setMemory] = useState(false);
   const docs = review.documents as Rec[];
   return (
-    <aside className="flex min-h-0 w-[300px] shrink-0 flex-col border-l border-black/30 bg-[#1c2733] max-lg:w-[250px]">
+    <aside className="flex min-h-0 w-[300px] shrink-0 flex-col border-l border-black/30 bg-[#1c2733] max-lg:w-[250px] max-md:hidden">
       <div className="flex shrink-0 items-center gap-2 border-b border-white/10 px-3 py-2">
         <div className="min-w-0 flex-1"><p className="font-semibold text-white">Documents</p><p className="text-[11.5px] text-[#8f99a8]">{docs.length} in, {review.used} go to the agents</p></div>
         {canAdd && <button onClick={() => setAdding(true)} className={`${quiet} flex items-center gap-1 !px-2 !py-1 !text-[12px]`}><Icon name="plus" className="h-3 w-3" />Add</button>}

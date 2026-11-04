@@ -1,0 +1,222 @@
+{
+ "bar-bender": {
+  "name": "Bar bender",
+  "looks": "A low rectangular machine body about knee-high standing on a flat steel skid, with a flat steel worktop holding a large round working disc with a thick centre pin and a bending pin plus a side roller stop. A small foot pedal switch lies on a cable on the ground beside the body.",
+  "find": "bar bending machine",
+  "sure": 0.531,
+  "drawings": 1,
+  "drawn_by": "muse-image-1.0",
+  "checked_by": "sam-3.1",
+  "at": "2026-11-04 21:43"
+ },
+ "bar-cutter": {
+  "name": "Bar cutter",
+  "looks": "A low heavy rectangular steel box sitting on a flat base, with a small motor housing at one side and a pair of short shear blades set in a slot at the front top edge.",
+  "find": "machine",
+  "sure": 0.594,
+  "drawings": 2,
+  "drawn_by": "muse-image-1.0",
+  "checked_by": "sam-3.1",
+  "at": "2026-11-04 19:33"
+ },
+ "concrete-bucket": {
+  "name": "Concrete bucket",
+  "looks": "A cylindrical steel bucket tapering to a cone at the bottom with a discharge gate and lever, topped by a curved lifting bail and shackle. It hangs upright as if suspended by a crane hook.",
+  "find": "concrete bucket",
+  "sure": 0.816,
+  "drawings": 1,
+  "drawn_by": "muse-image-1.0",
+  "checked_by": "sam-3.1",
+  "at": "2026-11-04 19:17"
+ },
+ "concrete-mixer": {
+  "name": "Concrete mixer",
+  "looks": "A tilting drum mixer with a conical rotating drum mouth facing forward, mounted on a steel frame with two wheels and support legs and a small engine beside it. It stands at waist height with the drum angled upward.",
+  "find": "concrete mixer",
+  "sure": 0.836,
+  "drawings": 1,
+  "drawn_by": "muse-image-1.0",
+  "checked_by": "sam-3.1",
+  "at": "2026-11-04 19:17"
+ },
+ "concrete-pump": {
+  "name": "Concrete pump",
+  "looks": "A large truck with a driver cab at the front and a long multi-jointed folding boom arm laid flat along its top with a pipe running along it, with sideways outrigger legs extended to the ground.",
+  "find": "pump truck",
+  "sure": 0.91,
+  "drawings": 1,
+  "drawn_by": "muse-image-1.0",
+  "checked_by": "sam-3.1",
+  "at": "2026-11-04 19:28"
+ },
+ "dozer": {
+  "name": "Mini dozer",
+  "looks": "A small low bulldozer riding on two steel crawler tracks with an enclosed cab on top and a wide curved steel blade mounted across the front on push arms. It stands compact and square with the blade touching the ground.",
+  "find": "bulldozer",
+  "sure": 0.98,
+  "drawings": 1,
+  "drawn_by": "muse-image-1.0",
+  "checked_by": "sam-3.1",
+  "at": "2026-11-04 19:17"
+ },
+ "dump-truck": {
+  "name": "Dump truck",
+  "looks": "A heavy six-wheeled truck with a driver cab at the front and a large open-top rectangular steel bed at the rear that tilts upward for unloading. It stands on the road on rubber tires with the bed walls high and straight.",
+  "find": "dump truck",
+  "sure": 0.938,
+  "drawings": 1,
+  "drawn_by": "muse-image-1.0",
+  "checked_by": "sam-3.1",
+  "at": "2026-11-04 19:17"
+ },
+ "excavator": {
+  "name": "Excavator",
+  "looks": "A tracked crawler machine with a rotating upper cab and engine housing, with a long two-part articulated boom and stick ending in a toothed digging bucket. It sits low on two track frames with the bucket resting near the ground.",
+  "find": "excavator",
+  "sure": 0.977,
+  "drawings": 1,
+  "drawn_by": "muse-image-1.0",
+  "checked_by": "sam-3.1",
+  "at": "2026-11-04 19:17"
+ },
+ "genset": {
+  "name": "Generator set",
+  "looks": "A large rectangular steel enclosure with ventilation grilles and an exhaust pipe on top, mounted on a skid base with a fuel tank underneath. It sits low as a single box-like unit on the ground.",
+  "find": "generator",
+  "sure": 0.899,
+  "drawings": 1,
+  "drawn_by": "muse-image-1.0",
+  "checked_by": "sam-3.1",
+  "at": "2026-11-04 19:18"
+ },
+ "goods-lift": {
+  "name": "Goods lift",
+  "looks": "A rectangular steel cage about two metres tall with mesh side walls and a loading gate on the front, resting at ground level. Directly behind it stands a tall narrow lattice steel mast tied to the side of an unfinished concrete building.",
+  "find": "cage",
+  "sure": 0.86,
+  "drawings": 1,
+  "drawn_by": "muse-image-1.0",
+  "checked_by": "sam-3.1",
+  "at": "2026-11-04 22:37"
+ },
+ "mobile-crane": {
+  "name": "Mobile crane",
+  "looks": "A heavy truck with a driver cab and multiple rubber-tired axles, carrying a rotating crane superstructure with a long telescopic boom and a hook block on wire rope. It stands on extended outriggers with the boom angled upward.",
+  "find": "mobile crane",
+  "sure": 0.867,
+  "drawings": 1,
+  "drawn_by": "muse-image-1.0",
+  "checked_by": "sam-3.1",
+  "at": "2026-11-04 19:19"
+ },
+ "pick-up": {
+  "name": "Pick-up",
+  "looks": "A small four-wheeled utility truck with an enclosed driver cab at the front and a low-walled open cargo bed at the rear. It stands on the road on rubber tires with a compact pickup shape.",
+  "find": "pickup truck",
+  "sure": 0.977,
+  "drawings": 1,
+  "drawn_by": "muse-image-1.0",
+  "checked_by": "sam-3.1",
+  "at": "2026-11-04 19:19"
+ },
+ "pile-rig": {
+  "name": "Hydraulic injection pile rig",
+  "looks": "A very large low square platform machine resting on two long steel tracks, with stacked block weights along both sides and a central square clamp box gripping a tall square concrete pile held vertically, with a small lifting arm on one side. It has a flat low profile with no tall mast, hammer or drill.",
+  "find": "machine",
+  "sure": 0.586,
+  "drawings": 1,
+  "drawn_by": "muse-image-1.0",
+  "checked_by": "sam-3.1",
+  "at": "2026-11-04 19:28"
+ },
+ "scaffolding": {
+  "name": "Scaffolding",
+  "looks": "A modular tower of thin steel tubes forming rectangular frames with horizontal ledgers, diagonal braces, and flat planks for platforms. It stands upright as an open grid structure with couplers at the joints.",
+  "find": "scaffolding",
+  "sure": 0.902,
+  "drawings": 1,
+  "drawn_by": "muse-image-1.0",
+  "checked_by": "sam-3.1",
+  "at": "2026-11-04 19:18"
+ },
+ "spotlight": {
+  "name": "Spotlight",
+  "looks": "A large rectangular lamp housing with a flat glass front, mounted on top of a tall slender steel pole stand with three splayed legs at the base.",
+  "find": "floodlight lamp",
+  "sure": 0.734,
+  "drawings": 1,
+  "drawn_by": "muse-image-1.0",
+  "checked_by": "sam-3.1",
+  "at": "2026-11-04 19:39"
+ },
+ "stamper": {
+  "name": "Stamper (tamping rammer)",
+  "looks": "A tall narrow upright compactor about waist to chest high, with a small flat steel foot at the bottom, a ribbed rubber bellows above it, an engine block in the middle, and two handlebars extending back from the top.",
+  "find": "tamping rammer machine",
+  "sure": 0.824,
+  "drawings": 1,
+  "drawn_by": "muse-image-1.0",
+  "checked_by": "sam-3.1",
+  "at": "2026-11-04 19:33"
+ },
+ "theodolite": {
+  "name": "Theodolite",
+  "looks": "A compact boxy surveying instrument with a small horizontal telescope cylinder on the side, mounted on top of a tall three-legged tripod standing on the ground.",
+  "find": "tripod",
+  "sure": 0.942,
+  "drawings": 1,
+  "drawn_by": "muse-image-1.0",
+  "checked_by": "sam-3.1",
+  "at": "2026-11-04 19:39"
+ },
+ "tower-crane": {
+  "name": "Tower crane",
+  "looks": "A very tall vertical lattice mast standing on a wide concrete base, with a horizontal jib extending one way and a short counter-jib with counterweights the other way at the top. An operator cab sits at the joint and a steel cable hangs from a trolley on the jib with a hook block at the end.",
+  "find": "tower crane",
+  "sure": 0.832,
+  "drawings": 1,
+  "drawn_by": "muse-image-1.0",
+  "checked_by": "sam-3.1",
+  "at": "2026-11-04 19:17"
+ },
+ "vibrator": {
+  "name": "Concrete vibrator",
+  "looks": "A compact motor unit on a small frame connected to a long flexible hose ending in a cylindrical steel poker head. It sits on the ground with the hose coiled beside it and the poker lying horizontally.",
+  "find": "concrete vibrator",
+  "sure": 0.617,
+  "drawings": 3,
+  "drawn_by": "muse-image-1.0",
+  "checked_by": "sam-3.1",
+  "at": "2026-11-04 19:18"
+ },
+ "water-level": {
+  "name": "Automatic level (waterpass)",
+  "looks": "A small horizontal cylindrical telescope mounted on a round base, fixed on top of a tall three-legged tripod standing on the ground.",
+  "find": "tripod",
+  "sure": 0.938,
+  "drawings": 1,
+  "drawn_by": "muse-image-1.0",
+  "checked_by": "sam-3.1",
+  "at": "2026-11-04 19:27"
+ },
+ "water-pump": {
+  "name": "Water pump and tank",
+  "looks": "A small boxy engine on a low tubular metal frame with a thick hose attached, standing beside a tall large cylindrical tank with a flat top.",
+  "find": "tank",
+  "sure": 0.942,
+  "drawings": 1,
+  "drawn_by": "muse-image-1.0",
+  "checked_by": "sam-3.1",
+  "at": "2026-11-04 19:39"
+ },
+ "welder": {
+  "name": "Welding machine",
+  "looks": "A rectangular box-shaped power unit on small wheels with ventilation slots and a handle on top, connected by thick cables to a clamp and electrode holder. It sits low on the ground as a single portable unit.",
+  "find": "welding machine",
+  "sure": 0.801,
+  "drawings": 1,
+  "drawn_by": "muse-image-1.0",
+  "checked_by": "sam-3.1",
+  "at": "2026-11-04 19:17"
+ }
+}

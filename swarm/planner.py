@@ -474,7 +474,7 @@ Try to break this plan as {view['name']} would: {view['ask']} Read the documents
         self.phase("laporan", "mulai")
         material = "\n\n".join(f"{k}:\n{v}" for k, v in syntheses.items())
         text = f"""{self.head(self.team['partner'])}
-Call read_plan, then write the summary of this work plan for the project manager, in plain English, in three parts with these headings:
+Call read_plan, then write the summary of this work plan for the project manager, in plain words, in three parts with these headings:
 ## What this plan does
 ## Settle these before work starts
 ## Watch on site

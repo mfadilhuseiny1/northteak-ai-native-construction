@@ -227,7 +227,8 @@ def read_boq_lines(doc: str, pages: list[str]) -> list[dict]:
     analysis = False
     for n, text in enumerate(pages, 1):
         top_of_page = " ".join(text.split())[:300]
-        if re.search(r"analisa harga satuan", top_of_page, re.I):  # the unit-price analysis often follows the BoQ in one file: its labour and material rows look like BoQ lines, and are not
+        title = next((" ".join(x.split()) for x in text.splitlines() if x.strip()), "")
+        if re.search(r"analisa harga satuan", top_of_page, re.I) or re.match(r"(daftar )?harga satuan\b", title, re.I):  # the unit-price analysis often follows the BoQ in one file, and so does a list of unit rates: their rows look like BoQ lines, and are not. A rate list has no volumes, so a figure in a description would be read as one
             analysis = True
         elif re.search(r"daftar kuantitas|bill of quantit", top_of_page, re.I):
             analysis = False

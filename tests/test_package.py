@@ -18,7 +18,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from swarm import firm, firm_api, llm, memory, mock_package, model3d, modules as M, package as K, package_firm as F, project as P, regulations as REG, site_case as C, wbs
+from swarm import firm, firm_api, language, llm, memory, mock_package, model3d, modules as M, package as K, package_firm as F, project as P, regulations as REG, site_case as C, wbs
 
 ROOT = Path(__file__).resolve().parent.parent
 UGM = ROOT / "docs" / "ugm-gedung-pascasarjana-ftp-2024"
@@ -406,7 +406,7 @@ def test_the_planning_engineer_writes_the_wbs_and_code_flags_where_it_differs(pr
     gap = next(c for c in f.checks if c["rule"] == "wbs_gap_1")
     assert "pagar proyek sepanjang 200 meter" in gap["text"] and "KAK, page 1" in gap["text"]
     assert any(c["rule"] == "wbs_quotes" and "dropped 1" in c["text"] for c in f.checks), "words that are not in the documents do not count"
-    assert [q["subject"] for q in f.code_questions] == ["Tidak ada di master schedule: pagar proyek"], "the consultant is asked where it belongs"
+    assert [q["subject"] for q in f.code_questions] == ["Not in the master schedule: pagar proyek"], "the consultant is asked where it belongs"
 
 
 def test_the_full_analysis_has_the_engineer_write_the_wbs_even_with_a_schedule(client):
@@ -424,6 +424,22 @@ def test_a_boq_is_read_line_by_line_with_its_page():
     assert (glued["qty"], glued["name"], glued["unit"]) == (1.11, "Beton Fc' 30 Mpa (Readymix)", "m3"), "the layout reading ran the volume into the description"
     assert lines[3]["group"] == "Balok tipe B1B, 300x600 mm" and lines[3]["amount"] is None
     assert lines[4]["rate"] == 1_000_000 and lines[4]["amount"] == 1_789_580_000
+
+
+def test_work_no_page_describes_falls_back_on_its_own_boq_section():
+    from swarm.package_firm import PackageFirm
+    lines = [{"doc": "UP-1", "page": p, "section": s, "group": "", "name": n} for p, s, n in [(18, "E PEKERJAAN MEKANIKAL", "Pompa"), (19, "F PEKERJAAN LANDSCAPING", "Rumput gajah"), (20, "F PEKERJAAN LANDSCAPING", "Pohon pelindung")]]
+    assert PackageFirm.boq_pages({"name": "Landscaping"}, lines) == [{"doc": "UP-1", "from": 19, "to": 20}], "a BoQ names its section once, and the rows under it are the work"
+    assert PackageFirm.boq_pages({"name": "Pengaspalan"}, lines) == [], "work the BoQ never names still has nothing to rest on"
+    assert PackageFirm.boq_pages({"name": "Pekerjaan Lantai"}, lines) == [], "words too common to name a work match nothing"
+
+
+def test_a_list_of_unit_rates_after_the_boq_is_not_read_as_its_lines():
+    boq = "NO URAIAN PEKERJAAN Vol SAT HARGA SATUAN JUMLAH HARGA\nA PEKERJAAN PERSIAPAN\n1 Pembersihan lapangan 540,00 m2 Rp - Rp -"
+    rates = "HARGA SATUAN PEKERJAAN\nNO PEKERJAAN SATUAN HARGA SATUAN\nD AHSP A.4.1.1. HARGA SATUAN PEKERJAAN BETON\nMembuat Beton Mutu f'c = 19.3 MPa (K-225), Slump (12 ± 2 ) cm, w/c = 0.58 m3 Rp -"
+    more = "NO PEKERJAAN SATUAN HARGA SATUAN\nBorepile Dia.500 8D19 DØ10-200 K- 250 m3 Rp -"
+    lines = K.read_boq_lines("UP-1", [boq, rates, more])
+    assert [(x["name"], x["qty"], x["page"]) for x in lines] == [("Pembersihan lapangan", 540.0, 1)], "a rate list has no volumes: its w/c of 0.58 and its K-250 are not 0.58 m3 and 250 m3 of work"
 
 
 def test_a_real_boq_gives_its_lines_and_a_recap_gives_none():
@@ -514,7 +530,7 @@ def test_work_no_page_describes_costs_no_planner_and_goes_to_the_consultant(proj
     s = {"accounts": [{"no": "XIII", "name": "Sanitair", "packages": [w]}], "weeks": 4}
     f.finish(s, [w], [])
     assert any(c["rule"] == "failed_XIII.1" and "no page of the documents describes it" in c["text"] for c in f.checks)
-    assert any(q["subject"] == "Pekerjaan tanpa spesifikasi di dokumen" and "Sanitair" in q["question"] for q in f.rfi_drafts), "the consultant is asked for it"
+    assert any(q["subject"] == "Work with no specification in the documents" and "Sanitair" in q["question"] for q in f.rfi_drafts), "the consultant is asked for it"
 
 
 def test_the_engineer_is_told_to_cover_the_whole_boq_at_a_crews_level_of_detail(project_copy):
@@ -728,7 +744,7 @@ def test_a_schedule_out_of_physical_order_is_said_and_not_explained_away(project
     assert not links, "code keeps the schedule's dates, so the link waits for a person"
     assert "must fit this schedule" not in f.told and "do not invent a reason" in f.told, "the agent is asked for the physical order, not one that suits the schedule"
     assert any(c["rule"] == "links" and "II.2 before II.1" in c["text"] for c in f.checks)
-    assert any("II.2 Pondasi (M-3 s/d M-7) sebelum II.1 Galian dan Urugan (M-6 s/d M-9)" in q["question"] for q in f.code_questions), "and the consultant is asked which order stands"
+    assert any("II.2 Pondasi (weeks 3 to 7) before II.1 Galian dan Urugan (weeks 6 to 9)" in q["question"] for q in f.code_questions), "and the consultant is asked which order stands"
 
 
 def test_a_failed_work_package_is_named_and_the_rest_carry_on(project_copy, monkeypatch):
@@ -1062,7 +1078,11 @@ def test_the_safety_risk_level_follows_pasal_34_and_is_asked_of_the_owner():
     r = REG.safety_risk(38_075_872_228, True, [CRANE])
     assert (r["level"], r["by_value"], r["ratio"]) == ("besar", "sedang", 40), "a tower crane is lifting equipment, and the higher level counts"
     assert "tower crane" in r["text"] and "By value alone it would be sedang" in r["text"] and "Rp 38.08 bn" in r["text"] and "Kontrak, page 1" in r["text"]
-    assert r["question"]["to"] == "Pengguna Jasa" and "Rp 38,08 miliar" in r["question"]["question"] and "pesawat angkat" in r["question"]["question"]
+    assert r["question"]["to"] == "The owner (Pengguna Jasa)" and "large (besar)" in r["question"]["question"] and "Rp 38.08 bn" in r["question"]["question"] and "lifting equipment" in r["question"]["question"]
+    language.choose("id")
+    r = REG.safety_risk(38_075_872_228, True, [CRANE])
+    assert r["question"]["to"] == "Pengguna Jasa" and "Rp 38,08 miliar" in r["question"]["question"] and "pesawat angkat" in r["question"]["question"], "in Indonesian when that is what the screens are set to"
+    language.choose("en")
     assert r["rule"]["article"] == "Pasal 38 ayat (3)" and "1:40" in r["rule"]["quote"]
     stated = {"id": "S", "title": "RKS", "pages_text": ["Risiko Keselamatan Konstruksi pekerjaan ini adalah besar."]}
     agreed = REG.safety_risk(38e9, True, [stated, CRANE])
@@ -1155,7 +1175,7 @@ def test_the_analysis_applies_indonesian_regulations_and_the_site_sees_them(clie
     checks = {c["rule"]: c for c in rec["plan"]["checks"]}
     risk = checks["safety_risk"]
     assert not risk["ok"] and "besar" in risk["text"] and "tower crane" in risk["text"], "the contract's equipment list has a tower crane"
-    assert any(q["subject"] == "Tingkat Risiko Keselamatan Konstruksi" and q["activity"] == "" for q in rec["rfi_drafts"]), "asked of the owner, drafted and not sent"
+    assert any(q["subject"] == "Construction safety risk level (Tingkat Risiko Keselamatan Konstruksi)" and q["activity"] == "" for q in rec["rfi_drafts"]), "asked of the owner, drafted and not sent"
     stages = {s["key"]: s for s in client.get("/api/aip/analysis").json()["stages"]}
     assert stages["rules"]["status"] == "done" and "safety risk besar" in stages["rules"]["note"]
     p = client.get("/api/project/procedures").json()

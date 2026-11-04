@@ -32,7 +32,7 @@ const STEPS: Step[] = [
     show: "Press play." },
   { route: "twin", target: '[data-tour="twin"]', seconds: 15, title: "Then it runs as a smart building",
     say: "After handover the same model becomes a digital twin. Its sensors come from the building's own MEP scope: fire, air, CCTV, power and water. These readings are simulated until the building's systems send real ones.",
-    show: "Click an alert: the view goes to that device. Then switch on an add-on layer." },
+    show: "Click a red alert in the 3D: the floor opens at that device. Then open Layers and switch on an add-on." },
   { route: "reports/project", target: '[data-tour="report-hero"]', seconds: 15, title: "Reporting writes itself",
     say: "Every month the project officer gets this: progress, money, variations, contingency, risks and decisions, saved so next month shows what changed.",
     show: "Scroll to the variation register and the contingency." },

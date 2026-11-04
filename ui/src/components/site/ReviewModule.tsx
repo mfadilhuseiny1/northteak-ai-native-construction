@@ -5,6 +5,7 @@ import { API_URL } from "@/lib/api";
 import { api, Empty, field, good, Loading, money, notifyChanged, Pill, primary, Problem, quiet, useData, useGo, type Rec } from "./kit";
 import { SourceLink } from "./SourceDrawer";
 import { ContractChecklist } from "./ContractChecklist";
+import { EquipmentList } from "./EquipmentList";
 import { ReviewFlow, SectionDiagram, type Item, type Section } from "./ReviewMap";
 import { SwarmModule } from "./SwarmModule";
 import { TenderSelection } from "./TenderSelection";
@@ -112,7 +113,7 @@ export function ReviewModule() {
   const sections = useMemo(() => (rec && cpm.data ? sectionsOf(rec, cpm.data, go, (docs.data?.documents ?? []) as Rec[]) : []), [rec, cpm.data, go, docs.data]);
   if (run.data?.run?.status === "running") return <SwarmModule />;
   if (!data || !cpm.data) return <div className="flex-1 bg-[#111820]"><Problem err={err || cpm.err} />{!err && !cpm.err && <Loading />}</div>;
-  if (!rec) return <div className="min-h-0 flex-1 space-y-2 overflow-y-auto bg-[#111820] p-3 text-[13px]"><Empty>Nothing to review yet. <button onClick={() => go("home")} className="underline">Start on Home</button>.</Empty><TenderSelection /><ContractChecklist /></div>;
+  if (!rec) return <div className="min-h-0 flex-1 space-y-2 overflow-y-auto bg-[#111820] p-3 text-[13px]"><Empty>Nothing to review yet. <button onClick={() => go("home")} className="underline">Start on Home</button>.</Empty><TenderSelection /><EquipmentList /><ContractChecklist /></div>;
   const pending = rec.status === "pending";
   const reviews = (rec.reviews ?? {}) as Record<string, Rec>;
   const send = (keys: string[], verdict: string) => act(() => api(`/api/project/plans/${rec.id}/review`, { keys, verdict }));
@@ -164,6 +165,7 @@ export function ReviewModule() {
           <SectionDiagram key={section.id} section={section} plan={rec.plan as Rec} reviews={reviews} documents={(docs.data?.documents ?? []) as Rec[]} from={String(cpm.data.start)} to={String(cpm.data.finish)} row={itemRow} decide={decide} />
         </section>
         <div id="review-tender" className="scroll-mt-3"><TenderSelection /></div>
+        <div id="review-equipment" className="scroll-mt-3"><EquipmentList /></div>
         <div id="review-checklist" className="scroll-mt-3"><ContractChecklist /></div>
       </div>
     </div>

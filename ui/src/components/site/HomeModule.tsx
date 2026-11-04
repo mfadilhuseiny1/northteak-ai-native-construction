@@ -4,8 +4,10 @@ import { Icon, type IconName } from "@/components/Icon";
 import { API_URL } from "@/lib/api";
 import { BoqSection, ExecutiveSummary, Repository } from "./AnalysisWorkspace";
 import { SwarmModule } from "./SwarmModule";
+import { Constellation } from "./Constellation";
 import { CategorySelect } from "./DocCategory";
 import { api, field, Label, Loading, money, notifyChanged, primary, Problem, quiet, useData, useGo, type Rec } from "./kit";
+import { forgetThread } from "./OperatorChat";
 import { PlanningModule } from "./PlanningModule";
 import { openSource } from "./SourceDrawer";
 import { titleOf } from "./UploadForm";
@@ -19,7 +21,7 @@ const isZip = (f: File) => f.name.toLowerCase().endsWith(".zip");
 const unpacked = (out: Rec) => `${many((out.documents as Rec[]).length, "document")} from the zip${(out.skipped as Rec[]).length ? `, ${(out.skipped as Rec[]).length} set aside: ${(out.skipped as Rec[]).map((x) => `${x.name} (${x.why})`).join("; ")}` : ""}`;
 const sizeOf = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1e3))} KB`);
 const many = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
-const reopen = () => { window.location.hash = "home"; window.location.reload(); };
+const reopen = () => { forgetThread(); window.location.hash = "home"; window.location.reload(); };  // the copilot's last conversation was about the project left behind
 
 type Row = { file: File; kind: string; state: "waiting" | "uploading" | "reading" | "done" | "failed"; pct: number; note: string };
 
@@ -229,14 +231,17 @@ function Conversation({ project }: { project: Rec }) {
   const problem = ended && !rec;
   const kept = Number(run.data.kept ?? 0);
   if (!docs.length && !problem) return (
-    <div className="min-h-0 flex-1 overflow-y-auto">
-      <div className="mx-auto w-full max-w-[780px] space-y-5 px-6 py-10">
-        <div className="space-y-1.5">
-          <p className="text-[12px] font-medium uppercase tracking-[.1em] text-[#f5b82e]">{project.name}</p>
-          <h1 className="text-[26px] font-semibold tracking-tight text-white">What are you planning?</h1>
-          <p className="max-w-[640px] text-[14px] leading-relaxed text-[#abb3bf]">This project is empty. Describe the job, add the documents you have, or both. The agents build the WBS, Timeline, Critical Path, Cost and Procedures from it, and those tabs fill in when they finish.</p>
+    <div className="@container relative min-h-0 flex-1 overflow-hidden">
+      <Constellation beside={{ from: 1280, room: 720 }} className="absolute inset-0 opacity-40 @min-[1280px]:opacity-100" />
+      <div className="relative flex h-full overflow-y-auto">
+        <div className="m-auto w-full max-w-[720px] space-y-5 px-6 py-10 @min-[1280px]:ml-[6%]">
+          <div className="space-y-1.5">
+            <p className="text-[12px] font-medium uppercase tracking-[.1em] text-[#f5b82e]">{project.name}</p>
+            <h1 className="text-[26px] font-semibold tracking-tight text-white">What are you planning?</h1>
+            <p className="max-w-[640px] text-[14px] leading-relaxed text-[#abb3bf]">This project is empty. Describe the job, add the documents you have, or both. The agents build the WBS, Timeline, Critical Path, Cost and Procedures from it, and those tabs fill in when they finish.</p>
+          </div>
+          <Composer used={0} proposal={null} hero />
         </div>
-        <Composer used={0} proposal={null} hero />
       </div>
     </div>
   );
@@ -285,21 +290,33 @@ function NewProject({ onCancel }: { onCancel: () => void }) {
     setBusy(true); setErr("");
     try { await api("/api/projects", { name: name.trim(), start, template: false }); reopen(); } catch (e) { setErr((e as Error).message); setBusy(false); }
   };
+  useEffect(() => {
+    const away = (e: KeyboardEvent) => { if (e.key === "Escape" && !busy) onCancel(); };
+    window.addEventListener("keydown", away);
+    return () => window.removeEventListener("keydown", away);
+  }, [busy, onCancel]);
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto">
-      <form onSubmit={(e) => { e.preventDefault(); void create(); }} className="mx-auto w-full max-w-[560px] space-y-4 px-6 py-10">
-        <div className="space-y-1.5">
-          <h1 className="text-[26px] font-semibold tracking-tight text-white">New project</h1>
-          <p className="text-[14px] leading-relaxed text-[#abb3bf]">It starts empty. Next you tell the agents what you are planning.</p>
-        </div>
-        <label className="block space-y-1"><Label>Project name</Label><input autoFocus aria-label="Project name" disabled={busy} value={name} onChange={(e) => setName(e.target.value)} placeholder="Gedung Pascasarjana FTP" className={`${field} !py-2 !text-[14px]`} /></label>
-        <label className="block space-y-1"><Label>Work starts, if known</Label><input type="date" aria-label="Work starts" disabled={busy} value={start} onChange={(e) => setStart(e.target.value)} className={`${field} !py-2 !text-[14px]`} /></label>
-        {err && <p role="alert" className="rounded border border-red-400/30 bg-red-500/10 px-3 py-2 leading-snug text-[#ffb4b4]">{err[0].toUpperCase() + err.slice(1)}</p>}
-        <div className="flex items-center gap-2">
-          <button type="submit" disabled={busy || !name.trim()} className={`${primary} !px-4 !py-2 !text-[13.5px]`}>{busy ? "Creating…" : "Create project"}</button>
-          <button type="button" onClick={onCancel} disabled={busy} className={`${quiet} !px-3 !py-2 !text-[12.5px]`}>Cancel</button>
-        </div>
-      </form>
+    <div role="dialog" aria-modal="true" aria-label="New project" className="@container fixed inset-0 z-[70] overflow-hidden bg-[#0d131a] text-[13px]">
+      <Constellation beside={{ from: 1000, room: 460 }} className="absolute inset-0 opacity-50 @min-[1000px]:opacity-100" />
+      <span role="img" aria-label="NorthTeak" className="logo-full absolute left-6 top-5 h-7 w-[144px] text-white" />
+      <button type="button" onClick={onCancel} disabled={busy} aria-label="Cancel" title="Cancel (Esc)" className="absolute right-5 top-4 z-10 rounded-md p-1.5 text-[#abb3bf] hover:bg-white/10 hover:text-white disabled:opacity-30"><Icon name="x" className="h-5 w-5" /></button>
+      <div className="relative flex h-full overflow-y-auto">
+        <form onSubmit={(e) => { e.preventDefault(); void create(); }} className="m-auto w-full max-w-[460px] px-6 py-16 @min-[1000px]:ml-[6%]">
+          <div className="space-y-4 rounded-2xl border border-white/10 bg-[#111820]/75 p-6 shadow-[0_24px_80px_rgb(0_0_0/.5)] backdrop-blur-md">
+            <div className="space-y-1.5">
+              <h1 className="text-[26px] font-semibold tracking-tight text-white">New project</h1>
+              <p className="text-[14px] leading-relaxed text-[#abb3bf]">It starts empty. Next you tell the agents what you are planning.</p>
+            </div>
+            <label className="block space-y-1"><Label>Project name</Label><input autoFocus aria-label="Project name" disabled={busy} value={name} onChange={(e) => setName(e.target.value)} placeholder="Gedung Pascasarjana FTP" className={`${field} !py-2 !text-[14px]`} /></label>
+            <label className="block space-y-1"><Label>Work starts, if known</Label><input type="date" aria-label="Work starts" disabled={busy} value={start} onChange={(e) => setStart(e.target.value)} className={`${field} !py-2 !text-[14px]`} /></label>
+            {err && <p role="alert" className="rounded border border-red-400/30 bg-red-500/10 px-3 py-2 leading-snug text-[#ffb4b4]">{err[0].toUpperCase() + err.slice(1)}</p>}
+            <div className="flex items-center gap-2">
+              <button type="submit" disabled={busy || !name.trim()} className={`${primary} !px-4 !py-2 !text-[13.5px]`}>{busy ? "Creating…" : "Create project"}</button>
+              <button type="button" onClick={onCancel} disabled={busy} className={`${quiet} !px-3 !py-2 !text-[12.5px]`}>Cancel</button>
+            </div>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }

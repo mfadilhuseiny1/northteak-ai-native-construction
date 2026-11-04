@@ -9,7 +9,7 @@ from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from . import project as P
+from . import language as L, project as P
 
 KINDS = {"material": "Material approval", "shop": "Shop drawing", "method": "Method statement", "sample": "Sample or mock-up"}
 OPEN = ("draft", "submitted")
@@ -42,7 +42,7 @@ def add(title: str, kind: str, activity: str = "", to: str = "", ref: str = "", 
     if kind not in KINDS:
         raise ValueError(f"kind must be one of: {', '.join(KINDS)}")
     sid = P.next_id("submittal")
-    rec = {"id": sid, "title": str(title).strip(), "kind": kind, "activity": activity, "to": to.strip() or "Konsultan Pengawas", "ref": ref.strip(), "note": note.strip(), "status": "draft", "rev": 0, "raised": P.TODAY, "submitted_on": "", "decided_on": "", "decided_by": "", "needed_by": _needed_by(activity), "file": "", "file_name": "", "source": source or {}, "history": []}
+    rec = {"id": sid, "title": str(title).strip(), "kind": kind, "activity": activity, "to": to.strip() or L.say("Supervision consultant (Konsultan Pengawas)", "Konsultan Pengawas"), "ref": ref.strip(), "note": note.strip(), "status": "draft", "rev": 0, "raised": P.TODAY, "submitted_on": "", "decided_on": "", "decided_by": "", "needed_by": _needed_by(activity), "file": "", "file_name": "", "source": source or {}, "history": []}
     return P.put("submittal", sid, rec, who, "raised a submittal", rec["title"])
 
 

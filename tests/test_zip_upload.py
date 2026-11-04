@@ -74,3 +74,19 @@ def test_the_digital_twin_says_what_is_in_scope_and_takes_real_readings():
     assert r["kept"] == 1 and r["refused"] == ["nope/x"]
     assert c.get("/api/project/twin").json()["readings"][device["id"]][metric]["value"] == 1
     assert c.post("/api/project/twin/readings", json=[]).status_code == 400
+
+
+def test_the_twin_finds_the_systems_a_coarse_wbs_names_only_in_its_sections(monkeypatch):
+    from swarm import twin
+    plans = [{"status": "pending", "plan": {"sections": [{"name": "Instalasi Hydrant dan Sprinkler"}, {"name": "Tata Udara Ruangan"}]}},
+             {"status": "superseded", "plan": {"sections": [{"name": "Elektronika, CCTV dan Data"}]}}]
+    records = {"activity": [{"name": "Instalasi Mekanikal"}, {"name": "Instalasi Elektrikal Lantai 1"}], "package": [], "plan": plans}
+    monkeypatch.setattr(twin.P, "all_of", lambda kind: records.get(kind, []))
+    found = twin._systems_in_scope(twin._scope_names())
+    assert found["fire"] == ["Instalasi Hydrant dan Sprinkler"] and found["hvac"] == ["Tata Udara Ruangan"]
+    assert found["energy"] == ["Instalasi Elektrikal Lantai 1"], "a building's electrical installation has its panels"
+    assert not found["cctv"], "a superseded plan says nothing about the building"
+    plans[0]["plan"]["boq_lines"] = [{"name": "Instalasi 1 Titik CCTV"}, {"name": "Pemasangan 1 unit AC Cassette 2 PK"}]
+    found = twin._systems_in_scope(twin._scope_names())
+    assert found["cctv"] == ["Instalasi 1 Titik CCTV"], "the BoQ names what the sections were not worded to say"
+    assert found["hvac"] == ["Tata Udara Ruangan", "Pemasangan 1 unit AC Cassette 2 PK"], "the plan's own words come first"

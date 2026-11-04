@@ -5,8 +5,8 @@ solar, pumps and the STP, the lift) is in scope, with the work package that says
 no document here asks for, is offered apart as an add-on. How many devices go on a floor follows a stated rule of thumb per floor area, for a
 designer to check, never a measured design.
 
-There is no building management system behind it yet. A device's readings are real once a system sends them to /api/project/twin/readings;
-until then the screen simulates them and says so. Nothing here is stored as if it had been measured.
+There is no building management system behind it yet. A device's readings are real once a system sends them to /api/project/twin/readings,
+directly or over MQTT through mqtt_bridge.py; until then the screen simulates them and says so. Nothing here is stored as if it had been measured.
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ SYSTEMS = [
      [("climate", "Temperature and humidity", ("area", 100), ["temperature", "humidity"]), ("co2", "CO₂ sensor", ("area", 150), ["co2"])]),
     ("cctv", "CCTV", r"cctv|kamera", "#9085e9",
      [("camera", "Camera", ("area", 150), ["online", "people"])]),
-    ("energy", "Power and energy", r"panel|listrik|solar|genset|\bmdp\b|\bsdp\b|tenaga listrik", "#c98500",
+    ("energy", "Power and energy", r"panel|listrik|elektrikal|solar|genset|\bmdp\b|\bsdp\b|tenaga listrik", "#c98500",
      [("meter", "kWh meter, floor panel", ("floor", 1), ["power"]), ("main", "Main panel meter", ("ground", 1), ["power"]), ("solar", "Solar inverter", ("roof", 1), ["generation"])]),
     ("water", "Water and plumbing", r"plambing|plumbing|pompa|\bstp\b|ground water tank|tangki|sanitari|air bersih", "#199e70",
      [("tank", "Tank level", ("ground", 1), ["level"]), ("roof_tank", "Roof tank level", ("roof", 1), ["level"]), ("pump", "Pump", ("ground", 1), ["running", "pressure"]), ("stp", "STP sensor", ("ground", 1), ["ph"])]),
@@ -46,6 +46,15 @@ METRICS = {  # unit, normal range for the simulation, the line past which it ale
     "running": ("", (0, 1), None), "pressure": ("bar", (2.5, 4.5), None), "ph": ("", (6.8, 7.6), 8.5), "trips": ("", (0, 40), None), "fault": ("", (0, 0), 1),
     "occupancy": ("%", (0, 90), None), "lux": ("lx", (300, 600), None), "entries": ("", (0, 60), None), "vibration": ("mm/s", (0.1, 1.2), 5), "tilt": ("°", (0, 0.05), 0.2),
 }
+
+
+def _scope_names() -> list[str]:
+    """What the scope is called: its work packages, then the sections of a plan still standing, then the rows of its BoQ. A WBS an agent writes
+    can be coarse ("Instalasi Mekanikal"), and its sections are worded differently from one run to the next. The BoQ, read by code, names the
+    hydrant box, the AC unit and the CCTV point the same way every time."""
+    names = [a["name"] for a in P.all_of("activity")] + [p["name"] for p in P.all_of("package")]
+    standing = [rec.get("plan", {}) for rec in P.all_of("plan") if rec.get("status") in ("pending", "approved")]
+    return names + [s["name"] for p in standing for s in p.get("sections") or [] if s.get("name")] + [x["name"] for p in standing for x in p.get("boq_lines") or [] if x.get("name")]
 
 
 def _systems_in_scope(names: list[str]) -> dict[str, list[str]]:
@@ -87,7 +96,7 @@ def schema() -> dict:
     floors = sorted([f for f in model.get("storeys", []) if f.get("planned", True)], key=lambda f: f["index"])
     if not floors or not model.get("width"):
         return {"floors": [], "systems": [], "devices": [], "note": "No building to place sensors in yet: the 3D model needs work packages with floors."}
-    names = [a["name"] for a in P.all_of("activity")] + [p["name"] for p in P.all_of("package")]
+    names = _scope_names()
     found = _systems_in_scope(names)
     if model.get("lift"):
         found["lift"] = found["lift"] or ["the 3D model has a lift core"]
@@ -149,8 +158,18 @@ def twin() -> dict:
     return schema()
 
 
+@router.get("/api/project/twin/readings")
+def latest() -> dict:
+    """Only the readings, for a screen that asks again every few seconds: the whole twin reads every plan, and takes most of a second."""
+    return P.meta("twin_readings") or {}
+
+
 @router.post("/api/project/twin/readings")
-def readings(body: list[Reading]) -> dict:
+def readings(body: list[Reading], project: str = "") -> dict:
+    """project, when given, must be the one open: device names repeat from one project to the next, so a broker's readings for one would
+    otherwise land in whichever is open. The MQTT bridge always gives it."""
     if not body:
         raise HTTPException(400, "send at least one reading")
+    if project and project != P.DB.stem:
+        raise HTTPException(409, f"these readings are for {project}, but {P.DB.stem} is the project open in the app")
     return take(body)

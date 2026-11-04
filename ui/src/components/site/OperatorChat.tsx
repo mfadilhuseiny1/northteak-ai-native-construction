@@ -35,6 +35,8 @@ type Turn = { id: string; q: string; status: string; events: AipEvent[]; spent?:
 const LAST = "northteak.operator.last";
 const remember = (id: string | null) => { try { if (id) sessionStorage.setItem(LAST, id); else sessionStorage.removeItem(LAST); } catch { /* storage off */ } };
 const remembered = (): string | null => { try { return sessionStorage.getItem(LAST); } catch { return null; } };
+/** Called when the app changes project: the last conversation was about the project left behind, so the copilot starts afresh. */
+export const forgetThread = () => remember(null);
 
 function TurnView({ turn, busy, go }: { turn: Turn; busy: boolean; go: (to: string) => void }) {
   const [showSteps, setShowSteps] = useState(false);

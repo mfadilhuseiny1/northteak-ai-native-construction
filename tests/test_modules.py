@@ -186,6 +186,12 @@ def test_before_any_plan_the_board_still_shows_the_programme():
     assert {c["id"] for c in b["cards"]} == {a[0] for a in C.ACTIVITIES} and b["plan"] is None
 
 
+def test_a_work_item_on_no_activity_still_has_its_place_on_the_board():
+    """One once made the board, and every view that reads it, fail."""
+    w = P.add_work_item("Pasang bouwplank", "Mandor", "2027-01-10")
+    assert next(c for c in M.board()["cards"] if c["id"] == w["id"])["cpm_rank"] >= 1
+
+
 def test_the_board_drives_the_schedule(approved):
     assert activity("A50")["progress"] == 0 and activity("A50")["progress_from"] == "tasks"
     P.close_ncr("NCR-014", "Rework done.")
@@ -335,6 +341,19 @@ def test_a_dependency_that_would_make_a_loop_is_refused():
         P.update_activity("A20", None, None, ["A90"])
     with pytest.raises(ValueError, match="no such activity"):
         P.update_activity("A20", None, None, ["Z99"])
+
+
+def test_a_duration_lag_or_start_past_any_calendar_is_refused_and_nothing_is_saved():
+    """Ten years at most: a figure past that was saved, and every view of the schedule then failed on a date past the year 9999."""
+    before = P.schedule_state()
+    waits = next(a for a in P.activity_rows() if a[0] == "B20")[3][0]
+    for change in ({"duration": 10 ** 12}, {"duration": P.MOST_DAYS + 1}, {"lags": {waits: 10 ** 12}}, {"lags": {waits: -4000}}, {"earliest": "9999-12-31"}):
+        with pytest.raises(ValueError, match="at most|more than"):
+            P.update_activity("B20", None, change.get("duration"), earliest=change.get("earliest"), lags=change.get("lags"))
+    with pytest.raises(ValueError, match="at most"):
+        P.add_activity("Forever", "WP-STR", 10 ** 12)
+    assert P.schedule_state() == before and len(P.schedule()["activities"]) == len(P.activity_rows()), "nothing was saved, and the schedule still reads"
+    assert P.update_activity("B20", None, P.MOST_DAYS)["duration"] == P.MOST_DAYS
 
 
 def test_a_person_can_add_an_activity_and_a_milestone_and_the_schedule_takes_them():

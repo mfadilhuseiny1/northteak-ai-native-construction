@@ -26,6 +26,15 @@ body {
 *::-webkit-scrollbar-track { background: transparent; }
 .no-scrollbar { scrollbar-width: none; }
 
+/* the header gives up room only as far as its tabs need it (data-tight, measured in page.tsx): first the group names, then the brand's words, then the space around each tab, then the names of the tabs that are not open */
+[data-tight="1"] .drop-1, :is([data-tight="2"], [data-tight="3"]) :is(.drop-1, .drop-2), [data-tight="4"] :is(.drop-1, .drop-2, .drop-4) { display: none; }
+[data-tight="3"] .snug { padding-inline: 6px; }
+[data-tight="4"] .snug { padding-inline: 8px; }
+
+/* the NorthTeak logo (public/logo): the tree alone, or the tree with its name, painted in the text colour so it sits on the dark screens */
+.logo-mark, .logo-full { display: block; background-color: currentColor; mask: url(/logo/northteak-mark.svg) center / contain no-repeat; }
+.logo-full { mask-image: url(/logo/northteak.svg); }
+
 /* every interactive element answers the keyboard and the pointer */
 button, a, select, input, textarea { transition: background-color .15s ease, border-color .15s ease, color .15s ease, box-shadow .15s ease, transform .15s ease; }
 :focus-visible { outline: 2px solid #f5b82e; outline-offset: 1px; border-radius: 4px; }
