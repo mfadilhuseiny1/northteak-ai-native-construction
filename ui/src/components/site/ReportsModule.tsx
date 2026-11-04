@@ -2,6 +2,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Icon, type IconName } from "@/components/Icon";
 import { API_URL } from "@/lib/api";
+import { AdoptionView } from "./AdoptionView";
 import { api, Bar, Card, field, Label, Loading, money, notifyChanged, NotYet, num, Pill, primary, Problem, quiet, Side, useData, useGo, type Rec, type Tone } from "./kit";
 import { ACTUAL, Meter, Milestones, PLAN, Ring, SCurve, STATE, STATE_WORD, Steps } from "./ReportCharts";
 import { FundingPages } from "./FundingPages";
@@ -13,6 +14,7 @@ const VIEWS: [string, string, string][] = [
   ["project", "This project", "monthly, for the project officer: money, programme, variations, contingency, photos"],
   ["portfolio", "Portfolio", "monthly, for senior management and the board: every project, five questions"],
   ["funding", "Funding", "quarterly, for the CFO and the banks: one page per project"],
+  ["adoption", "Adoption", "for the owner: is the team really running the job in here"],
 ];
 type Status = keyof typeof STATE;
 const monthOf = (period: string) => new Date(`${period}-01T00:00:00Z`).toLocaleString("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
@@ -48,6 +50,7 @@ export function ReportsModule({ sub, target }: { sub: string; target: string }) 
       {view === "project" && <ProjectReport target={target} />}
       {view === "portfolio" && <PortfolioReport />}
       {view === "funding" && <FundingPreview />}
+      {view === "adoption" && <AdoptionView />}
     </div>
   );
 }
@@ -178,7 +181,7 @@ function Changes({ r }: { r: Rec }) {
 const VO_STATUS: Record<string, [string, Tone]> = { proposed: ["Draft", "none"], submitted: ["With the owner", "info"], approved: ["Approved", "ok"], rejected: ["Rejected", "bad"] };
 
 /** Entered under Cost, and only shown on the report: without act and onAdd the register has nothing to press but the way there. */
-export function Variations({ r, act, onAdd }: { r: Rec; act?: (fn: () => Promise<unknown>) => Promise<boolean>; onAdd?: () => void }) {
+export function Variations({ r, act, onAdd, onSend }: { r: Rec; act?: (fn: () => Promise<unknown>) => Promise<boolean>; onAdd?: () => void; onSend?: (id: string) => void }) {
   const go = useGo();
   const v = r.variations as Rec, rows = v.variations as Rec[], t = v.totals as Rec;
   const move = (id: string, status: string) => act?.(() => api(`/api/project/variations/${id}`, { status }));
@@ -205,8 +208,8 @@ export function Variations({ r, act, onAdd }: { r: Rec; act?: (fn: () => Promise
               {x.days > 0 && <span className="whitespace-nowrap text-[11px] text-[#abb3bf]">+{x.days} days</span>}
               <Pill tone={VO_STATUS[x.status][1]}>{VO_STATUS[x.status][0]}</Pill>
               {act && <span className="flex gap-1">
-                {x.status === "proposed" && <button onClick={() => move(x.id, "submitted")} className={quiet}>Send to owner</button>}
-                {x.status === "submitted" && <><button onClick={() => move(x.id, "approved")} className={quiet}>Owner approved</button><button onClick={() => move(x.id, "rejected")} className={quiet}>Owner rejected</button></>}
+                {x.status === "proposed" && <button onClick={() => (onSend ? onSend(x.id) : move(x.id, "submitted"))} className={quiet}>Send to owner</button>}
+                {x.status === "submitted" && <>{onSend && <button onClick={() => onSend(x.id)} className={quiet}>Send again</button>}<button onClick={() => move(x.id, "approved")} className={quiet}>Owner approved</button><button onClick={() => move(x.id, "rejected")} className={quiet}>Owner rejected</button></>}
                 {x.status === "rejected" && <button onClick={() => move(x.id, "proposed")} className={quiet}>Reopen</button>}
               </span>}
             </li>

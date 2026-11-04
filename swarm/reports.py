@@ -374,7 +374,7 @@ def set_actual(week: int, progress: float | None, costs: dict[str, int], note: s
             P.log(who, "cleared a week's actuals", "actual_week", rid, f"week {week}")
         return {"week": week, "cleared": True}
     items = [P.add_cost_item(pid, f"Actual cost, week {week}", amount, source=f"Recorded for week {week} in the Kurva-S", who=who, actual=True)["id"] for pid, amount in costs.items()]
-    rec = {"id": rid, "week": week, "progress": progress, "costs": costs, "items": items, "note": note.strip(), "who": who, "at": time.strftime("%Y-%m-%d %H:%M")}
+    rec = {"id": rid, "week": week, "progress": progress, "costs": costs, "items": items, "note": note.strip(), "who": P.person(who), "at": time.strftime("%Y-%m-%d %H:%M")}
     told = ", ".join(x for x in (f"{progress}% progress" if progress is not None else "", rp(sum(costs.values())) if costs else "") if x)
     return P.put("actual_week", rid, rec, who, "recorded a week's actuals", f"week {week}: {told or 'a note'}")
 

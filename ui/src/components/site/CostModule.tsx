@@ -1,6 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
 import { api, Bar, Card, Empty, field, full, inFocus, Kpi, Kpis, Loading, money, num, Pill, primary, Problem, quiet, Ref, SubTabs, useData, useFocus, useGo, type Rec, NotYet } from "./kit";
+import { CostCodesView } from "./CostCodesView";
+import { Sender } from "./ExchangeModule";
 import { KurvaS } from "./KurvaS";
 import { ClaimsView } from "./RecordsViews";
 import { ACTUAL, PLAN } from "./ReportCharts";
@@ -70,6 +72,7 @@ function Control({ target }: { target: string }) {
   const { focus } = useFocus();
   const [form, setForm] = useState<typeof EMPTY | null>(null);
   const [adding, setAdding] = useState(false);
+  const [sending, setSending] = useState("");
   const shown = Boolean(data && changes.data);
   useEffect(() => { if (target && shown) document.getElementById(`control-${target}`)?.scrollIntoView({ behavior: "smooth", block: "start" }); }, [target, shown]);
   if (!data) return <div className="flex-1"><Problem err={err} />{!err && <Loading />}</div>;
@@ -136,12 +139,13 @@ function Control({ target }: { target: string }) {
         </Card>
         {changes.data && (
           <div className="grid gap-3 xl:grid-cols-3">
-            <div id="control-variations" className="scroll-mt-3 xl:col-span-2"><Variations r={changes.data} act={changes.act} onAdd={() => setAdding(true)} /></div>
+            <div id="control-variations" className="scroll-mt-3 xl:col-span-2"><Variations r={changes.data} act={changes.act} onAdd={() => setAdding(true)} onSend={setSending} /></div>
             <div id="control-contingency" className="scroll-mt-3"><Contingency r={changes.data} act={changes.act} /></div>
           </div>
         )}
       </div>
       {adding && changes.data && <VariationForm r={changes.data} act={changes.act} onClose={() => setAdding(false)} />}
+      {sending && <Sender kind="variation" id={sending} to="PPK" onClose={() => setSending("")} onSent={() => void changes.reload()} />}
       </div>
     </div>
   );
@@ -271,14 +275,15 @@ function Takeoff() {
 }
 
 export function CostModule({ sub, target }: { sub: string; target: string }) {
-  const tab = ["boq", "takeoff", "control", "claims"].includes(sub) ? sub : "estimate";
+  const tab = ["boq", "takeoff", "control", "claims", "codes"].includes(sub) ? sub : "estimate";
   return (
     <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-      <SubTabs base="cost" sub={tab} tabs={[["estimate", "Estimate"], ["control", "Budget and cost"], ["boq", "BOQ"], ["takeoff", "Take-off and BoM"]]} />
+      <SubTabs base="cost" sub={tab} tabs={[["estimate", "Estimate"], ["control", "Budget and cost"], ["boq", "BOQ"], ["takeoff", "Take-off and BoM"], ["codes", "Cost codes"]]} />
       {tab === "estimate" && <Estimate />}
       {tab === "control" && <Control target={target} />}
       {tab === "boq" && <Boq />}
       {tab === "takeoff" && <Takeoff />}
+      {tab === "codes" && <CostCodesView />}
       {tab === "claims" && <ClaimsView />}
     </div>
   );

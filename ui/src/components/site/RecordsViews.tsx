@@ -6,6 +6,16 @@ import { api, Bar, Empty, field, full, good, inFocus, inline, Kpi, Kpis, Label, 
 
 /* The daily log, under Kanban: what happened on site each day. And claims with their payments, under BOQ & Cost. */
 
+/** The daily log on the menu, with the way to it from a phone. */
+export function SiteLog() {
+  return (
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      <p className="flex shrink-0 flex-wrap items-center gap-2 border-b border-white/10 bg-[#151e28] px-4 py-2 text-[12px] text-[#abb3bf]">On site, use the phone view: tasks, daily log and photos, one hand, and it keeps working with no signal.<a href="/field" target="_blank" rel="noreferrer" className={`${quiet} ml-auto`}>Open the phone view</a></p>
+      <DailyReportsView />
+    </div>
+  );
+}
+
 export function DailyReportsView() {
   const { data, err, act } = useData("/api/project/daily-reports");
   const { focus } = useFocus();

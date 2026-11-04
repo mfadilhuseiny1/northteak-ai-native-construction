@@ -36,7 +36,10 @@ if errorlevel 1 (
 )
 
 echo Starting the screens...
-start "SiteSwarm screens" /d ui cmd /k npx next start -p 8310
+rem Until accounts exist the screens listen only on this computer, so nothing is open to the network by accident.
+set "LISTEN=127.0.0.1"
+for /f %%a in ('.venv\Scripts\python.exe -W ignore -c "from swarm import accounts; print('0.0.0.0' if accounts.enabled() else '127.0.0.1')"') do set "LISTEN=%%a"
+start "SiteSwarm screens" /d ui cmd /k npx next start -p 8310 -H %LISTEN%
 powershell -NoProfile -Command "$ok=$false; foreach ($i in 1..30) { try { if ((Invoke-WebRequest -UseBasicParsing 'http://127.0.0.1:8310/' -TimeoutSec 2).Content -match 'SiteSwarm') { $ok=$true; break } } catch { Start-Sleep 1 } }; if ($ok) { exit 0 } else { exit 1 }" >nul 2>&1
 if errorlevel 1 (
   echo.

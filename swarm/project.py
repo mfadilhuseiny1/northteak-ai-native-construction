@@ -14,6 +14,7 @@ import sqlite3
 import threading
 import time
 from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Any, Callable, Iterator
@@ -24,6 +25,7 @@ from .scenes import SCENES
 
 DB: Path = config.ROOT / "data" / "firm" / "project.db"
 PM = "Project manager"
+ACTOR: ContextVar[str] = ContextVar("actor", default="")  # who is signed in for the request being served
 SWARM = "Agent swarm"
 TODAY = C.TODAY
 COST_SHARE = 0.88  # the control budget against the BoQ's sell value: an invented figure
@@ -70,7 +72,7 @@ CREW = {"2026-10-05": 30, "2026-10-06": 18, "2026-10-07": 30, "2026-10-08": 30}
 WEATHER = {"2026-10-05": "dry", "2026-10-06": "dry until 15:00, then heavy rain", "2026-10-07": "dry", "2026-10-08": "showers after 13:00"}
 RAINY = {"2026-10-06", "2026-10-08"}
 PREVIOUS_CERTIFIED = 3_200_000_000
-PREFIX = {"package": "WP", "work_item": "WI", "rfi": "RFI", "daily_report": "DR", "ncr": "NCR", "message": "MG", "cost_item": "CI", "invoice": "INV", "activity": "AC", "milestone": "M", "boq": "BQ", "po": "PO", "inspection": "IN", "document": "UP", "photo": "PH", "risk": "RSK", "variation": "VO", "contingency_use": "CU"}
+PREFIX = {"submittal": "SUB", "package": "WP", "work_item": "WI", "rfi": "RFI", "daily_report": "DR", "ncr": "NCR", "message": "MG", "cost_item": "CI", "invoice": "INV", "activity": "AC", "milestone": "M", "boq": "BQ", "po": "PO", "inspection": "IN", "document": "UP", "photo": "PH", "risk": "RSK", "variation": "VO", "contingency_use": "CU"}
 TASK_STATUS = ("open", "doing", "review", "done")  # a card on the Kanban board; proposed, rejected and superseded are not on it as work
 
 SEED_VERSION = "2"  # raise when the seeded records change shape
@@ -119,7 +121,13 @@ def get(kind: str, rid: str) -> dict | None:
         return json.loads(row[0]) if row else None
 
 
+def person(who: str) -> str:
+    """The person signed in, where a step knows only their job. An agent, or someone answering by link, stays as they are."""
+    return (ACTOR.get() or who) if who in (PM, "Site engineer") else who
+
+
 def log(who: str, action: str, kind: str, rid: str, detail: str = "") -> None:
+    who = person(who)
     with _lock:
         _db().execute("insert into audit (t, who, action, kind, id, detail) values (?, ?, ?, ?, ?, ?)", (time.strftime("%Y-%m-%d %H:%M:%S"), who, action, kind, rid, detail))
         _db().commit()
@@ -338,6 +346,12 @@ def answers_folder() -> Path:
 def kept_answers() -> int:
     """How many finished answers a stopped run left for the next one to pick up."""
     return sum(1 for _ in answers_folder().glob("*.json"))
+
+
+def path_of(pid: str) -> Path | None:
+    """Where a project's records are."""
+    p = next((x for x in projects()["projects"] if x["id"] == pid), None)
+    return None if not p else SCENARIO_DB if p.get("scenario") else SCENARIO_DB.parent / "projects" / f"{pid}.db"
 
 
 def upload_folder() -> Path:
@@ -1056,13 +1070,13 @@ def daily_reports(level: str | None = None) -> list[dict]:
 
 def add_daily_report(fields: dict, who: str = PM) -> dict:
     rid = next_id("daily_report")
-    rec = {"id": rid, "date": fields.get("date") or TODAY, "area": fields.get("area", ""), "author": fields.get("author") or who, "text": fields.get("text", ""), "package": fields.get("package", ""), "activity": fields.get("activity", ""), "items": [],
+    rec = {"id": rid, "date": fields.get("date") or TODAY, "area": fields.get("area", ""), "author": fields.get("author") or person(who), "text": fields.get("text", ""), "package": fields.get("package", ""), "activity": fields.get("activity", ""), "items": [],
            "crew": fields.get("crew"), "weather": fields.get("weather", ""), "verified": False, "verified_by": "", "source": "site"}
     return put("daily_report", rid, rec, who, "filed a daily report", rec["text"][:120])
 
 
 def verify_daily_report(rid: str, who: str = "Site engineer") -> dict:
-    return patch("daily_report", rid, {"verified": True, "verified_by": who}, who, "verified a daily report")
+    return patch("daily_report", rid, {"verified": True, "verified_by": person(who)}, who, "verified a daily report")
 
 
 def quality() -> dict:
@@ -1126,7 +1140,7 @@ def inspection_result(iid: str, result: str, checklist: list[dict] | None = None
             raise ValueError("a point on the checklist failed, so record a fail")
         if any(c.get("ok") is None for c in items):
             raise ValueError("tick every point on the checklist first")
-        rec = patch("inspection", iid, {**evidence, "status": "passed", "date": TODAY, "next": "", "signed_by": who}, who, "passed an inspection", i["title"])
+        rec = patch("inspection", iid, {**evidence, "status": "passed", "date": TODAY, "next": "", "signed_by": person(who)}, who, "passed an inspection", i["title"])
         _finish_task(rec, who)
         return rec
     if result == "fail":
@@ -1159,7 +1173,7 @@ def issue_rfi(rid: str, who: str = PM) -> dict:
         raise KeyError(rid)
     if r["status"] != "draft":
         raise ValueError("only a draft can be issued")
-    return patch("rfi", rid, {"status": "open", "ball_in_court": r.get("to", "")}, who, "issued an RFI", r.get("subject", ""))
+    return patch("rfi", rid, {"status": "open", "ball_in_court": r.get("to", ""), "issued_on": TODAY}, who, "issued an RFI", r.get("subject", ""))
 
 
 def answer_rfi(rid: str, answer: str, who: str = PM) -> dict:
@@ -1422,7 +1436,7 @@ def decide(did: str, verdict: str, option: str = "", note: str = "", who: str = 
     if verdict == "reject":
         for w in items:
             patch("work_item", w["id"], {"status": "rejected"}, who, "rejected a proposed work item", "with the plan")
-        return patch("decision", did, {"status": "rejected", "decided_by": who, "decided_at": time.strftime("%Y-%m-%d %H:%M"), "note": note}, who, "rejected the recovery plan", note)
+        return patch("decision", did, {"status": "rejected", "decided_by": person(who), "decided_at": time.strftime("%Y-%m-%d %H:%M"), "note": note}, who, "rejected the recovery plan", note)
     chosen = option or d.get("recommended") or ""
     if chosen not in C.OPTIONS:
         raise ValueError("choose an option")
@@ -1458,7 +1472,7 @@ def decide(did: str, verdict: str, option: str = "", note: str = "", who: str = 
     for w in items:
         patch("work_item", w["id"], {"status": "open"}, who, "opened a work item", w["title"])
     effects = effects_of(chosen) + [f"{len(items)} work items opened."]
-    return patch("decision", did, {"status": "approved", "option": chosen, "decided_by": who, "decided_at": time.strftime("%Y-%m-%d %H:%M"), "note": note, "effects": effects}, who, "approved the recovery plan", f"option {chosen}. {note}".strip())
+    return patch("decision", did, {"status": "approved", "option": chosen, "decided_by": person(who), "decided_at": time.strftime("%Y-%m-%d %H:%M"), "note": note, "effects": effects}, who, "approved the recovery plan", f"option {chosen}. {note}".strip())
 
 
 def message_action(mid: str, action: str, who: str = PM) -> dict:
@@ -1468,9 +1482,9 @@ def message_action(mid: str, action: str, who: str = PM) -> dict:
     if m["status"] != "draft":
         raise ValueError("this message has already been decided")
     if action == "approve":  # a demo connector is all there is so far, so nothing leaves this machine
-        return patch("message", mid, {"status": "approved", "decided_by": who}, who, "approved a message", f"to {m['to']} over {m['channel']} (demo connector: not really sent)")
+        return patch("message", mid, {"status": "approved", "decided_by": person(who)}, who, "approved a message", f"to {m['to']} over {m['channel']} (demo connector: not really sent)")
     if action == "reject":
-        return patch("message", mid, {"status": "rejected", "decided_by": who}, who, "rejected a message", f"to {m['to']}")
+        return patch("message", mid, {"status": "rejected", "decided_by": person(who)}, who, "rejected a message", f"to {m['to']}")
     raise ValueError("unknown action")
 
 
@@ -1819,7 +1833,7 @@ def decide_plan(pid: str, verdict: str, note: str = "", who: str = PM) -> dict:
         if rec["plan"].get("kind") == "package":
             _clear_breakdown()
             _drop_drafts(pid)
-        return patch("plan", pid, {"status": "rejected", "decided_by": who, "decided_at": now, "note": note}, who, "rejected the work plan", note)
+        return patch("plan", pid, {"status": "rejected", "decided_by": person(who), "decided_at": now, "note": note}, who, "rejected the work plan", note)
     plan = plan_view(rec)["plan"]
     for old in all_of("plan"):
         if old["status"] == "approved":
@@ -1873,7 +1887,7 @@ def decide_plan(pid: str, verdict: str, note: str = "", who: str = PM) -> dict:
         put("po", rid, {"id": rid, "item": f"{m['name']}, {m['gross']:,.1f} {m['unit']}", "supplier": "To be confirmed", "package": package, "activity": users[0]["activity"] if users else plan["activities"][0], "needed": needed, "promised": "", "status": "requested", "value": m["cost"], "received_on": "", "note": f"From {pid}: {m['net']:,.1f} {m['unit']} net and {m['waste']:,.1f} waste.", "plan": pid, "material": m["key"], "steps": m["steps"]}, who, "requested material", m["name"])
         requests += 1
     effects = [f"{len(plan['steps'])} tasks go on the Kanban board, and {len(items)} items from the agents.", f"{planned} inspections go to QA/QC.", f"{requests} material requests go to Procurement, worth Rp {sum(m['cost'] for m in plan['materials']):,}.", *([f"{len(refused)} work package{'' if len(refused) == 1 else 's'} you rejected {'stays' if len(refused) == 1 else 'stay'} in the schedule with no tasks: {', '.join(sorted(refused))}."] if refused else []), *([f"{dropped} drafted question{'' if dropped == 1 else 's'} you rejected {'was' if dropped == 1 else 'were'} dropped."] if dropped else [])]
-    return patch("plan", pid, {"status": "approved", "decided_by": who, "decided_at": now, "note": note, "effects": effects}, who, "approved the work plan", note)
+    return patch("plan", pid, {"status": "approved", "decided_by": person(who), "decided_at": now, "note": note, "effects": effects}, who, "approved the work plan", note)
 
 
 def plan_actual(pid: str, step_id: str, man_hours: float | None, materials: dict[str, float], who: str = PM) -> dict:

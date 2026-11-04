@@ -24,6 +24,7 @@ export type Rec = Record<string, any>;
 
 export async function api<T = Rec>(path: string, body?: unknown): Promise<T> {
   const r = await fetch(`${API_URL}${path}`, { cache: "no-store", ...(body !== undefined ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {}) });
+  if (r.status === 401 && !path.startsWith("/api/auth/") && typeof window !== "undefined") window.dispatchEvent(new Event("signed-out"));
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail ?? `${r.status} ${r.statusText}`);
   return r.json();
 }

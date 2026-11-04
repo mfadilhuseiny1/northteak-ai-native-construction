@@ -68,7 +68,7 @@ def _context() -> dict[str, Any]:
     orders = P.all_of("po")
     docs = _static_documents() + [d for d in P.all_of("document") if d.get("source") == "upload"]
     return {"sched": sched, "acts": {a["id"]: a for a in sched["activities"]}, "rec": plan, "plan": plan["plan"] if plan else None, "steps": {s["id"]: s for s in plan["plan"]["steps"]} if plan else {},
-            "by_step": {w["step"]: w for w in items if w.get("step") and plan and w.get("plan") == plan["id"] and w["status"] in P.TASK_STATUS}, "items": items, "rfis": P.all_of("rfi"), "ncrs": P.all_of("ncr"), "orders": orders,
+            "by_step": {w["step"]: w for w in items if w.get("step") and plan and w.get("plan") == plan["id"] and w["status"] in P.TASK_STATUS}, "items": items, "rfis": P.all_of("rfi"), "submittals": P.all_of("submittal"), "ncrs": P.all_of("ncr"), "orders": orders,
             "inspections": P.all_of("inspection"), "subs": {s["id"]: s for s in P.subcontractors()}, "superseded": extract.superseded(docs),
             "requests": {o["material"]: o for o in orders if plan and o.get("plan") == plan["id"] and o.get("material")}}
 
@@ -97,8 +97,9 @@ def _blockers(w: dict, ctx: dict) -> list[dict]:
                 out.append({"kind": "activity", "ref": p, "text": f"{p} must finish first: {before['name']}, forecast {before['finish']}", "stop": False, "go": f"schedule/gantt:{p}"})
     if w.get("physical"):
         for r in ctx["rfis"]:
-            if r["status"] == "open" and r.get("activity") == w.get("activity") and _rfi_touches(r, step, ctx):
-                out.append({"kind": "rfi", "ref": r["id"], "text": f"{r['id']} is open: {r['subject']}", "stop": False, "go": f"documents/rfis:{r['id']}"})
+            if r["status"] == "open" and (r.get("activity") == w.get("activity") or w.get("activity") in (r.get("activities") or [])) and _rfi_touches(r, step, ctx):
+                out.append({"kind": "rfi", "ref": r["id"], "text": f"{r['id']} is open: {r['subject']}", "stop": False, "go": f"exchange/rfis:{r['id']}"})
+        out += _waiting_approval(w.get("activity"), ctx)
         for n in ctx["ncrs"]:
             if n["status"] == "open" and n.get("activity") == w.get("activity") and not n.get("inspection"):
                 out.append({"kind": "ncr", "ref": n["id"], "text": f"{n['id']} is open: {n['title']}", "stop": False, "go": f"quality/ncrs:{n['id']}"})
@@ -126,6 +127,11 @@ def _card(w: dict, ctx: dict) -> dict:
     act = ctx["acts"].get(w.get("activity") or "")
     return {**w, "type": "task" if w.get("physical") else "action", "due": due, "start": start, "overdue": bool(due and due < P.TODAY and w["status"] != "done"), "blockers": blockers, "stopped": any(b["stop"] for b in blockers), "blocked": bool(blockers),
             "activity_name": act["name"] if act else "", "package": act["package"] if act else "", "wbs": w.get("code") or (act["code"] if act else ""), "critical": bool(step["critical"]) if step else bool(act and act["critical"] and w.get("physical"))}
+
+
+def _waiting_approval(aid: str | None, ctx: dict) -> list[dict]:
+    """A submittal not yet approved warns the work it is for. It takes a person to say whether work goes ahead without it."""
+    return [{"kind": "submittal", "ref": s["id"], "text": f"{s['id']} is not approved: {s['title']}", "stop": False, "go": f"exchange/submittals:{s['id']}"} for s in ctx["submittals"] if aid and s.get("activity") == aid and s["status"] in ("submitted", "rejected")]
 
 
 def _activity_status(progress: int) -> str:
@@ -156,7 +162,9 @@ def _activity_card(a: dict, ctx: dict) -> dict:
             before = ctx["acts"].get(p)
             if before and before["progress"] < 100:
                 blockers.append({"kind": "activity", "ref": p, "text": f"{p} must finish first: {before['name']}, forecast {before['finish']}", "stop": False, "go": f"schedule/gantt:{p}"})
-        blockers += [{"kind": "rfi", "ref": x, "text": f"{x} is open", "stop": False, "go": f"documents/rfis:{x}"} for x in a["rfis"]]
+        blockers += [{"kind": "rfi", "ref": x, "text": f"{x} is open", "stop": False, "go": f"exchange/rfis:{x}"} for x in a["rfis"]]
+        blockers += [{"kind": "rfi", "ref": r["id"], "text": f"{r['id']} is open: {r['subject']}", "stop": False, "go": f"exchange/rfis:{r['id']}"} for r in ctx["rfis"] if r["status"] == "open" and a["id"] in (r.get("activities") or []) and r["id"] not in a["rfis"]]
+        blockers += _waiting_approval(a["id"], ctx)
         blockers += [{"kind": "ncr", "ref": x, "text": f"{x} is open", "stop": False, "go": f"quality/ncrs:{x}"} for x in a["ncrs"] if not any(b["ref"] == x for b in blockers)]
         for x in a["pos"]:
             o = next(o for o in ctx["orders"] if o["id"] == x)

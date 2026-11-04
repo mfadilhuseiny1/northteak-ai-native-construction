@@ -1023,11 +1023,16 @@ def agent_decide(module: str, index: int, verdict: str) -> dict:
 
 
 from . import contract_admin  # noqa: E402 - its routes join these, and it imports the modules above
-from . import reports  # noqa: E402 - the same
+from . import accounts, outside, reports, scorecard, standards, submittals  # noqa: E402 - the same
 from . import tender  # noqa: E402 - the same
 from . import twin  # noqa: E402 - the same
 
 router.include_router(contract_admin.router)
 router.include_router(reports.router)
+router.include_router(submittals.router)
+router.include_router(outside.router)
+router.include_router(scorecard.router)
+router.include_router(standards.router)
+router.include_router(accounts.router)
 router.include_router(tender.router)
 router.include_router(twin.router)

@@ -22,9 +22,12 @@ It runs on Muse Spark and Muse Wonder through the Meta Model API, using [CAMEL-A
 | Workspace | **Timeline** | The schedule, with its baseline and tasks |
 | Workspace | **Critical Path** | Earliest and latest dates and the float, worked out by code, the network of the work, and the chain that holds the finish date |
 | Workspace | **Kanban** | Once the plan is approved, its tasks on a board. Hold points stop what follows them |
+| Workspace | **Site Log** | The daily log, and the way to the phone view below |
 | Workspace | **3D Timeline** | The building as the schedule builds it, day by day: slide the day or press play, and see what is built and what is being worked on. Click a part to see the work package that builds it |
+| Records | **RFIs & Submittals** | Questions for the consultant and what must be approved before work goes ahead, from draft to answer, most urgent first. Each is sent as a link, by the person sending it, and the other side answers there with no account |
 | Records | **Procedures** | Each task as a foreman would follow it: the steps, the crew, the material, the equipment, the safety points, what passes inspection, the exact words in the documents it rests on, and whether it is ready to start |
-| Records | **Cost** | What the work is worth, by control account and work package, with the S-curve, the BoQ and the take-off |
+| Records | **Cost** | What the work is worth, by control account and work package, with the S-curve, the BoQ and the take-off. The firm's cost codes, and an export for accounting |
+| Records | **Reports** | The month, the portfolio, the funding pages, and Adoption: whether the team is really running the job in here, each measure read from what people do |
 
 Every view of the Workspace reads the same work packages. The **AI Copilot** beside any tab is one Muse agent that reads the live records and advises: it changes nothing, and code checks every figure it states. Each question uses a little API credit.
 
@@ -172,6 +175,16 @@ To plan from your own documents, press the **+** beside the project name, name t
 A project of your own has its own records in its own file, separate from the sample. What you enter there is yours, not synthetic. A document goes to a real model only when you press Send to the agents on Home, and then only what you typed and the pages the agents need, from the documents not set aside. Photos go only if you ask an agent to read one.
 
 There is an offline mock for development, through the API and in the tests, where the agents, tools and checks run for real but the models' answers are scripted. No screen offers it. **A mock run proves the wiring and the arithmetic. It says nothing about how well a model plans.** Without a key, the agents on the off-menu screens still work offline, by rule.
+
+## People and access
+
+Until the first account is made, under **Team**, the computer running the app opens without a login and nothing else can reach it: `restart-screens.bat` keeps the screens on this computer, and the API refuses a request that came from elsewhere. A laptop presenting the app needs nothing set up, and nothing is open to a network by accident.
+
+Make the first account, which is an administrator, then run `restart-screens.bat` again. From then on the screens listen on the network, everyone signs in, the audit trail names the person who did each thing, and the server refuses what a role may not do: Administrator, Project manager, Site engineer, Finance or Viewer. An account's password is stored as a scrypt hash, and five wrong tries make it wait a minute.
+
+**On site.** `/field` is the phone view: this week's tasks, the daily log and photos. What is done there is kept on the phone first and sent when there is signal, and it opens with no signal once it has been opened with. A move a rule forbids is refused when it arrives, and the phone says so.
+
+**People outside the firm.** Sending an RFI, a variation or a submittal makes a link to that one item. The person sends it over their own email or WhatsApp: the app sends nothing by itself. The other side answers at `/reply` with no account, the answer is the record, and the trail says who gave it. A link takes one answer and lasts 30 days. For someone outside to open one, the app has to be hosted where they can reach it, with HTTPS.
 
 ## Agents propose, people decide
 

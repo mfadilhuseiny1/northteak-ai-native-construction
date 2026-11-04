@@ -24,6 +24,9 @@ import { CriticalModule } from "@/components/site/CriticalModule";
 import { ProceduresModule } from "@/components/site/ProceduresModule";
 import { RiskModule } from "@/components/site/RiskModule";
 import { SwarmModule, useSwarmLive } from "@/components/site/SwarmModule";
+import { Gate, TeamButton } from "@/components/site/Account";
+import { ExchangeModule } from "@/components/site/ExchangeModule";
+import { SiteLog } from "@/components/site/RecordsViews";
 
 // three.js is large: the 3D timeline loads only when its tab is opened, and only in the browser
 const Model3DModule = dynamic(() => import("@/components/site/Model3DModule").then((m) => m.Model3DModule), { ssr: false, loading: () => <p className="p-6 text-[12px] text-[#abb3bf]">Loading the 3D view…</p> });
@@ -32,12 +35,12 @@ const Model3DModule = dynamic(() => import("@/components/site/Model3DModule").th
 
 const GROUPS: [string, [string, string, IconName][]][] = [
   ["Set up", [["swarm", "Agent Swarm", "constellation"], ["review", "Review", "check"]]],
-  ["Workspace", [["wbs", "WBS", "pipeline"], ["gantt", "Timeline", "clock"], ["critical", "Critical Path", "graph"], ["kanban", "Kanban", "grid"], ["model", "3D Timeline", "cube"], ["twin", "Digital Twin", "signal"]]],
-  ["Records", [["procedures", "Procedures", "doc"], ["cost", "Cost", "gauge"], ["reports", "Reports", "report"]]],
+  ["Workspace", [["wbs", "WBS", "pipeline"], ["gantt", "Timeline", "clock"], ["critical", "Critical Path", "graph"], ["kanban", "Kanban", "grid"], ["site", "Site Log", "camera"], ["model", "3D Timeline", "cube"], ["twin", "Digital Twin", "signal"]]],
+  ["Records", [["exchange", "RFIs & Submittals", "comment"], ["procedures", "Procedures", "doc"], ["cost", "Cost", "gauge"], ["reports", "Reports", "report"]]],
 ];
 const TABS = GROUPS.flatMap(([, tabs]) => tabs);
 const OFF_MENU = ["documents", "schedule", "procurement", "quality", "tower", "risks", "agents"];  // out of the menu to keep the flow plain. A link that needs one still opens it: an RFI to answer, a hold point to sign
-const MOVED: Record<string, string> = { "new": "home", "planning": "home", "analysis": "review", "wbs/plan": "review", "tower/swarm": "swarm", "list": "wbs/packages", "schedule": "gantt", "schedule/gantt": "gantt", "schedule/network": "critical" };
+const MOVED: Record<string, string> = { "new": "home", "planning": "home", "analysis": "review", "wbs/plan": "review", "tower/swarm": "swarm", "documents/rfis": "exchange/rfis", "kanban/daily": "site", "list": "wbs/packages", "schedule": "gantt", "schedule/gantt": "gantt", "schedule/network": "critical" };
 const SETUP_QUESTIONS = ["Where do the documents disagree, and what should I settle before approving?", "What is missing from this package?", "Which assumptions should I check first?", "Explain the critical path in plain words."];
 const COPILOT = "siteswarm.copilot";
 
@@ -63,6 +66,10 @@ function ProjectSwitch() {
 }
 
 export default function Home() {
+  return <Gate><App /></Gate>;
+}
+
+function App() {
   const [route, setRoute] = useState(() => ({ tab: "home", sub: "", target: "" }));
   const [focus, setFocus] = useState<Focus>(null);
   const [counts, setCounts] = useState<Rec>({});
@@ -142,9 +149,10 @@ export default function Home() {
             <button onClick={() => setDemo(true)} title="A three-minute guided demo: each step opens its screen and says what to show" className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-[#f5b82e]/50 px-2.5 py-1 font-medium text-[#f5b82e] hover:bg-[#f5b82e]/10"><Icon name="play" className="h-3.5 w-3.5" />Demo</button>
             <button onClick={toggleCopilot} aria-pressed={showCopilot} title="Ask about this project. It reads the live records and only advises." className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border px-2.5 py-1 font-medium ${showCopilot ? "border-[#2dd4ee] bg-[#2dd4ee] text-[#062a33]" : "border-[#2dd4ee]/50 text-[#2dd4ee] hover:bg-[#2dd4ee]/10"}`}><Icon name="sparkle" className="h-3.5 w-3.5" />AI Copilot</button>
             <ProjectSwitch />
+            <TeamButton />
             {own === false && <span className="shrink-0 text-[11px] text-[#abb3bf] max-[1750px]:hidden">Synthetic data. No real project, company or person.</span>}
           </header>
-          {working && !["home", "review", "swarm"].includes(route.tab) && (
+          {working && !["home", "review", "swarm", "site", "exchange"].includes(route.tab) && (
             <div className="flex shrink-0 items-center gap-2 border-b border-[#2dd4ee]/30 bg-[#2dd4ee]/[.08] px-3 py-1.5 text-[11.5px] text-[#bdf0f8]">
               <Icon name="sparkle" className="h-3.5 w-3.5 animate-pulse" />The agents are working on this project. This tab fills in when they finish.
               <button onClick={() => go("swarm")} className={`${quiet} ml-auto`}>Watch them</button>
@@ -163,6 +171,8 @@ export default function Home() {
             {route.tab === "review" && own === false && <AnalysisView />}
             {route.tab === "wbs" && <WbsModule sub={route.sub} target={route.target} />}
             {route.tab === "swarm" && <SwarmModule />}
+            {route.tab === "exchange" && <ExchangeModule sub={route.sub} target={route.target} />}
+            {route.tab === "site" && <SiteLog />}
             {route.tab === "reports" && <ReportsModule sub={route.sub} target={route.target} />}
             {route.tab === "twin" && <DigitalTwinModule />}
             {route.tab === "procedures" && <ProceduresModule />}

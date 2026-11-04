@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from . import config, firm, llm, memory, model3d, operator, package, package_firm, planner, planning_case, project
+from . import accounts, config, firm, llm, memory, model3d, operator, package, package_firm, planner, planning_case, project
 from .mock_firm import MockFirmLlm
 from .mock_package import MockPackageLlm
 from .mock_plan import MockPlanLlm
@@ -28,6 +28,7 @@ MOCK_DELAY = 0.5
 SAVE_EVERY = 20  # seconds between saves of a run still going
 MAX_USD = float(config.setting("SWARM_MAX_USD", "150"))  # the Meta API credit
 app = FastAPI(title="SiteSwarm")
+app.add_middleware(accounts.Gate)
 app.include_router(project_router)
 RUNS: dict[str, dict] = {}
 TASKS: dict[str, asyncio.Task] = {}
