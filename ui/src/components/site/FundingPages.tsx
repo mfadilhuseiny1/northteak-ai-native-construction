@@ -1,6 +1,6 @@
 "use client";
 import type { ReactNode } from "react";
-import { money, type Rec } from "./kit";
+import { money, num, type Rec } from "./kit";
 import { CashBars, SCurve, STATE, STATE_WORD } from "./ReportCharts";
 
 /* The quarterly funding report, as paper: a cover page for the portfolio, then one clear page per project. The same pages show in the app and print,
@@ -26,7 +26,7 @@ function Foot({ data, page, of }: { data: Rec; page: number; of: number }) {
 
 /** What one project's page says in one sentence, from its figures. */
 function sentence(p: Rec): string {
-  const parts = [`${Math.round(p.progress)}% complete against ${Math.round(p.planned)}% planned`];
+  const parts = [`${num(p.progress, 2)}% complete against ${num(p.planned, 2)}% planned`];
   parts.push(p.days_late ? `forecast to finish ${p.days_late} days after the contract date, on ${p.finish}` : `forecast to finish on time, on ${p.finish}`);
   if (p.priced) parts.push(p.variance == null ? `no actual cost recorded yet, so the forecast is the budget of ${money(p.budget)}` : `forecast cost ${money(p.eac)}, ${money(Math.abs(p.variance))} ${p.variance < 0 ? "over" : "under"} budget`);
   return `${parts.join("; ")}.`;
@@ -61,7 +61,7 @@ export function FundingPages({ data }: { data: Rec }) {
               <div><p className="font-semibold">{p.name}</p><p className="text-[10.5px] text-[#6b7684]">{[p.location, `page ${i + 2}`].filter(Boolean).join(" · ")}</p></div>
               <Word status={p.status} />
               <p className="w-[110px] text-right tabular-nums">{p.priced ? money(p.revised) : "not priced"}</p>
-              <p className="w-[90px] text-right tabular-nums">{Math.round(p.progress)}% done</p>
+              <p className="w-[90px] text-right tabular-nums">{num(p.progress, 2)}% done</p>
             </div>
           ))}
         </div>
@@ -81,7 +81,7 @@ export function FundingPages({ data }: { data: Rec }) {
           <p className="mt-4 rounded bg-[#f4f6f8] px-3 py-2 text-[12px]">{sentence(p)}</p>
           <div className="mt-5 grid grid-cols-4 gap-4">
             <Figure label="Contract value" value={p.priced ? money(p.revised) : "–"} sub={p.priced ? (p.variations_approved ? `${money(p.contract)} + ${money(p.variations_approved)} variations` : "as signed") : "no BoQ priced yet"} />
-            <Figure label="Complete" value={`${Math.round(p.progress)}%`} sub={`${Math.round(p.planned)}% planned by today`} />
+            <Figure label="Complete" value={`${num(p.progress, 2)}%`} sub={`${num(p.planned, 2)}% planned by ${p.planned_by ?? "today"}`} />
             <Figure label={p.cost_measured ? "Spent to date" : "Earned to date"} value={p.priced ? money(p.cost_measured ? p.ac : p.ev) : "–"} sub={p.cost_measured ? `CPI ${Number(p.cpi).toFixed(2)}` : "at budget rates, no cost recorded"} />
             <Figure label="Forecast cost" value={p.priced ? money(p.eac) : "–"} sub={p.variance == null ? "the budget" : `${money(Math.abs(p.variance))} ${p.variance < 0 ? "over" : "under"}`} />
             <Figure label="Forecast finish" value={p.finish} sub={p.days_late ? `${p.days_late} days late` : "on time"} />

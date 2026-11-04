@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import time
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -213,8 +214,8 @@ def kurva_actual(acts: list[dict]) -> float:
 def kurva_s() -> dict:
     """The Kurva-S as contractors draw it, beside the actual curve. Where the package has a master schedule code can read, the grid and the planned
     curve are that document's own figures, so they match what the contract says. Otherwise each work package's weight is spread evenly over the
-    days its baseline runs. The actual line has a point for each month a report saved and for today: the weeks between were not measured, so they
-    are left empty rather than filled in."""
+    days its baseline runs. The actual line is what the site recorded, week by week; until it has, a point for each month a report saved and for
+    today. Either way the weeks between were not measured, so they are left empty rather than filled in."""
     sched = P.schedule()
     acts = {a["id"]: a for a in sched["activities"]}
     official = master_schedule()
@@ -263,14 +264,30 @@ def _frame(acts: dict[str, dict], start: str, weeks: int) -> dict:
     today = P.TODAY
     now = 0 if today < start else min(weeks, P.days_between(start, today) // 7 + 1)
     points = {0: 0.0}
-    for snap in P.all_of("snapshot"):
-        if snap.get("planned_any") and snap.get("today", "") >= start:
-            points[min(weeks, P.days_between(start, snap["today"]) // 7 + 1)] = snap["progress"]
-    if now:
-        points[now] = kurva_actual(list(acts.values()))
+    marks = {r["week"]: r for r in P.all_of("actual_week")}
+    site = sorted((r for r in marks.values() if r.get("progress") is not None), key=lambda r: r["week"])
+    if site:  # what the site records stands: the board's reading does not sit between its weeks
+        done = 0.0
+        for r in site:
+            done += r["progress"]
+            points[min(weeks, r["week"])] = done
+    else:
+        for snap in P.all_of("snapshot"):
+            if snap.get("planned_any") and snap.get("today", "") >= start:
+                points[min(weeks, P.days_between(start, snap["today"]) // 7 + 1)] = snap["progress"]
+        if now:
+            points[now] = kurva_actual(list(acts.values()))
     known = sorted(points.items())
+    spent, cost_weekly, cost_cum = 0, {}, {}
+    for w in sorted(marks):
+        c = sum((marks[w].get("costs") or {}).values())
+        if c:
+            spent += c
+            cost_weekly[w], cost_cum[w] = c, spent
     return {"start": start, "weeks": weeks, "week_starts": [(date.fromisoformat(start) + timedelta(days=7 * k)).isoformat() for k in range(weeks)], "current_week": now, "today": today,
-            "actual": [[w, round(v, 2)] for w, v in known], "actual_weekly": {w: round(v - known[n - 1][1], 2) for n, (w, v) in enumerate(known) if n}}
+            "actual": [[w, round(v, 2)] for w, v in known], "actual_weekly": {w: round(v - known[n - 1][1], 2) for n, (w, v) in enumerate(known) if n},
+            "recorded": marks, "site_recorded": bool(site), "cost_weekly": cost_weekly, "cost_cum": cost_cum, "spent_elsewhere": P.budget()["total"]["ac"] - spent, "board_progress": kurva_actual(list(acts.values())),
+            "accounts": [{"id": a["id"], "name": a["name"], "budget": a["budget"]} for a in P.all_of("package")]}
 
 
 def _on_the_schedule(official: tuple[dict, dict], acts: dict[str, dict], start: str) -> dict:
@@ -292,6 +309,72 @@ def _on_the_schedule(official: tuple[dict, dict], acts: dict[str, dict], start: 
         rows.extend({"type": "item", "no": r["no"].split(".", 1)[1], "code": code_of(r["no"]) or first, "name": r["name"], "weight": r["weight"], "cells": line(r["cells"])} for r in g["rows"])
     planned = [round(cum[k] - (cum[k - 1] if k else 0.0), 2) for k in range(weeks)]
     return {"rows": rows, "planned": planned, "planned_cum": cum, "weights_from": "schedule", "source": {"doc": doc["id"], "title": doc.get("title", doc["id"]), "page": 1}, **_frame(acts, start, weeks)}
+
+
+def recorded_progress() -> float | None:
+    """How far the site says the job has got: the weeks recorded, added up. None until a week has a figure."""
+    done = [r["progress"] for r in P.all_of("actual_week") if r.get("progress") is not None]
+    return round(sum(done), 2) if done else None
+
+
+def planned_at_last_record() -> float:
+    """The plan at the last week with a progress figure: that figure says how far the job had got by then, so it is compared with then, as the Kurva-S does."""
+    curve = kurva_s()["planned_cum"]
+    return curve[min(len(curve), max(r["week"] for r in P.all_of("actual_week") if r.get("progress") is not None)) - 1]
+
+
+def on_record(total: dict) -> dict | None:
+    """The whole job measured by what the site recorded: the figures the report and cost control both show. None until a week has a progress figure, or where nothing
+    is priced. The site gives one figure for the job, and work is not spread evenly over the accounts, so no account can be measured by it on its own."""
+    site = recorded_progress()
+    if site is None or not total["budget"]:
+        return None
+    planned = planned_at_last_record()
+    ev, ac = round(total["budget"] * site / 100), total["ac"]
+    cpi = ev / ac if ac else 1.0
+    eac = round(ac + (total["budget"] - ev) / (cpi or 1) + total["recovery"]) if ac else total["budget"] + total["recovery"]
+    return {"site": site, "ev": ev, "cpi": round(cpi, 2), "eac": eac, "variance": total["budget"] - eac, "spi": round(site / planned, 2) if planned >= 1 else None}  # below 1% planned, any progress would look many times ahead
+
+
+def cost_control() -> dict:
+    """The budget and costs, with the whole job measured by what the site recorded once it has, so it says what the report says."""
+    b = P.budget()
+    rec = on_record(b["total"])
+    if rec:
+        b["total"].update({k: rec[k] for k in ("ev", "cpi", "eac", "variance", "spi")})
+        b["site_progress"] = rec["site"]
+    return b
+
+
+def set_actual(week: int, progress: float | None, costs: dict[str, int], note: str = "", who: str = P.PM) -> dict:
+    """What the site really did in a week: the progress made, and the cost by control account, which goes into cost control like any cost already spent.
+    Recording a week again replaces it, and recording nothing clears it."""
+    if not 1 <= week <= kurva_s()["weeks"]:
+        raise ValueError("there is no such week in the schedule")
+    if progress is not None and progress < 0:
+        raise ValueError("progress in a week cannot be below nothing: correct the week that overstated it")
+    others = sum(r["progress"] for r in P.all_of("actual_week") if r.get("progress") is not None and r["week"] != week)
+    if progress is not None and others + progress > 100.005:
+        raise ValueError(f"that would make {others + progress:.2f}% done: the weeks recorded so far come to {others:.2f}%")
+    for pid, amount in costs.items():
+        if amount < 0:
+            raise ValueError("a cost cannot be below nothing")
+        if not P.get("package", pid):
+            raise KeyError(pid)
+    rid = f"W{week}"
+    old = P.get("actual_week", rid)
+    for iid in (old or {}).get("items", []):
+        P.patch("cost_item", iid, {"status": "removed"}, who, "replaced a recorded cost", f"week {week}")
+    costs = {pid: int(amount) for pid, amount in costs.items() if amount}
+    if progress is None and not costs and not note.strip():
+        if old:
+            P.drop("actual_week", rid)
+            P.log(who, "cleared a week's actuals", "actual_week", rid, f"week {week}")
+        return {"week": week, "cleared": True}
+    items = [P.add_cost_item(pid, f"Actual cost, week {week}", amount, source=f"Recorded for week {week} in the Kurva-S", who=who, actual=True)["id"] for pid, amount in costs.items()]
+    rec = {"id": rid, "week": week, "progress": progress, "costs": costs, "items": items, "note": note.strip(), "who": who, "at": time.strftime("%Y-%m-%d %H:%M")}
+    told = ", ".join(x for x in (f"{progress}% progress" if progress is not None else "", rp(sum(costs.values())) if costs else "") if x)
+    return P.put("actual_week", rid, rec, who, "recorded a week's actuals", f"week {week}: {told or 'a note'}")
 
 
 def needed() -> list[dict]:
@@ -334,7 +417,8 @@ def summary() -> dict:
            "today": today, "period": today[:7], "quarter": quarter(today)[0], "planned_any": bool(acts)}
     if not acts:
         return {**out, "status": "none", "reasons": [], "notes": ["nothing is planned yet"], "decisions": needed()}
-    actual = kurva_actual(acts)
+    site = recorded_progress()
+    actual = site if site is not None else kurva_actual(acts)
     start = min(a["baseline_start"] for a in acts)
     official = master_schedule()
     at = (lambda day: on_schedule(official[0], start, day)) if official else (lambda day: planned_pct(acts, day))  # the contract's own curve where it can be read, so every screen says the same
@@ -350,18 +434,24 @@ def summary() -> dict:
     contract = b["boq_value"]
     budgets = _budgets(acts)
     extreme, high = sum(1 for r in risks if r["level"] == "extreme"), sum(1 for r in risks if r["level"] == "high")
-    planned = round(at(today), 1)
+    planned = round(planned_at_last_record() if site is not None else at(today), 1)
+    planned_by = f"week {max(r['week'] for r in P.all_of('actual_week') if r.get('progress') is not None)}" if site is not None else "today"
+    ev, eac, variance, cpi, spi = b["ev"], b["eac"], b["variance"], b["cpi"], b["spi"]
+    rec = on_record(b)
+    if rec:
+        ev, eac, variance, cpi, spi = rec["ev"], rec["eac"], rec["variance"], rec["cpi"], rec["spi"]
+        time_measured = spi is not None
     out.update(
-        progress=actual, planned=planned, start=start, finish=finish, planned_finish=planned_finish, contract_finish=contract_finish, revised_finish=revised_finish, days_late=days_late,
+        progress=actual, planned=planned, planned_by=planned_by, start=start, finish=finish, planned_finish=planned_finish, contract_finish=contract_finish, revised_finish=revised_finish, days_late=days_late,
         contract=contract, variations_approved=vo["totals"]["approved"], variations_pending=vo["totals"]["proposed"] + vo["totals"]["submitted"], revised=contract + vo["totals"]["approved"],
-        days_approved=vo["days_approved"], budget=b["budget"], committed=b["committed"], ev=b["ev"], ac=b["ac"], priced=priced, cost_measured=cost_measured, time_measured=time_measured,
-        eac=b["eac"] if cost_measured else b["budget"], variance=b["variance"] if cost_measured else None, cpi=b["cpi"] if cost_measured else None, spi=b["spi"] if time_measured else None,
+        days_approved=vo["days_approved"], budget=b["budget"], committed=b["committed"], ev=ev, ac=b["ac"], priced=priced, cost_measured=cost_measured, time_measured=time_measured,
+        eac=eac if cost_measured else b["budget"], variance=variance if cost_measured else None, cpi=cpi if cost_measured else None, spi=spi if time_measured else None,
         contingency=cont["amount"], contingency_used=cont["used"], contingency_left=cont["left"],
         risks_open=len(risks), risks_extreme=extreme, risks_high=high,
         top_risks=[{"id": r["id"], "title": r["title"], "level": r["level"], "score": r["score"], "owner": r["owner"], "response": r.get("response", ""), "go": r.get("go", "")} for r in risks[:5]],
         milestones=[{"id": m["id"], "name": m.get("name") or m.get("title") or m["id"], "contract_date": m["contract_date"], "forecast": m["forecast"], "days_late": m["days_late"]} for m in sched["milestones"]][:8],
         curve=_curve(at, start, max(planned_finish, finish)), planned_from=official[1]["title"] if official else "", next_quarter={"name": name, "first": q_first, "last": q_last, "spend": spend(acts, budgets, q_first, q_last, today)},
-        cash=[], to_spend=max(0, round((b["eac"] if cost_measured else b["budget"]) - b["ac"])),
+        cash=[], to_spend=max(0, round((eac if cost_measured else b["budget"]) - b["ac"])),
     )
     first = _after(today)
     while first <= finish and len(out["cash"]) < 8:  # the money the programme needs, quarter by quarter to the end
@@ -434,7 +524,15 @@ def month(save: bool = True) -> dict:
         P.put("snapshot", now["period"], now)
     history = [[s["today"], s["progress"]] for s in sorted(saved, key=lambda s: s["period"]) if s.get("planned_any") and s["period"] < now["period"]]
     if now["planned_any"]:
-        now["actual_curve"] = [[now["start"], 0.0], *history, [now["today"], now["progress"]]] if now["start"] <= now["today"] else []
+        site = sorted((r for r in P.all_of("actual_week") if r.get("progress") is not None), key=lambda r: r["week"])
+        if site:
+            done, points = 0.0, []
+            for r in site:
+                done += r["progress"]
+                points.append([_after(now["start"], 7 * r["week"] - 1), round(done, 2)])
+            now["actual_curve"] = [[now["start"], 0.0], *points]
+        else:
+            now["actual_curve"] = [[now["start"], 0.0], *history, [now["today"], now["progress"]]] if now["start"] <= now["today"] else []
     return {**now, "changes": changes(now, before)}
 
 
@@ -530,6 +628,12 @@ class StatusIn(BaseModel):
     status: str
 
 
+class WeekIn(BaseModel):
+    progress: float | None = None
+    costs: dict[str, int] = {}
+    note: str = ""
+
+
 class AmountIn(BaseModel):
     amount: int
 
@@ -568,6 +672,11 @@ def contingency_use(body: UseIn) -> dict:
 @router.get("/api/project/kurva-s")
 def kurva() -> dict:
     return kurva_s()
+
+
+@router.post("/api/project/actuals/{week}")
+def actuals(week: int, body: WeekIn) -> dict:
+    return _guarded(set_actual, week, body.progress, body.costs, body.note)
 
 
 @router.get("/api/reports/portfolio")

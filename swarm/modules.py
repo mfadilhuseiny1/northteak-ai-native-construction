@@ -926,6 +926,10 @@ def tower() -> dict:
     total = sum(a["duration"] for a in acts)
     progress = round(sum(a["progress"] * a["duration"] for a in acts) / total) if total else 0
     expected = round(sum(P.expected_pct(a) * a["duration"] for a in acts) / total) if total else 0
+    from .reports import on_record  # it reads this module
+    rec = on_record(o["kpis"])
+    if rec:  # the same figures the report and cost control show, once the site has recorded a week
+        o = {**o, "kpis": {**o["kpis"], "ev": rec["ev"], "cpi": rec["cpi"], "eac": rec["eac"], "variance": rec["variance"], **({"spi": rec["spi"]} if rec["spi"] is not None else {})}}
     k = o["kpis"]
     late = [a for a in acts if P.days_between(a["baseline_finish"], a["finish"]) > 0]
     open_ncrs = [n for n in q["ncrs"] if n["status"] == "open"]

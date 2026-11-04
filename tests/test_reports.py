@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-from swarm import firm_api, project as P, reports as R
+from swarm import firm_api, modules as M, project as P, reports as R
 from tests.test_modules import _close, records, template  # noqa: F401 - each test on its own copy of the records
 
 
@@ -112,3 +112,37 @@ def test_the_kurva_s_spreads_each_weight_over_its_weeks_and_measures_only_what_w
     if k["current_week"]:
         assert k["actual"][-1][0] == k["current_week"], "today's point is where today is"
         assert set(k["actual_weekly"]) == {str(w) for w, _ in k["actual"][1:]}, "a week no one measured has no actual figure"
+
+
+def test_a_person_records_a_weeks_actuals_and_every_screen_follows():
+    c = _client()
+    before = c.get("/api/project/kurva-s").json()
+    assert before["site_recorded"] is False and before["accounts"], "until then the board's reading is all there is"
+    pid = before["accounts"][0]["id"]
+    spent_before = P.budget()["total"]["ac"]
+    assert c.post("/api/project/actuals/1", json={"progress": 2.5, "costs": {pid: 100_000_000}, "note": "Galian selesai"}).status_code == 200
+    assert c.post("/api/project/actuals/3", json={"progress": 1.5}).status_code == 200
+    k = c.get("/api/project/kurva-s").json()
+    assert k["site_recorded"] and k["actual"] == [[0, 0.0], [1, 2.5], [3, 4.0]], "what the site records stands, and adds up"
+    assert k["actual_weekly"] == {"1": 2.5, "3": 1.5}, "a week nobody recorded stays empty"
+    assert k["cost_weekly"] == {"1": 100_000_000} and k["cost_cum"] == {"1": 100_000_000} and k["spent_elsewhere"] == spent_before
+    assert P.budget()["total"]["ac"] == spent_before + 100_000_000, "the cost lands in cost control like any cost already spent"
+    r = c.get("/api/project/report").json()
+    assert r["progress"] == 4.0 and r["actual_curve"][-1][1] == 4.0, "the report says the same"
+    assert r["ev"] == round(r["budget"] * 0.04), "the site's figure measures the work done"
+    assert r["planned"] == round(k["planned_cum"][2], 1), "and is compared with the plan at the last week recorded, as the Kurva-S does"
+    control = c.get("/api/project/budget").json()
+    assert control["site_progress"] == 4.0 and all(control["total"][f] == r[f] for f in ("ev", "ac", "eac", "variance", "cpi", "spi")), "cost control and the report say the same"
+    tower = M.tower()["kpis"]
+    assert tower["cpi"] == r["cpi"] and tower["eac"] == r["eac"], "and so does the project's standing"
+    assert c.post("/api/project/actuals/1", json={"progress": 3, "costs": {pid: 40_000_000}}).status_code == 200
+    assert P.budget()["total"]["ac"] == spent_before + 40_000_000, "recording a week again replaces it, it does not add to it"
+    assert c.post("/api/project/actuals/3", json={"progress": 99}).status_code == 409, "the weeks cannot come to more than the whole job"
+    assert c.post("/api/project/actuals/3", json={"progress": -1}).status_code == 409
+    assert c.post("/api/project/actuals/9999", json={"progress": 1}).status_code == 409
+    assert c.post("/api/project/actuals/3", json={"costs": {"WP-NOPE": 5}}).status_code == 404
+    assert c.post("/api/project/actuals/1", json={}).json() == {"week": 1, "cleared": True}
+    assert c.post("/api/project/actuals/3", json={}).json() == {"week": 3, "cleared": True}
+    after = c.get("/api/project/kurva-s").json()
+    assert after["site_recorded"] is False and not after["recorded"] and P.budget()["total"]["ac"] == spent_before, "clearing a week takes its cost back out"
+    assert "site_progress" not in c.get("/api/project/budget").json(), "and the cards are the measure again"

@@ -71,9 +71,10 @@ function Control({ target }: { target: string }) {
   const t = data.total as Rec;
   const packages = (data.packages as Rec[]).filter((p) => !focus || focus.type === "project" || p.id === focus.package);
   const items = (data.cost_items as Rec[]).filter((i) => !focus || focus.type === "project" || i.package === focus.package);
+  const site = data.site_progress as number | undefined;  // the site records one figure for the job, so an account can only say what it has spent
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden text-[12px]">
-      <Bar title="Budget and cost" note="earned value from verified progress, by control account">
+      <Bar title="Budget and cost" note={site == null ? "earned value from verified progress, by control account" : `earned value for the whole job, from the ${site}% recorded in the Kurva-S`}>
         <button disabled={!(data.packages as Rec[]).length} onClick={() => setForm({ ...EMPTY, package: focus?.package ?? (data.packages as Rec[])[0]?.id ?? "" })} className={quiet}>Add a cost</button>
       </Bar>
       <Problem err={err} />
@@ -86,20 +87,20 @@ function Control({ target }: { target: string }) {
         <Kpi label="actual cost" value={money(t.ac)} />
         <Kpi label="forecast at completion" value={money(t.eac)} tone={t.variance < 0 ? "warn" : "ok"} hint={`${money(Math.abs(t.variance))} ${t.variance < 0 ? "over" : "under"}`} />
         <Kpi label="CPI" value={Number(t.cpi).toFixed(2)} tone={t.cpi < 1 ? "warn" : "ok"} />
-        <Kpi label="SPI" value={Number(t.spi).toFixed(2)} tone={t.spi < 1 ? "warn" : "ok"} />
+        <Kpi label="SPI" value={t.spi == null ? "–" : Number(t.spi).toFixed(2)} tone={t.spi == null ? undefined : t.spi < 1 ? "warn" : "ok"} />
       </Kpis>
       <div className="min-h-0 flex-1 space-y-3 overflow-auto bg-[#111820] p-3">
-        <Card title="Control accounts" right={<Legend items={[{ label: "budget", color: PLAN }, { label: "earned", color: ACTUAL }, { label: "spent", color: "#8f99a8" }, { label: "forecast at completion", color: ACTUAL, hatched: true }]} />}>
+        <Card title="Control accounts" right={<Legend items={site == null ? [{ label: "budget", color: PLAN }, { label: "earned", color: ACTUAL }, { label: "spent", color: "#8f99a8" }, { label: "forecast at completion", color: ACTUAL, hatched: true }] : [{ label: "budget", color: PLAN }, { label: "spent", color: "#8f99a8" }]} />}>
           <div className="grid gap-px bg-white/[.04] md:grid-cols-2">
             {packages.map((p) => {
               const max = Math.max(...packages.map((x) => Math.max(x.budget, x.eac)), 1), over = p.variance < 0;
               return (
                 <div key={p.id} className={`space-y-1.5 bg-[#1c2733] p-3 ${target && p.id === target ? "!bg-[#243241]" : ""}`}>
-                  <div className="flex items-baseline gap-2"><span className="text-[10.5px] text-[#8f99a8]">{p.id}</span><span className="flex-1 truncate font-semibold text-white">{p.name}</span><Pill tone={p.cpi < 1 ? "warn" : "ok"}>CPI {Number(p.cpi).toFixed(2)}</Pill>{p.pv >= 0.01 * p.budget && <Pill tone={p.spi < 1 ? "warn" : "ok"}>SPI {Number(p.spi).toFixed(2)}</Pill>}</div>
-                  {[["Budget", p.budget, PLAN, false], ["Earned", p.ev, ACTUAL, false], ["Spent", p.ac, "#8f99a8", false], ["Forecast", p.eac, over ? "#f87171" : ACTUAL, true]].map(([label, v, color, hatched]) => (
+                  <div className="flex items-baseline gap-2"><span className="text-[10.5px] text-[#8f99a8]">{p.id}</span><span className="flex-1 truncate font-semibold text-white">{p.name}</span>{site == null && <Pill tone={p.cpi < 1 ? "warn" : "ok"}>CPI {Number(p.cpi).toFixed(2)}</Pill>}{site == null && p.pv >= 0.01 * p.budget && <Pill tone={p.spi < 1 ? "warn" : "ok"}>SPI {Number(p.spi).toFixed(2)}</Pill>}</div>
+                  {(site == null ? [["Budget", p.budget, PLAN, false], ["Earned", p.ev, ACTUAL, false], ["Spent", p.ac, "#8f99a8", false], ["Forecast", p.eac, over ? "#f87171" : ACTUAL, true]] : [["Budget", p.budget, PLAN, false], ["Spent", p.ac, "#8f99a8", false]]).map(([label, v, color, hatched]) => (
                     <div key={label as string} className="grid grid-cols-[62px_minmax(0,1fr)_86px] items-center gap-2 text-[11px]"><span className="text-[#8f99a8]">{label as string}</span><SplitBar parts={[{ label: label as string, value: v as number, color: color as string, hatched: hatched as boolean }]} max={max} /><span className="text-right tabular-nums text-[#d3d8de]">{money(v as number)}</span></div>
                   ))}
-                  <p className="text-[10.5px] text-[#8f99a8]"><span className={over ? "text-[#ffb4b4]" : "text-[#7ee2c0]"}>{money(Math.abs(p.variance))} {over ? "over" : "under"} budget</span> · {money(p.committed)} committed{p.recovery ? ` · ${money(p.recovery)} added by plans` : ""}</p>
+                  <p className="text-[10.5px] text-[#8f99a8]">{site == null ? <span className={over ? "text-[#ffb4b4]" : "text-[#7ee2c0]"}>{money(Math.abs(p.variance))} {over ? "over" : "under"} budget</span> : <span className={p.ac > p.budget ? "text-[#ffb4b4]" : ""}>{p.budget ? `${Math.round((p.ac / p.budget) * 100)}% of its budget spent` : "No budget"}</span>} · {money(p.committed)} committed{p.recovery ? ` · ${money(p.recovery)} added by plans` : ""}</p>
                 </div>
               );
             })}

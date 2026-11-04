@@ -2,7 +2,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Icon, type IconName } from "@/components/Icon";
 import { API_URL } from "@/lib/api";
-import { api, Bar, Card, field, Label, Loading, money, notifyChanged, NotYet, Pill, primary, Problem, quiet, Side, useData, useGo, type Rec, type Tone } from "./kit";
+import { api, Bar, Card, field, Label, Loading, money, notifyChanged, NotYet, num, Pill, primary, Problem, quiet, Side, useData, useGo, type Rec, type Tone } from "./kit";
 import { ACTUAL, Meter, Milestones, PLAN, Ring, SCurve, STATE, STATE_WORD, Steps } from "./ReportCharts";
 import { FundingPages } from "./FundingPages";
 
@@ -68,7 +68,7 @@ function ProjectReport({ target }: { target: string }) {
         <Problem err={err} />
         <div className="mx-auto grid max-w-[1400px] gap-3 xl:grid-cols-3">
           <Hero r={r} />
-          <div className="xl:col-span-2"><Card className="h-full" title="Progress against the baseline" right={<span className="flex items-center gap-2 text-[11px] text-[#abb3bf]"><button onClick={() => go("cost")} className={quiet}>Standard Kurva-S</button><b className="text-white">{Math.round(r.progress)}%</b> done · {Math.round(r.planned)}% planned by today{r.spi != null ? ` · SPI ${r.spi.toFixed(2)}` : ""}</span>}><div className="p-3"><SCurve planned={r.curve} actual={r.actual_curve} today={r.today} height={290} /></div></Card></div>
+          <div className="xl:col-span-2"><Card className="h-full" title="Progress against the baseline" right={<span className="flex items-center gap-2 text-[11px] text-[#abb3bf]"><button onClick={() => go("cost")} className={quiet}>Standard Kurva-S</button><b className="text-white">{num(r.progress, 2)}%</b> done · {num(r.planned, 2)}% planned by {r.planned_by ?? "today"}{r.spi != null ? ` · SPI ${r.spi.toFixed(2)}` : ""}</span>}><div className="p-3"><SCurve planned={r.curve} actual={r.actual_curve} today={r.today} height={290} /></div></Card></div>
           <MoneyCard r={r} />
           <div className="xl:col-span-2"><Programme r={r} /></div>
           <Changes r={r} />
@@ -98,7 +98,7 @@ function Hero({ r }: { r: Rec }) {
           {(r.notes as string[]).map((n) => <p key={n} className="mt-1.5 flex items-center gap-1.5 text-[11px] text-[#8f99a8]"><Icon name="info" className="h-3 w-3 shrink-0" />{n}</p>)}
         </div>
         <div className="grid grid-cols-2 gap-x-8 gap-y-4 sm:grid-cols-4">
-          <Stat label="Done" value={`${Math.round(r.progress)}%`} sub={`${Math.round(r.planned)}% planned by today`} tone={r.planned - r.progress > 10 ? "bad" : r.planned - r.progress > 3 ? "warn" : undefined} />
+          <Stat label="Done" value={`${num(r.progress, 2)}%`} sub={`${num(r.planned, 2)}% planned by ${r.planned_by ?? "today"}`} tone={r.planned - r.progress > 10 ? "bad" : r.planned - r.progress > 3 ? "warn" : undefined} />
           <Stat label="Forecast cost" value={r.priced ? money(r.eac) : "–"} sub={!r.priced ? "no BoQ priced yet" : r.variance == null ? `the budget, ${money(r.budget)}` : `${money(Math.abs(r.variance))} ${r.variance < 0 ? "over" : "under"} budget`} tone={r.variance != null && r.variance < 0 ? "bad" : undefined} />
           <Stat label="Forecast finish" value={r.finish} sub={r.days_late ? `${r.days_late} days after the contract date` : `contract ${r.revised_finish}`} tone={r.days_late ? "bad" : undefined} />
           <Stat label="Contingency left" value={r.contingency ? money(r.contingency_left) : "–"} sub={r.contingency ? `of ${money(r.contingency)}` : "not set yet"} tone={r.contingency && r.contingency_left < 0 ? "bad" : r.contingency && r.contingency_left < 0.25 * r.contingency ? "warn" : undefined} />
@@ -444,7 +444,7 @@ function PortfolioReport() {
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-1.5"><Badge status={p.status ?? "none"} small />{p.open && <span className="rounded-full bg-white/10 px-1.5 py-0.5 text-[10px] text-[#d3d8de]">open now</span>}{p.stale && <span className="text-[10px] text-[#8f99a8]">as of {p.today}</span>}</div>
                   <p className="mt-1.5 truncate text-[14px] font-semibold text-white">{p.name}</p>
-                  <p className="text-[11px] text-[#8f99a8]">{[p.location, p.planned_any && `${Math.round(p.planned)}% planned by today`].filter(Boolean).join(" · ") || "–"}</p>
+                  <p className="text-[11px] text-[#8f99a8]">{[p.location, p.planned_any && `${num(p.planned, 2)}% planned by ${p.planned_by ?? "today"}`].filter(Boolean).join(" · ") || "–"}</p>
                 </div>
               </div>
               {p.planned_any ? (

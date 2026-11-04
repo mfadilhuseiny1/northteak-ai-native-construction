@@ -300,7 +300,7 @@ def update_activity(aid: str, body: ActivityIn) -> dict:
 
 @router.get("/api/project/budget")
 def budget() -> dict:
-    return P.budget()
+    return reports.cost_control()
 
 
 @router.post("/api/project/cost-items")
