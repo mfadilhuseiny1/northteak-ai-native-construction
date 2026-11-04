@@ -18,8 +18,9 @@ logging.getLogger("pypdf").setLevel(logging.ERROR)  # it complains of fonts it c
 # the first rule to fit decides, on the file's name and its first page. Used: a planner needs it. Set aside: says why, and never goes to a model
 RULES = [
     ("tender", False, "Instructions to bidders: nothing in it is for the site", r"\bldk\b|\bldp\b|instruksi.{0,6}peserta|lembar data|persyaratan penyedia"),
+    ("award", False, "A tender summary from the procurement system: it names the bidders, and nothing in it is for the site", r"summary report|ringkasan.{0,12}(tender|lelang|pemilihan)|kode tender|daftar peserta|peserta tender|pemenang berkontrak"),  # before the rules below: its first page states the HPS and the schedule too
     ("programme", True, "The master schedule: the work, its weights and its weeks", r"jadwal|kurva.?s|master schedule|time schedule"),
-    ("boq", True, "The priced quantities: what each group of work is worth", r"daftar.{0,12}(kuantitas|harga)|\bboq\b|bill of quantit"),
+    ("boq", True, "The priced quantities: what each group of work is worth", r"daftar.{0,12}(kuantitas|harga)|\bdkh\b|\bboq\b|bill of quantit"),
     ("estimate", True, "The owner's estimate, to compare the prices with", r"\bhps\b|harga perkiraan"),
     ("spec", True, "How each kind of work must be done", r"rencana kerja dan syarat|\brks\b|spesifikasi"),
     ("drawing", True, "The drawings: only their text can be read", r"gambar|drawing|denah"),
@@ -67,7 +68,13 @@ def read_pages(path: Path) -> list[str]:
     if path.suffix.lower() == ".pdf":
         from pypdf import PdfReader
 
-        return [page.extract_text() or "" for page in PdfReader(str(path)).pages]
+        out = []
+        for page in PdfReader(str(path)).pages:
+            try:
+                out.append(page.extract_text() or "")
+            except Exception:  # noqa: BLE001 - one sheet too dense to read must not lose the rest of the file. It reads as a page with no text, which the upload's record counts
+                out.append("")
+        return out
     if path.suffix.lower() in (".txt", ".md", ".csv"):
         return [path.read_text(encoding="utf-8", errors="replace")]
     return []
@@ -142,11 +149,12 @@ def read_programme(path: Path) -> dict | None:
             name = "".join(t for yy, xx, t in bits if column + 4 < xx < first and -5 <= yy - y <= 1.5 and not PERCENT.fullmatch(t.strip()))
             near = [(abs(yy - y), value(t)) for yy, xx, t in bits if xx < first and abs(yy - y) <= 5 and PERCENT.fullmatch(t.strip())]
             weight = min(near)[1] if near else None
-            cells = [(round(yy, 1), xx) for yy, xx, t in bits if xx >= first and abs(yy - y) <= 0.7 and PERCENT.fullmatch(t.strip()) and value(t) <= (weight if weight is not None else 100)]
+            cells = [(round(yy, 1), xx, value(t)) for yy, xx, t in bits if xx >= first and abs(yy - y) <= 0.7 and PERCENT.fullmatch(t.strip()) and value(t) <= (weight if weight is not None else 100)]
             height = max({c[0] for c in cells}, key=[c[0] for c in cells].count) if cells else None  # a row's cells share one height: a label of the curve landing nearby does not
-            weeks = sorted({week_at(xx) for yy, xx in cells if yy == height})
+            by_week = {week_at(xx): v for yy, xx, v in cells if yy == height}  # the schedule's own figure for each week, as printed
+            weeks = sorted(by_week)
             if " ".join(name.split()):
-                rows.append({"no": no, "name": " ".join(name.split()), "weight": weight, "weeks": weeks})
+                rows.append({"no": no, "name": " ".join(name.split()), "weight": weight, "weeks": weeks, "cells": by_week})
         total = sum(r["weight"] or 0 for r in rows)
         if len(rows) < 3 or abs(total - 100) > 1.0:
             continue
@@ -200,16 +208,31 @@ def read_layout(path: Path) -> list[str]:
     try:
         from pypdf import PdfReader
 
-        return [p.extract_text(extraction_mode="layout") or "" for p in PdfReader(str(path)).pages]
+        pages = PdfReader(str(path)).pages
     except Exception:  # noqa: BLE001 - a file this cannot read is still read the plain way
         return []
+    out = []
+    for page in pages:
+        try:
+            out.append(page.extract_text(extraction_mode="layout") or "")
+        except Exception:  # noqa: BLE001 - as in read_pages: one sheet must not lose the rest
+            out.append("")
+    return out
 
 
 def read_boq_lines(doc: str, pages: list[str]) -> list[dict]:
     """A BoQ's rows, by code: each row with its section, description, volume and unit, its price if it has one, the page it is on, and the work its header names. Only what the text states. A row whose description the extraction lost stays in, with no description, for a person to read on its page. One file can hold the BoQs of two projects, as a tender for two buildings does, so each row keeps the name of the work it is under."""
     out: list[dict] = []
     head = group = work = ""
+    analysis = False
     for n, text in enumerate(pages, 1):
+        top_of_page = " ".join(text.split())[:300]
+        if re.search(r"analisa harga satuan", top_of_page, re.I):  # the unit-price analysis often follows the BoQ in one file: its labour and material rows look like BoQ lines, and are not
+            analysis = True
+        elif re.search(r"daftar kuantitas|bill of quantit", top_of_page, re.I):
+            analysis = False
+        if analysis:
+            continue
         for raw in text.splitlines():
             line = " ".join(raw.split())
             if title := re.match(r"^PEKERJAAN\s*:\s*(.+)$", line):
@@ -264,6 +287,22 @@ def contract_days(text: str) -> int | None:
     """The time for completion, only where the text says that is what it is: other periods are stated in calendar days too, such as the defects period."""
     m = re.search(r"(?:jangka waktu|masa|waktu) (?:pelaksanaan|penyelesaian)[^.]{0,80}?(\d{2,4})\s*(?:\([^)]{0,60}\)\s*)?hari\s*kalend", re.sub(r"\s+", " ", text or ""), re.I)
     return int(m.group(1)) if m else None
+
+
+def schedule_rows(programme: dict) -> list[dict]:
+    """The master schedule as it is printed: each group, with its rows, each with its weight and its own figure for each week."""
+    groups: list[dict] = []
+    parents: dict[str, str] = {}
+    for r in programme["rows"]:
+        if re.fullmatch(r"[IVX]+", r["no"]):
+            groups.append({"no": r["no"], "name": nice(r["name"]), "weight": r["weight"], "cells": r.get("cells") or {}, "rows": []})
+            parents = {}
+        elif groups and r["weight"] and r["weeks"]:
+            parent = parents.get(r["no"].rsplit(".", 1)[0]) if "." in r["no"] else None
+            groups[-1]["rows"].append({"no": f"{groups[-1]['no']}.{r['no']}", "name": f"{parent}: {nice(r['name'])}" if parent else nice(r["name"]), "weight": r["weight"], "cells": r.get("cells") or {}})
+        elif groups:
+            parents[r["no"]] = nice(r["name"])
+    return groups
 
 
 def structure(programme: dict, recap: dict | None = None) -> dict:

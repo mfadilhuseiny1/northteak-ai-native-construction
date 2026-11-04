@@ -194,7 +194,7 @@ export function TenderSelection() {
   const mine = items.filter((x) => x.stage === stage && x.leaf === leaf);
   const counted = items.filter((x) => x.status !== "na");
   return (
-    <section className="rounded-lg border border-white/10 bg-[#1c2733]">
+    <section data-tour="tender" className="rounded-lg border border-white/10 bg-[#1c2733]">
       <div className="flex flex-wrap items-center gap-2 px-3 py-2">
         <button onClick={() => setOpen(!open)} aria-expanded={open} className="flex min-w-[220px] flex-1 items-center gap-2 text-left font-semibold text-white hover:text-[#d9d3ff]">
           <Icon name={open ? "down" : "right"} className="h-3.5 w-3.5 shrink-0 text-[#8f99a8]" />Pemilihan penyedia: qualification and bid

@@ -5,6 +5,8 @@ import { Icon, type IconName } from "@/components/Icon";
 import { api, FocusContext, GoContext, notifyChanged, quiet, type Focus, type Rec } from "@/components/site/kit";
 import { WbsModule } from "@/components/site/WbsModule";
 import { ReportsModule } from "@/components/site/ReportsModule";
+import { DemoTour } from "@/components/site/DemoTour";
+import { DigitalTwinModule } from "@/components/site/DigitalTwinModule";
 import { ScheduleModule } from "@/components/site/ScheduleModule";
 import { CostModule } from "@/components/site/CostModule";
 import { KanbanModule } from "@/components/site/KanbanModule";
@@ -29,7 +31,7 @@ const Model3DModule = dynamic(() => import("@/components/site/Model3DModule").th
 
 const GROUPS: [string, [string, string, IconName][]][] = [
   ["Set up", [["review", "Review", "check"]]],
-  ["Workspace", [["wbs", "WBS", "pipeline"], ["gantt", "Timeline", "clock"], ["critical", "Critical Path", "graph"], ["kanban", "Kanban", "grid"], ["model", "3D Timeline", "cube"]]],
+  ["Workspace", [["wbs", "WBS", "pipeline"], ["gantt", "Timeline", "clock"], ["critical", "Critical Path", "graph"], ["kanban", "Kanban", "grid"], ["model", "3D Timeline", "cube"], ["twin", "Digital Twin", "signal"]]],
   ["Records", [["procedures", "Procedures", "doc"], ["cost", "Cost", "gauge"], ["reports", "Reports", "report"]]],
 ];
 const TABS = GROUPS.flatMap(([, tabs]) => tabs);
@@ -67,7 +69,8 @@ export default function Home() {
   const [copilot, setCopilot] = useState<boolean | null>(null);  // null until a person says: then it opens by itself where the plan is being checked, on a screen with room for it
   const [wide, setWide] = useState(false);
   const [held, setHeld] = useState(false);  // kept mounted once opened, so that the conversation survives changing tab
-  const [working, setWorking] = useState(false);  // the agents are at work on this project: when they finish, every tab reads its data again and fills in
+  const [working, setWorking] = useState(false);
+  const [demo, setDemo] = useState(false);  // the guided three-minute demo, for presenting  // the agents are at work on this project: when they finish, every tab reads its data again and fills in
   useEffect(() => {
     setWide(window.matchMedia("(min-width: 1400px)").matches);
     try { const saved = localStorage.getItem(COPILOT); if (saved) setCopilot(saved === "on"); } catch { /* storage off */ }
@@ -124,8 +127,8 @@ export default function Home() {
                   {tabs.map(([k, label, icon]) => {
                     const on = route.tab === k;
                     return (
-                      <button key={k} onClick={() => go(k)} aria-current={on ? "page" : undefined} className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 py-1.5 ${on ? "bg-[#f5b82e] font-semibold text-[#171106] shadow-[0_2px_10px_rgb(245_184_46/.30)]" : "text-[#c3ccd6] hover:bg-white/[.07] hover:text-white"}`}>
-                        <Icon name={icon} className="h-3.5 w-3.5" />{label}
+                      <button key={k} onClick={() => go(k)} aria-current={on ? "page" : undefined} title={label} aria-label={label} className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 py-1.5 max-[1700px]:px-2 ${on ? "bg-[#f5b82e] font-semibold text-[#171106] shadow-[0_2px_10px_rgb(245_184_46/.30)]" : "text-[#c3ccd6] hover:bg-white/[.07] hover:text-white"}`}>
+                        <Icon name={icon} className="h-3.5 w-3.5" /><span className={on ? "" : "max-[1700px]:hidden"}>{label}</span>
                         {badge[k] > 0 && <span className={`rounded-full px-1.5 text-[10px] font-bold ${on ? "bg-[#171106] text-[#f5b82e]" : "bg-[#fab219] text-black"}`}>{badge[k]}</span>}
                       </button>
                     );
@@ -133,6 +136,7 @@ export default function Home() {
                 </span>
               ))}
             </nav>
+            <button onClick={() => setDemo(true)} title="A three-minute guided demo: each step opens its screen and says what to show" className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-[#f5b82e]/50 px-2.5 py-1 font-medium text-[#f5b82e] hover:bg-[#f5b82e]/10"><Icon name="play" className="h-3.5 w-3.5" />Demo</button>
             <button onClick={toggleCopilot} aria-pressed={showCopilot} title="Ask about this project. It reads the live records and only advises." className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border px-2.5 py-1 font-medium ${showCopilot ? "border-[#2dd4ee] bg-[#2dd4ee] text-[#062a33]" : "border-[#2dd4ee]/50 text-[#2dd4ee] hover:bg-[#2dd4ee]/10"}`}><Icon name="sparkle" className="h-3.5 w-3.5" />AI Copilot</button>
             <ProjectSwitch />
             {own === false && <span className="shrink-0 text-[11px] text-[#abb3bf] max-[1750px]:hidden">Synthetic data. No real project, company or person.</span>}
@@ -156,6 +160,7 @@ export default function Home() {
             {route.tab === "review" && own === false && <AnalysisView />}
             {route.tab === "wbs" && <WbsModule sub={route.sub} target={route.target} />}
             {route.tab === "reports" && <ReportsModule sub={route.sub} target={route.target} />}
+            {route.tab === "twin" && <DigitalTwinModule />}
             {route.tab === "procedures" && <ProceduresModule />}
             {route.tab === "critical" && <CriticalModule />}
             {route.tab === "gantt" && <ScheduleModule sub="gantt" target={route.target} />}
@@ -172,6 +177,7 @@ export default function Home() {
             {held && <aside className={showCopilot ? "flex w-[380px] shrink-0 flex-col border-l border-black/40 max-lg:w-[320px]" : "hidden"} aria-label="AI Copilot"><OperatorChat compact tab={route.tab} starters={setup ? SETUP_QUESTIONS : undefined} onClose={toggleCopilot} /></aside>}
           </div>
           <SourceDrawer />
+          {demo && <DemoTour onClose={() => setDemo(false)} />}
         </div>
       </FocusContext.Provider>
     </GoContext.Provider>

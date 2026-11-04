@@ -217,11 +217,11 @@ function Resources() {
   const t = r.totals as Rec;
   return (
     <div className="min-h-0 flex-1 space-y-3 overflow-auto bg-[#111820] p-3 text-[12px]">
-      <Card title="People on site at the peak of each day" right={<span className="text-[10.5px] font-normal text-[#8f99a8]">{t.hours_per_oh} working hours a day</span>}><CrewChart days={r.crew_by_day} limit={t.programme_crew} who={who} /></Card>
+      {(r.crew_by_day as Rec[]).some((d) => d.total > 0) && <Card title="People on site at the peak of each day" right={<span className="text-[10.5px] font-normal text-[#8f99a8]">{t.hours_per_oh} working hours a day</span>}><CrewChart days={r.crew_by_day} limit={t.programme_crew} who={who} /></Card>}
       <Card title="Workforce by trade" right={<span className="text-[10.5px] font-normal text-[#8f99a8]">OH: one person for one day. From SNI 7394:2008, plus the agents&apos; estimates for handling and inspection</span>}>
         <div className="divide-y divide-white/[.04]">{(r.workforce as Rec[]).map((w) => {
           const max = Math.max(...(r.workforce as Rec[]).map((x) => x.man_hours), 1);
-          return <Item key={w.role} code={`${num(w.oh)} OH`} title={<span className="text-white">{w.role}{w.supervises ? <span className="text-[#8f99a8]"> (shared across tasks)</span> : null}</span>} meta={`Rp ${w.cost.toLocaleString("en-US")}`} visual={<SizeBar value={w.man_hours} max={max} />} value={<><span className="block font-semibold">{num(w.man_hours)}</span><span className="block text-[10.5px] font-normal text-[#8f99a8]">man-hours</span></>} />;
+          return <Item key={w.role} code={`${num(w.oh)} OH`} title={<span className="text-white">{w.role}{w.supervises ? <span className="text-[#8f99a8]"> (shared across tasks)</span> : null}</span>} meta={w.cost ? `Rp ${w.cost.toLocaleString("en-US")}` : "no wage rate in the documents"} visual={<SizeBar value={w.man_hours} max={max} />} value={<><span className="block font-semibold">{num(w.man_hours)}</span><span className="block text-[10.5px] font-normal text-[#8f99a8]">man-hours</span></>} />;
         })}</div>
       </Card>
       <Card title="Peak against what each has" right={<button onClick={() => go("procurement/assignments")} className={quiet}>Assignments</button>}>

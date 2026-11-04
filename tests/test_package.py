@@ -1325,3 +1325,59 @@ def test_the_scenarios_plan_still_works_as_it_did(monkeypatch, tmp_path):
         assert cp["path"] and cp["network"]
     memory.close()
     P._conn = None
+
+
+def test_work_tied_to_nothing_gets_a_second_look(project_copy):
+    f = F.PackageFirm(lambda *a: None, 5, mock=True)
+    work = [{"no": "A", "name": "Struktur", "start_week": 1, "finish_week": 4, "not_before": 0, "days": 28}, {"no": "B", "name": "Plafond", "start_week": 5, "finish_week": 10, "not_before": 28, "days": 42},
+            {"no": "C", "name": "Fire Alarm", "start_week": 6, "finish_week": 10, "not_before": 35, "days": 35}]
+    asked = []
+
+    async def scripted(key, text, tools, prompt, must_read=True):
+        asked.append(prompt)
+        return json.dumps({"links": [{"before": "A", "after": "B", "why": "ceiling on the frame"}] if len(asked) == 1 else [{"before": "A", "after": "C", "why": "cables run on the frame"}]})
+
+    f.work = scripted
+    firm._emit.set(lambda e: None)
+    links = asyncio.run(f.link(work))
+    assert len(asked) == 2 and "Nothing linked to it at all" in asked[1] and "C: Fire Alarm" in asked[1].split("Nothing linked to it at all")[1], "even though it ends with the job, so nothing has to follow it"
+    assert ("A", "C") in {(x["before"], x["after"]) for x in links}
+
+
+def test_a_tender_summary_from_the_procurement_system_never_goes_to_a_model():
+    summary = ["Kode Tender 10135337000 Nama Tender Pembangunan Gedung. Nilai HPS Paket Rp 42.264.218.000,00. Jadwal tahapan. Peserta: PT Contoh, NPWP 01.234.567.8."]
+    assert K.classify("Summary-Report-10135337000_merge.pdf", summary)[:2] == ("award", False), "named as one"
+    assert K.classify("dokumen.pdf", summary)[:2] == ("award", False), "or only by what its first page says, though that states the HPS"
+    assert K.classify("2-HPS-Pemb-Gedung.pdf", ["Kode Tender 101. Harga Perkiraan Sendiri. Jumlah 42.264.218.000,00"])[:2] == ("estimate", True), "a file named for what it is keeps its name's rule"
+
+
+def test_one_sheet_that_cannot_be_read_does_not_lose_the_rest_of_the_file(tmp_path, monkeypatch):
+    import pypdf
+
+    class Sheet:
+        def __init__(self, text):
+            self.text = text
+
+        def extract_text(self):
+            if self.text is None:
+                raise ValueError("Reached maximum number of tokens per stream")
+            return self.text
+
+    class Reader:
+        def __init__(self, path):
+            self.pages = [Sheet("Denah lantai 1"), Sheet(None), Sheet("Detail kolom")]
+
+    monkeypatch.setattr(pypdf, "PdfReader", Reader)
+    path = tmp_path / "gambar.pdf"
+    path.write_bytes(b"%PDF")
+    assert K.read_pages(path) == ["Denah lantai 1", "", "Detail kolom"], "it reads as a page with no text, and the rest stay"
+
+
+def test_a_dkh_is_a_boq_and_its_unit_price_analysis_is_not_read_as_one():
+    assert K.classify("DKH-Ged-II-HTC.pdf", ["HARGA SATUAN JUMLAH (Rp) (Rp)"])[0] == "boq", "the usual short name for a Daftar Kuantitas dan Harga"
+    bill = "PEKERJAAN : GEDUNG\nA. PEKERJAAN PERSIAPAN\n1 Pembersihan lahan 100 m2 - Rp 5.000\n"
+    analysis = "ANALISA HARGA SATUAN PEKERJAAN\nPekerjaan : Gedung\nTukang Kayu 2,000 OH - Rp 5.000\n"
+    more = "Kepala Tukang 17,0 OH - Rp 7.000\n"
+    lines = K.read_boq_lines("D", [bill, analysis, more])
+    assert [x["name"] for x in lines] == ["Pembersihan lahan"], "nor the pages that run on from it with no heading of their own"
+    assert len(K.read_boq_lines("D", [analysis, more, "DAFTAR KUANTITAS DAN HARGA\n" + bill])) == 1, "a BoQ that comes after its analysis is still read"

@@ -639,12 +639,16 @@ Answer with JSON only: {{"links": [{{"before": "a work package's number", "after
         def loose_ends() -> list[dict]:
             return [w for w in work if not whole_job(w) and w["finish_week"] < last_week - 1 and w["no"] not in {k["before"] for k in kept}]
 
+        def untied() -> list[dict]:  # not linked to anything at all: its float and its place in the network say nothing
+            tied = {k["before"] for k in kept} | {k["after"] for k in kept}
+            return [w for w in work if not whole_job(w) and w["no"] not in tied]
+
         take(answer)
-        if answer is not None and loose_ends():  # a float counted to the end of the job says little if something really does follow. One more look, at what was left hanging
+        if answer is not None and (loose_ends() or untied()):  # a float counted to the end of the job says little if something really does follow. One more look, at what was left hanging
             so_far = "\n".join(f"{k['before']} before {k['after']}" for k in kept)
             take(await self.answer_of("engineer", f"""{self.head(a)}
 Here is a master schedule, the links already agreed, and the work with nothing linked after it. For each of those, say what work physically needs it first, if any does. {PHYSICAL} A link nobody could defend on site is worse than no link, and some work truly has nothing after it.
-Answer with JSON only: {{"links": [{{"before": "a work package's number", "after": "a work package's number", "why": "short"}}]}}""", f"{listed}\n\nAlready linked:\n{so_far}\n\nNothing after it yet:\n" + "\n".join(f"{w['no']}: {w['name']}" for w in loose_ends()), "links"))
+Answer with JSON only: {{"links": [{{"before": "a work package's number", "after": "a work package's number", "why": "short"}}]}}""", f"{listed}\n\nAlready linked:\n{so_far}\n\nNothing linked to it at all, so say what it physically needs first as well:\n" + "\n".join(f"{w['no']}: {w['name']}" for w in untied()) + "\n\nNothing after it yet:\n" + "\n".join(f"{w['no']}: {w['name']}" for w in loose_ends()), "links"))
         if against:
             self.add_check("links", False, f"The planning engineer thinks these run in the wrong order in {self.rows_from}, which has {', '.join(f"{a['no']} before {b['no']}" for a, b in against[:6])}. Code keeps those dates, so those links are not in the critical path until a person settles the order.")
             if self.rows_from == "the master schedule":  # with no schedule these are the engineer's own estimates: nothing for the consultant to answer

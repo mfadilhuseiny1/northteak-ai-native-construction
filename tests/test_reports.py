@@ -98,3 +98,17 @@ def test_money_nothing_has_measured_is_not_shown_as_on_target():
     assert s["priced"] and not s["cost_measured"] and s["eac"] == s["budget"] and s["variance"] is None and s["cpi"] is None
     assert "no actual cost is recorded yet, so the forecast is the budget" in s["notes"]
     _close()
+
+
+def test_the_kurva_s_spreads_each_weight_over_its_weeks_and_measures_only_what_was_measured():
+    k = _client().get("/api/project/kurva-s").json()
+    items = [r for r in k["rows"] if r["type"] == "item"]
+    assert items and abs(sum(r["weight"] for r in items) - 100) < 0.2, "the weights make up the whole job"
+    assert all(abs(sum(r["cells"]) - r["weight"]) < 0.05 for r in items), "each weight is spread over its weeks, none lost"
+    assert abs(k["planned_cum"][-1] - 100) < 0.2 and k["planned_cum"] == sorted(k["planned_cum"])
+    for g in (r for r in k["rows"] if r["type"] == "group"):
+        assert abs(g["weight"] - sum(r["weight"] for r in items if str(r["code"]).startswith(g["code"] + "."))) < 0.05
+    assert k["actual"][0] == [0, 0.0]
+    if k["current_week"]:
+        assert k["actual"][-1][0] == k["current_week"], "today's point is where today is"
+        assert set(k["actual_weekly"]) == {str(w) for w, _ in k["actual"][1:]}, "a week no one measured has no actual figure"

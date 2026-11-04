@@ -12,7 +12,8 @@ import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js
 export type El = { id: string; code: string; name: string; account: string; kind: string; level: number | null; start: number; end: number; start_date: string; finish_date: string; critical: boolean };
 export type Floor = { index: number; name: string; elevation: number; height: number; planned: boolean };
 export type Model = { plan?: { title?: string } | null; pile?: string; start: string; days: number; width: number; depth: number; bay: number; basement_depth: number; storeys: Floor[]; top: number; roof: string; roof_covered?: boolean; crane: string; lift?: boolean; elements: El[]; read: Record<string, any>[]; assumed: string[]; absent?: string[] };
-export type Scene = { update: (day: number, ghost: boolean) => Record<string, string>; focus: (ids: string[]) => void; overview: () => void; dispose: () => void; setFirstPerson: (on: boolean) => void };
+export type Marker = { id: string; x: number; y: number; z: number; color: string; glyph: string; alert?: boolean; dim?: boolean };
+export type Scene = { update: (day: number, ghost: boolean) => Record<string, string>; focus: (ids: string[]) => void; overview: () => void; dispose: () => void; setFirstPerson: (on: boolean) => void; markers: (list: Marker[]) => void; look: (at: { x: number; y: number; z: number }) => void };
 
 export const LOOK = { formwork: "#c9a46b", rebar: "#9a5531", fresh: "#878d93", concrete: "#d4d6d8", brick: "#b0603a", plaster: "#efe8da" };
 export const PIN = "#f59e0b";
@@ -1394,6 +1395,8 @@ export function buildScene(model: Model, holder: HTMLDivElement, onPick: (ids: s
     const box = renderer.domElement.getBoundingClientRect();
     pointer.set(((ev.clientX - box.left) / box.width) * 2 - 1, -((ev.clientY - box.top) / box.height) * 2 + 1);
     ray.setFromCamera(pointer, camera);
+    const device = markerSprites.length ? ray.intersectObjects(markerSprites, false)[0] : undefined;
+    if (device) { onPick([`marker:${device.object.userData.marker}`]); return; }
     const hit = ray.intersectObjects(pickable.filter((m) => m.visible), false).find((h) => !((h.object as THREE.Mesh).material as THREE.Material).clippingPlanes?.some((p) => p.distanceToPoint(h.point) < -0.01));  // what is clipped away is not there yet
     onPick(hit ? (hit.object.userData.ids as string[]) : null);
   };
@@ -1444,6 +1447,43 @@ export function buildScene(model: Model, holder: HTMLDivElement, onPick: (ids: s
     if (moving) frameId = requestAnimationFrame(tick);
   };
   const kick = () => { if (!frameId) frameId = requestAnimationFrame(tick); };
+
+  // ---------------------------------------------------------------------------------------------- markers: devices over the building, drawn on top of it so none hides behind a wall, each one clickable
+  const markerGroup = new THREE.Group();
+  scene.add(markerGroup);
+  const icons = new Map<string, THREE.CanvasTexture>();
+  let markerSprites: THREE.Sprite[] = [];
+  const iconOf = (m: Marker) => {
+    const key = `${m.color}|${m.glyph}|${m.alert ? 1 : 0}|${m.dim ? 1 : 0}`;
+    const known = icons.get(key);
+    if (known) return known;
+    const c = document.createElement("canvas");
+    c.width = c.height = 64;
+    const g = c.getContext("2d")!;
+    g.globalAlpha = m.dim ? 0.35 : 1;
+    if (m.alert) { g.fillStyle = "rgba(229,72,77,.35)"; g.beginPath(); g.arc(32, 32, 31, 0, Math.PI * 2); g.fill(); }
+    g.fillStyle = "#0d131a"; g.beginPath(); g.arc(32, 32, 22, 0, Math.PI * 2); g.fill();
+    g.lineWidth = 5; g.strokeStyle = m.alert ? "#e5484d" : m.color; g.stroke();
+    g.fillStyle = "#ffffff"; g.font = "bold 22px Segoe UI, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(m.glyph, 32, 33);
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    icons.set(key, t);
+    return t;
+  };
+  const setMarkers = (list: Marker[]) => {
+    for (const sp of markerSprites) { markerGroup.remove(sp); (sp.material as THREE.SpriteMaterial).dispose(); }
+    markerSprites = list.map((m) => {
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: iconOf(m), depthTest: false, depthWrite: false, transparent: true }));
+      sp.position.set(m.x, m.y, m.z);
+      const size = m.alert ? 2.8 : 1.9;
+      sp.scale.set(size, size, 1);
+      sp.renderOrder = 20;
+      sp.userData.marker = m.id;
+      markerGroup.add(sp);
+      return sp;
+    });
+    kick();
+  };
   const stopGoing = () => { goal = null; };
   controls.addEventListener("start", stopGoing);
   controls.addEventListener("change", render);
@@ -1520,7 +1560,15 @@ export function buildScene(model: Model, holder: HTMLDivElement, onPick: (ids: s
       kick();
     },
     setFirstPerson: setFp,
+    markers: setMarkers,
+    look: (at) => {
+      const target = new THREE.Vector3(at.x, at.y, at.z), off = camera.position.clone().sub(controls.target);
+      goal = { target, position: target.clone().add(off.setLength(Math.min(off.length(), span * 1.1))) };
+      kick();
+    },
     dispose: () => {
+      for (const t of icons.values()) t.dispose();
+      for (const sp of markerSprites) (sp.material as THREE.SpriteMaterial).dispose();
       watch.disconnect();
       if (frameId) cancelAnimationFrame(frameId);
       controls.removeEventListener("start", stopGoing);

@@ -54,3 +54,27 @@ def test_a_person_marks_a_requirement_and_the_record_says_who(client):
     assert client.get("/api/project/tender-selection").json()["ready"] == 1
     assert client.post("/api/project/tender-selection/nonsense", json={"status": "ready"}).status_code == 404
     assert client.post("/api/project/tender-selection/nib", json={"status": "maybe"}).status_code == 409
+
+
+def test_the_kurva_s_is_the_master_schedule_as_printed(client):
+    k = client.get("/api/project/kurva-s").json()
+    assert k["weights_from"] == "schedule" and "JADWAL" in k["source"]["title"]
+    assert k["weeks"] == 52 and k["planned_cum"][31] == 46.9 and k["planned_cum"][-1] == 100.0, "the contract's own cumulative row, not one worked out"
+    pondasi = next(r for r in k["rows"] if "Pondasi" in r["name"])
+    assert [c for c in pondasi["cells"] if c] == [1.0, 1.41, 1.41, 1.41, 1.82] and pondasi["weight"] == 7.03, "each week's figure as the document prints it"
+    assert abs(sum(r["weight"] for r in k["rows"] if r["type"] != "group") - 100) < 0.1
+    assert next(r for r in k["rows"] if r["no"] == "I")["type"] == "solo", "a group printed as one line is a row of work itself"
+    assert abs(sum(k["planned"]) - 100) < 0.1, "the weeks add up to the curve"
+
+
+def test_the_report_plans_by_the_same_curve_as_the_kurva_s(client):
+    r = client.get("/api/project/report").json()
+    k = client.get("/api/project/kurva-s").json()
+    if not r.get("planned_any"):  # with no plan yet there is nothing to report against
+        analyse(client)
+        r, k = client.get("/api/project/report").json(), client.get("/api/project/kurva-s").json()
+    assert "JADWAL" in r["planned_from"]
+    points = dict(map(tuple, r["curve"]))
+    start = k["week_starts"][0]
+    assert points[start] == 0.0 and r["curve"][-1][1] == 100.0
+    assert r["progress"] == k["actual"][-1][1], "one figure for how far the job has got"

@@ -47,7 +47,7 @@ export function CriticalModule() {
             </>
           ) : <p className="text-[#abb3bf]">No work is linked yet, so there is no chain to show.</p>}
         </div>
-        {rows.length > 0 && <div className="border-b border-white/5 px-3 py-1"><CpmNetwork rows={rows} path={path} reasons={linkReasons(live?.plan)} onOpen={(code) => go(`wbs/tree:${code}`)} board={board.data?.cards as Rec[] | undefined} onMove={move} onBoard={() => go("kanban")} /></div>}
+        {rows.length > 0 && <div data-tour="cpm" className="border-b border-white/5 px-3 py-1"><CpmNetwork rows={rows} path={path} reasons={linkReasons(live?.plan)} onOpen={(code) => go(`wbs/tree:${code}`)} board={board.data?.cards as Rec[] | undefined} onMove={move} onBoard={() => go("kanban")} /></div>}
         {rows.length > 0 && (
           <div className="p-3">
             <Group title="Every work package on one timeline" sub="the bar runs from the earliest start to the earliest finish; the hatched tail is how far it can slip before the finish date moves"

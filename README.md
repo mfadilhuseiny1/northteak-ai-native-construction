@@ -264,6 +264,8 @@ What those runs showed:
 - **Work permits:** told what Permen PUPR 10/2021 Pasal 26 and 27 require, the planners on two UGM work packages made getting the permit the first step of 7 of their 18 tasks. Code flagged those 7 and 3 more: rebar fixed from a scaffold, grinding, and an inspection done in a harness. Code no longer flags an inspection for the work it looks at.
 - **Cost and time:** the trials pointed to about $0.05 per planner and $2 to $3 for a full run. Both full runs came in under that, at about $0.02 to $0.04 per work package. Two runs are not a basis for a promise.
 
+**A later full run, 2026-11-04, on the UGM package from one zip, on throwaway storage:** $11.66, about 15 minutes. All 19 documents came out of the zip in 16 seconds and 8 went to the agents. The planning engineer split 31 schedule rows into 50 work packages; the planners wrote 527 tasks, none lost, about $0.20 each, because they now use the lead model. Code checked 1,889 quotations and dropped 3; 3 tasks cite nothing and 57 state figures their pages do not. An earlier attempt was stopped at $6.03 by a spending cap set too low. What the run showed, now fixed: the planned curve was worked out rather than read, and ran up to 6.9 points below the contract's own at week 29, so the Kurva-S and the reports now use the master schedule's printed figures; and 3 work packages were tied to nothing, which one real call of the wider second look ($0.30) resolved, though 11 still have nothing after them.
+
 Nobody in construction has reviewed these procedures. Read them as a first draft for a site engineer.
 
 ## Regenerating the assets

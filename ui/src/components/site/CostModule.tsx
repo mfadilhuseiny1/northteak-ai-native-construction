@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
-import { api, Bar, Card, Empty, field, full, inFocus, Kpi, Kpis, Loading, money, num, Pill, primary, Problem, quiet, Ref, SubTabs, Table, td, tr, useData, useFocus, useGo, type Rec, NotYet } from "./kit";
+import { api, Bar, Card, Empty, field, full, inFocus, Kpi, Kpis, Loading, money, num, Pill, primary, Problem, quiet, Ref, SubTabs, useData, useFocus, useGo, type Rec, NotYet } from "./kit";
+import { KurvaS } from "./KurvaS";
 import { ClaimsView } from "./RecordsViews";
 import { ACTUAL, PLAN } from "./ReportCharts";
 import { Diverge, Group, hue, Item, Legend, Progress, SERIES, ShareStrip, SizeBar, SplitBar } from "./Visual";
@@ -9,38 +10,6 @@ import { Diverge, Group, hue, Item, Legend, Progress, SERIES, ShareStrip, SizeBa
 
 const EMPTY = { package: "", description: "", amount: "", recoverable_from: "", actual: false };
 
-/** The Kurva-S: one measure over time, so one line. Hover a week for its figures, or read it as a table. */
-function SCurve({ points }: { points: Rec[] }) {
-  const [hover, setHover] = useState<number | null>(null);
-  const [asTable, setAsTable] = useState(false);
-  const W = 1000, H = 175, L = 34, R = 14, T = 10, B = 20;
-  const x = (i: number) => L + (i / Math.max(points.length - 1, 1)) * (W - L - R);
-  const y = (v: number) => T + (1 - v / 100) * (H - T - B);
-  const h = hover == null ? null : points[hover];
-  return (
-    <div className="p-3">
-      <div className="relative" onMouseLeave={() => setHover(null)}>
-        <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Planned progress over ${points.length} weeks, reaching ${points[points.length - 1]?.cumulative}%`} className="w-full">
-          {[0, 25, 50, 75, 100].map((v) => <g key={v}><line x1={L} x2={W - R} y1={y(v)} y2={y(v)} stroke="#ffffff" strokeOpacity={v ? 0.07 : 0.2} /><text x={L - 6} y={y(v) + 2.5} textAnchor="end" fontSize="7.5" fill="#8f99a8">{v}%</text></g>)}
-          {points.map((p, i) => (p.week === 1 || p.week % 4 === 0) && <text key={p.week} x={x(i)} y={H - 6} textAnchor="middle" fontSize="7.5" fill="#8f99a8">W{p.week}</text>)}
-          <path d={points.map((p, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(p.cumulative).toFixed(1)}`).join(" ")} fill="none" stroke="#8083e8" strokeWidth="2" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
-          {h && hover != null && <g><line x1={x(hover)} x2={x(hover)} y1={T} y2={H - B} stroke="#ffffff" strokeOpacity="0.25" /><circle cx={x(hover)} cy={y(h.cumulative)} r="3.5" fill="#8083e8" stroke="#1c2733" strokeWidth="1.5" /></g>}
-          {points.map((p, i) => <rect key={p.week} x={x(i) - (W - L - R) / points.length / 2} y={T} width={(W - L - R) / points.length} height={H - T - B} fill="transparent" tabIndex={0} aria-label={`Week ${p.week}: ${p.cumulative}%`} onMouseEnter={() => setHover(i)} onFocus={() => setHover(i)} className="outline-none" />)}
-        </svg>
-        {h && hover != null && (
-          <div className="pointer-events-none absolute top-1 z-10 w-[190px] rounded border border-white/15 bg-[#151e28] p-2 text-[11px] text-[#d3d8de] shadow-lg" style={hover > points.length / 2 ? { right: `${100 - (x(hover) / W) * 100 + 1}%` } : { left: `${(x(hover) / W) * 100 + 1}%` }}>
-            <p className="font-semibold text-white">Week {h.week}, to {h.ends}</p>
-            <p>{h.cumulative}% planned by then</p>
-            <p>{money(h.value)} of work</p>
-          </div>
-        )}
-      </div>
-      <button onClick={() => setAsTable(!asTable)} className={`${quiet} mt-1`}>{asTable ? "Hide the table" : "Show as a table"}</button>
-      {asTable && <div className="mt-2 max-h-[260px] overflow-y-auto"><Table heads={["Week", "To", "Planned by then", "Worth"]}>{points.map((p) => <tr key={p.week} className={tr}><td className={td}>{p.week}</td><td className={td}>{p.ends}</td><td className={td}>{p.cumulative}%</td><td className={td}>{money(p.value)}</td></tr>)}</Table></div>}
-    </div>
-  );
-}
-
 const METHOD: Record<string, string> = { top_down: "Top-down: the priced BoQ recap, spread over the work packages by the master schedule's weights. The package has no unit rates or detailed quantities, so this is not a measured take-off, and man-hours are the agents' estimates.", bottom_up: "From the contract BoQ. Where a work plan covers the work, its quantities, workforce and material are worked out in Take-off.", boq: "From the BoQ lines on this project." };
 
 function Estimate() {
@@ -48,7 +17,7 @@ function Estimate() {
   const go = useGo();
   const [open, setOpen] = useState<Set<string>>(new Set());
   if (!data) return <div className="flex-1"><Problem err={err} />{!err && <Loading />}</div>;
-  const rows = data.accounts as Rec[], curve = data.curve as Rec[];
+  const rows = data.accounts as Rec[];
   const toggle = (id: string) => { const next = new Set(open); if (next.has(id)) next.delete(id); else next.add(id); setOpen(next); };
   const gap = data.owner_total ? (data.total / data.owner_total - 1) * 100 : null;
   return (
@@ -63,7 +32,7 @@ function Estimate() {
         {data.man_hours > 0 && <Kpi label="man-hours, estimated" value={num(data.man_hours, 0)} />}
       </Kpis>
       <div className="min-h-0 flex-1 space-y-3 overflow-auto bg-[#111820] p-3">
-        {curve.length > 0 && <Card title="Planned progress over time: the Kurva-S" right={<span className="text-[10.5px] font-normal text-[#8f99a8]">read from the master schedule</span>}><SCurve points={curve} /></Card>}
+        <Card title="Planned and actual progress: the Kurva-S" right={<span className="text-[10.5px] font-normal text-[#8f99a8]">scroll sideways for the weeks</span>}><KurvaS /></Card>
         {rows.length > 0 && (
           <Card title="Where the money goes" right={<span className="text-[10.5px] font-normal text-[#8f99a8]">click a part to jump to it</span>}>
             <div className="p-3"><ShareStrip parts={rows.map((a, i) => ({ key: a.id, label: a.name, value: a.value, color: hue(i) }))} onPick={(k) => document.getElementById(`ca-${k}`)?.scrollIntoView({ behavior: "smooth", block: "start" })} /></div>
@@ -218,7 +187,7 @@ function Takeoff() {
   const go = useGo();
   if (!data) return <div className="flex-1"><Problem err={err} />{!err && <Loading />}</div>;
   const v = data.takeoff as Rec | null;
-  if (!v) return <div className="flex-1 bg-[#111820] text-[12px]"><Empty>The take-off and bill of materials come from the AI analysis. <button onClick={() => go("analysis")} className="underline">Open it</button>.</Empty></div>;
+  if (!v) return <div className="flex-1 bg-[#111820] text-[12px]"><Empty>{(data.lines as Rec[]).length ? "No take-off for this package: its BoQ is a priced recap, with no quantities or unit rates to work from. Upload a BoQ with its quantities and analyse again to get one." : <>The take-off and bill of materials come from the AI analysis. <button onClick={() => go("home")} className="underline">Start on Home</button>.</>}</Empty></div>;
   const t = v.totals as Rec, track = v.tracking as Rec, flags = v.waste_flags as Rec[];
   const saving = flags.reduce((n, f) => n + (f.saving_rp || 0), 0);
   return (

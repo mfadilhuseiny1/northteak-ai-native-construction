@@ -43,7 +43,7 @@ export function ReportsModule({ sub, target }: { sub: string; target: string }) 
         <span className="flex rounded-md border border-white/15 bg-black/20 p-0.5" role="tablist" aria-label="Report">
           {VIEWS.map(([k, label]) => <button key={k} role="tab" aria-selected={view === k} onClick={() => go(`reports/${k}`)} className={`rounded px-2.5 py-0.5 text-[11.5px] ${view === k ? "bg-[#f5b82e] font-semibold text-[#171106]" : "text-[#abb3bf] hover:bg-white/[.07] hover:text-white"}`}>{label}</button>)}
         </span>
-        {view === "funding" && <button onClick={() => window.open("/print?r=funding", "_blank")} className={`${primary} flex items-center gap-1.5`}><Icon name="download" className="h-3.5 w-3.5" />Print or save as PDF</button>}
+        {view === "funding" && <button data-tour="print" onClick={() => window.open("/print?r=funding", "_blank")} className={`${primary} flex items-center gap-1.5`}><Icon name="download" className="h-3.5 w-3.5" />Print or save as PDF</button>}
       </Bar>
       {view === "project" && <ProjectReport target={target} />}
       {view === "portfolio" && <PortfolioReport />}
@@ -56,6 +56,7 @@ export function ReportsModule({ sub, target }: { sub: string; target: string }) 
 
 function ProjectReport({ target }: { target: string }) {
   const { data, err, act } = useData("/api/project/report");
+  const go = useGo();
   const [adding, setAdding] = useState(false);
   useEffect(() => { if (target && data) document.getElementById(`report-${target}`)?.scrollIntoView({ behavior: "smooth", block: "start" }); }, [target, data]);
   if (!data) return <div className="flex-1"><Problem err={err} />{!err && <Loading />}</div>;
@@ -67,7 +68,7 @@ function ProjectReport({ target }: { target: string }) {
         <Problem err={err} />
         <div className="mx-auto grid max-w-[1400px] gap-3 xl:grid-cols-3">
           <Hero r={r} />
-          <div className="xl:col-span-2"><Card className="h-full" title="Progress against the baseline" right={<span className="text-[11px] text-[#abb3bf]"><b className="text-white">{Math.round(r.progress)}%</b> done · {Math.round(r.planned)}% planned by today{r.spi != null ? ` · SPI ${r.spi.toFixed(2)}` : ""}</span>}><div className="p-3"><SCurve planned={r.curve} actual={r.actual_curve} today={r.today} height={290} /></div></Card></div>
+          <div className="xl:col-span-2"><Card className="h-full" title="Progress against the baseline" right={<span className="flex items-center gap-2 text-[11px] text-[#abb3bf]"><button onClick={() => go("cost")} className={quiet}>Standard Kurva-S</button><b className="text-white">{Math.round(r.progress)}%</b> done · {Math.round(r.planned)}% planned by today{r.spi != null ? ` · SPI ${r.spi.toFixed(2)}` : ""}</span>}><div className="p-3"><SCurve planned={r.curve} actual={r.actual_curve} today={r.today} height={290} /></div></Card></div>
           <MoneyCard r={r} />
           <div className="xl:col-span-2"><Programme r={r} /></div>
           <Changes r={r} />
@@ -86,7 +87,7 @@ function ProjectReport({ target }: { target: string }) {
 
 function Hero({ r }: { r: Rec }) {
   return (
-    <section className="rise relative overflow-hidden rounded-xl border border-white/10 bg-gradient-to-br from-[#1f2c3a] to-[#161f29] p-4 pl-5 shadow-[0_4px_16px_rgb(0_0_0/.25)] xl:col-span-3">
+    <section data-tour="report-hero" className="rise relative overflow-hidden rounded-xl border border-white/10 bg-gradient-to-br from-[#1f2c3a] to-[#161f29] p-4 pl-5 shadow-[0_4px_16px_rgb(0_0_0/.25)] xl:col-span-3">
       <div className="absolute inset-y-0 left-0 w-1" style={{ background: STATE[r.status as Status] }} />
       <div className="flex flex-wrap items-start gap-x-10 gap-y-4">
         <div className="min-w-[280px] flex-1">

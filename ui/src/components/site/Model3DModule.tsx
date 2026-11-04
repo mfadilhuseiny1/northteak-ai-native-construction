@@ -77,7 +77,7 @@ export function Model3DModule() {
         <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-[#d3d8de]"><input type="checkbox" checked={ghost} onChange={(e) => setGhost(e.target.checked)} />Show the finished outline</label>
       </Bar>
       <Problem err={err || failed} />
-      <div className="flex min-h-0 flex-1 overflow-hidden">
+      <div data-tour="model" className="flex min-h-0 flex-1 overflow-hidden">
         <div className="relative min-w-0 flex-1 bg-[#111820]">
           <div ref={holder} className="absolute inset-x-0 top-0 bottom-[46px] cursor-grab active:cursor-grabbing" aria-label="3D model of the building on the chosen day" role="img" />
           <div className="absolute bottom-[56px] left-3 flex gap-1.5">

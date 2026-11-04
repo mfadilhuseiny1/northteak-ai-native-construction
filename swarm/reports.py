@@ -16,7 +16,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from . import modules as M, project as P
+from . import modules as M, package as K, project as P
 
 router = APIRouter()
 
@@ -114,9 +114,42 @@ def _share(start: str, duration: int, day: str) -> float:
 
 
 def planned_pct(acts: list[dict], day: str) -> float:
-    """Where the baseline says the job should be on a day, weighted by duration as the progress figure is."""
-    total = sum(a["duration"] for a in acts)
-    return 100 * sum(a["duration"] * _share(a["baseline_start"], a["duration"], day) for a in acts) / total if total else 0.0
+    """Where the baseline says the job should be on a day, each work package counting for its weight in the job."""
+    weights, _ = _weights(acts)
+    return sum(weights[a["id"]] * _share(a["baseline_start"], a["duration"], day) for a in acts)
+
+
+_read: dict[str, tuple[float, dict | None]] = {}
+
+
+def master_schedule() -> tuple[dict, dict] | None:
+    """The contract's own Kurva-S, read by code from the master schedule, with the document it is in. None if there is none, or it cannot be read as a table with its cumulative row."""
+    for d in K.uploads():
+        if d.get("kind") != "programme" or not d.get("file"):
+            continue
+        path = P.upload_folder() / d["file"]
+        if not path.exists():
+            continue
+        when = path.stat().st_mtime
+        if str(path) not in _read or _read[str(path)][0] != when:
+            _read[str(path)] = (when, K.read_programme(path))
+        table = _read[str(path)][1]
+        if table and table.get("cumulative") and len(table["cumulative"]) == table["weeks"]:
+            return table, d
+    return None
+
+
+def on_schedule(table: dict, start: str, day: str) -> float:
+    """Where the contract's own curve says the job should be on a day: its figure at the end of each week, and evenly between."""
+    days, cum = P.days_between(start, day), table["cumulative"]
+    if days < 0:
+        return 0.0
+    week = days / 7
+    whole = int(week)
+    if whole >= len(cum):
+        return cum[-1]
+    before = cum[whole - 1] if whole else 0.0
+    return before + (cum[whole] - before) * (week - whole)
 
 
 def _budgets(acts: list[dict]) -> dict[str, float]:
@@ -149,16 +182,116 @@ def spend(acts: list[dict], budgets: dict[str, float], first: str, last: str, to
     return round(total)
 
 
-def _curve(acts: list[dict], start: str, end: str) -> list[list]:
+def _curve(at, start: str, end: str) -> list[list]:
     """The baseline's S-curve, a point at each month's turn."""
     points, d = [[start, 0.0]], date.fromisoformat(start)
     while True:
         d = (d.replace(day=1) + timedelta(days=32)).replace(day=1)
         if d.isoformat() >= end:
             break
-        points.append([d.isoformat(), round(planned_pct(acts, d.isoformat()), 1)])
+        points.append([d.isoformat(), round(at(d.isoformat()), 1)])
     points.append([end, 100.0])
     return points
+
+
+def _weights(acts: list[dict]) -> tuple[dict[str, float], str]:
+    """Each work package's weight in the job, in percent: by its share of the RAB, or by its days where nothing is priced."""
+    budgets = _budgets(acts)
+    total = sum(budgets.values())
+    if total > 0:
+        return {a["id"]: 100 * budgets.get(a["id"], 0) / total for a in acts}, "rab"
+    days = sum(a["duration"] for a in acts) or 1
+    return {a["id"]: 100 * a["duration"] / days for a in acts}, "duration"
+
+
+def kurva_actual(acts: list[dict]) -> float:
+    """Progress the way the Kurva-S counts it: each work package's weight times how far it has got."""
+    weights, _ = _weights(acts)
+    return round(sum(weights[a["id"]] * a["progress"] / 100 for a in acts), 2)
+
+
+def kurva_s() -> dict:
+    """The Kurva-S as contractors draw it, beside the actual curve. Where the package has a master schedule code can read, the grid and the planned
+    curve are that document's own figures, so they match what the contract says. Otherwise each work package's weight is spread evenly over the
+    days its baseline runs. The actual line has a point for each month a report saved and for today: the weeks between were not measured, so they
+    are left empty rather than filled in."""
+    sched = P.schedule()
+    acts = {a["id"]: a for a in sched["activities"]}
+    official = master_schedule()
+    if official:  # the document needs no plan to be read: it shows as soon as it is uploaded
+        return _on_the_schedule(official, acts, min((a["baseline_start"] for a in acts.values()), default=P.project_start()))
+    if not acts:
+        return {"weeks": 0, "rows": []}
+    weights, source = _weights(list(acts.values()))
+    start = min(a["baseline_start"] for a in acts.values())
+    end = max(a["baseline_finish"] for a in acts.values())
+    weeks = max(1, -(-(P.days_between(start, end) + 1) // 7))
+
+    def spread(a: dict) -> list[float]:
+        cells, first, days = [0.0] * weeks, P.days_between(start, a["baseline_start"]), max(1, a["duration"])
+        for k in range(days):
+            w = (first + k) // 7
+            if 0 <= w < weeks:
+                cells[w] += weights[a["id"]] / days
+        return cells
+
+    rows, groups = [], {}
+    for w in M.work_packages()["packages"]:
+        a = acts.get(w["id"])
+        if not a:
+            continue
+        code = ".".join(str(w["code"]).split(".")[:-1])
+        if code not in groups:
+            groups[code] = {"type": "group", "code": code, "name": w["account_name"], "weight": 0.0, "cells": [0.0] * weeks}
+            rows.append(groups[code])
+        cells = spread(a)
+        g = groups[code]
+        g["weight"] += weights[a["id"]]
+        g["cells"] = [x + y for x, y in zip(g["cells"], cells)]
+        rows.append({"type": "item", "code": w["code"], "name": w["name"], "weight": weights[a["id"]], "cells": cells, "progress": a["progress"]})
+    planned = [sum(r["cells"][k] for r in rows if r["type"] == "item") for k in range(weeks)]
+    cumulative, total = [], 0.0
+    for x in planned:
+        total += x
+        cumulative.append(round(total, 2))
+    return {"rows": [{**r, "weight": round(r["weight"], 2), "cells": [round(x, 3) for x in r["cells"]]} for r in rows],
+            "planned": [round(x, 2) for x in planned], "planned_cum": cumulative, "weights_from": source, **_frame(acts, start, weeks)}
+
+
+def _frame(acts: dict[str, dict], start: str, weeks: int) -> dict:
+    """What every Kurva-S has around its grid: its weeks, today, and the actual points measured."""
+    today = P.TODAY
+    now = 0 if today < start else min(weeks, P.days_between(start, today) // 7 + 1)
+    points = {0: 0.0}
+    for snap in P.all_of("snapshot"):
+        if snap.get("planned_any") and snap.get("today", "") >= start:
+            points[min(weeks, P.days_between(start, snap["today"]) // 7 + 1)] = snap["progress"]
+    if now:
+        points[now] = kurva_actual(list(acts.values()))
+    known = sorted(points.items())
+    return {"start": start, "weeks": weeks, "week_starts": [(date.fromisoformat(start) + timedelta(days=7 * k)).isoformat() for k in range(weeks)], "current_week": now, "today": today,
+            "actual": [[w, round(v, 2)] for w, v in known], "actual_weekly": {w: round(v - known[n - 1][1], 2) for n, (w, v) in enumerate(known) if n}}
+
+
+def _on_the_schedule(official: tuple[dict, dict], acts: dict[str, dict], start: str) -> dict:
+    """The contract's Kurva-S, row by row and week by week, as its document prints it. A row leads to the first work package made from it."""
+    table, doc = official
+    weeks, cum = table["weeks"], table["cumulative"]
+    codes: dict[str, str] = {}
+    for w in M.work_packages()["packages"]:
+        if w.get("no"):
+            codes.setdefault(str(w["no"]), str(w["code"]))
+    code_of = lambda no: codes.get(no) or next((c for n, c in codes.items() if n.startswith(f"{no}.")), "")  # noqa: E731 - a row an agent split lives on in its pieces
+    line = lambda cells: [float(cells.get(k + 1, 0)) for k in range(weeks)]  # noqa: E731
+    rows = []
+    for g in K.schedule_rows(table):
+        sums = [sum(r["cells"].get(k + 1, 0) for r in g["rows"]) for k in range(weeks)]
+        first = code_of(g["no"]) or next((code_of(r["no"]) for r in g["rows"] if code_of(r["no"])), "")
+        solo = bool(g["weight"]) and not g["rows"]  # a group with no rows under it, such as one the schedule prints as a single line
+        rows.append({"type": "solo" if solo else "group", "no": g["no"], "code": first, "name": g["name"], "weight": g["weight"] or round(sum(r["weight"] for r in g["rows"]), 2), "cells": line(g["cells"]) if solo else [round(x, 2) for x in sums]})
+        rows.extend({"type": "item", "no": r["no"].split(".", 1)[1], "code": code_of(r["no"]) or first, "name": r["name"], "weight": r["weight"], "cells": line(r["cells"])} for r in g["rows"])
+    planned = [round(cum[k] - (cum[k - 1] if k else 0.0), 2) for k in range(weeks)]
+    return {"rows": rows, "planned": planned, "planned_cum": cum, "weights_from": "schedule", "source": {"doc": doc["id"], "title": doc.get("title", doc["id"]), "page": 1}, **_frame(acts, start, weeks)}
 
 
 def needed() -> list[dict]:
@@ -201,9 +334,10 @@ def summary() -> dict:
            "today": today, "period": today[:7], "quarter": quarter(today)[0], "planned_any": bool(acts)}
     if not acts:
         return {**out, "status": "none", "reasons": [], "notes": ["nothing is planned yet"], "decisions": needed()}
-    total = sum(a["duration"] for a in acts)
-    actual = round(sum(a["progress"] * a["duration"] for a in acts) / total, 1)
+    actual = kurva_actual(acts)
     start = min(a["baseline_start"] for a in acts)
+    official = master_schedule()
+    at = (lambda day: on_schedule(official[0], start, day)) if official else (lambda day: planned_pct(acts, day))  # the contract's own curve where it can be read, so every screen says the same
     planned_finish = max(a["baseline_finish"] for a in acts)
     finish = max(a["finish"] for a in acts)
     whole = next((m for m in sched["milestones"] if m.get("whole_job")), None)
@@ -216,7 +350,7 @@ def summary() -> dict:
     contract = b["boq_value"]
     budgets = _budgets(acts)
     extreme, high = sum(1 for r in risks if r["level"] == "extreme"), sum(1 for r in risks if r["level"] == "high")
-    planned = round(planned_pct(acts, today), 1)
+    planned = round(at(today), 1)
     out.update(
         progress=actual, planned=planned, start=start, finish=finish, planned_finish=planned_finish, contract_finish=contract_finish, revised_finish=revised_finish, days_late=days_late,
         contract=contract, variations_approved=vo["totals"]["approved"], variations_pending=vo["totals"]["proposed"] + vo["totals"]["submitted"], revised=contract + vo["totals"]["approved"],
@@ -226,7 +360,7 @@ def summary() -> dict:
         risks_open=len(risks), risks_extreme=extreme, risks_high=high,
         top_risks=[{"id": r["id"], "title": r["title"], "level": r["level"], "score": r["score"], "owner": r["owner"], "response": r.get("response", ""), "go": r.get("go", "")} for r in risks[:5]],
         milestones=[{"id": m["id"], "name": m.get("name") or m.get("title") or m["id"], "contract_date": m["contract_date"], "forecast": m["forecast"], "days_late": m["days_late"]} for m in sched["milestones"]][:8],
-        curve=_curve(acts, start, max(planned_finish, finish)), next_quarter={"name": name, "first": q_first, "last": q_last, "spend": spend(acts, budgets, q_first, q_last, today)},
+        curve=_curve(at, start, max(planned_finish, finish)), planned_from=official[1]["title"] if official else "", next_quarter={"name": name, "first": q_first, "last": q_last, "spend": spend(acts, budgets, q_first, q_last, today)},
         cash=[], to_spend=max(0, round((b["eac"] if cost_measured else b["budget"]) - b["ac"])),
     )
     first = _after(today)
@@ -429,6 +563,11 @@ def contingency_amount(body: AmountIn) -> dict:
 @router.post("/api/project/contingency/use")
 def contingency_use(body: UseIn) -> dict:
     return _guarded(use_contingency, body.amount, body.reason, body.risk)
+
+
+@router.get("/api/project/kurva-s")
+def kurva() -> dict:
+    return kurva_s()
 
 
 @router.get("/api/reports/portfolio")

@@ -700,7 +700,8 @@ async def _register(rid: str, target: Path, name: str, title: str = "", kind: st
     else:
         broken = ""
     text = "\n\n".join(pages).strip()[:extract.MAX_TEXT]
-    how = broken or (f"{target.suffix[1:].upper()}, {len(pages)} pages" if text else f"{len(pages)} pages of images: no text to read without a model" if pages else "kept as a file: no text to read")
+    blank = sum(1 for x in pages if not x.strip())
+    how = broken or (f"{target.suffix[1:].upper()}, {len(pages)} pages{f', {blank} with no text to read' if blank else ''}" if text else f"{len(pages)} pages of images: no text to read without a model" if pages else "kept as a file: no text to read")
     K.keep_pages(rid, pages)
     sorted_kind, use, why = K.classify(name or saved, pages)
     kind = sorted_kind if kind in ("auto", "") else kind
@@ -1024,7 +1025,9 @@ def agent_decide(module: str, index: int, verdict: str) -> dict:
 from . import contract_admin  # noqa: E402 - its routes join these, and it imports the modules above
 from . import reports  # noqa: E402 - the same
 from . import tender  # noqa: E402 - the same
+from . import twin  # noqa: E402 - the same
 
 router.include_router(contract_admin.router)
 router.include_router(reports.router)
 router.include_router(tender.router)
+router.include_router(twin.router)

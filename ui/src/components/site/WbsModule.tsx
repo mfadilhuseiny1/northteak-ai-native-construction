@@ -392,7 +392,7 @@ export function WbsModule({ sub, target }: { sub: string; target: string }) {
         <button onClick={() => go("review")} className="flex shrink-0 items-center gap-2 border-b border-[#fab219]/30 bg-[#fab219]/[.07] px-4 py-1.5 text-left text-[#fbd38d] hover:bg-[#fab219]/[.12]"><Icon name="alert" className="h-3.5 w-3.5" />Work plan {data.plan.id} is waiting for you: its {r.proposed} tasks reach the board, the schedule and QA/QC when you approve it.<span className="ml-auto whitespace-nowrap underline">Open Review</span></button>
       )}
       <div className="flex min-h-0 flex-1 overflow-hidden">
-        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        <div data-tour="wbs" className="flex min-w-0 flex-1 flex-col overflow-hidden">
           {(view === "tree" || view === "outline") && <Tree view={view} data={data} target={target} sel={sel} onSel={pick} />}
           {view === "packages" && <WorkPackages sel={sel} onSel={pick} />}
           {view === "accounts" && <ControlAccounts sel={sel} onSel={pick} />}

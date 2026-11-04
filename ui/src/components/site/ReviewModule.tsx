@@ -107,7 +107,7 @@ export function ReviewModule() {
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[#111820] text-[13px]">
       <Problem err={err} />
-      <div className="shrink-0 border-b border-white/10 bg-[#1c2733] px-4 py-2.5">
+      <div data-tour="proposal" className="shrink-0 border-b border-white/10 bg-[#1c2733] px-4 py-2.5">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <div className="min-w-[240px] flex-1">
             <p className="flex flex-wrap items-center gap-2 text-[15px] font-semibold text-white">Review the proposal <Pill tone={pending ? "warn" : rec.status === "approved" ? "ok" : "bad"}>{pending ? "waiting for you" : rec.status}</Pill></p>

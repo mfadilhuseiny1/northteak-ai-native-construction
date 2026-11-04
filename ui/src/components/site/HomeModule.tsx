@@ -85,7 +85,7 @@ function Composer({ used, proposal, hero }: { used: number; proposal: Rec | null
   };
   return (
     <div className="space-y-2">
-      <div onDragOver={(e) => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)} onDrop={(e) => { e.preventDefault(); setOver(false); if (!busy) add(e.dataTransfer.files); }}
+      <div data-tour="drop" onDragOver={(e) => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)} onDrop={(e) => { e.preventDefault(); setOver(false); if (!busy) add(e.dataTransfer.files); }}
         className={`rounded-xl border bg-[#1c2733] shadow-[0_8px_24px_rgb(0_0_0/.25)] transition-colors ${over ? "border-[#f5b82e] bg-[#f5b82e]/10" : "border-white/15 focus-within:border-[#f5b82e]/60"}`}>
         <textarea aria-label="Tell the agents what you are planning" autoFocus={hero} disabled={busy} rows={hero ? 5 : 2} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && !busy && (fresh || (!proposal && used > 0))) void start(); }}
           placeholder={hero ? "What is being built, where, by when, and anything the agents should plan around. For example: a 5-storey campus building in Yogyakarta, about 12 months, piled foundations and a concrete frame, with the structure finished before the rainy season." : proposal ? "Tell the agents what to change, and they plan it again." : "Tell the agents more about the job."}

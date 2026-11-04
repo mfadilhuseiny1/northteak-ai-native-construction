@@ -58,3 +58,19 @@ def test_many_documents_go_up_one_after_another():
     c = TestClient(firm_api.app)
     ids = [_send(c, f"{n}-dokumen.txt", f"Dokumen nomor {n}.".encode()).json()["id"] for n in range(1, 4)]
     assert len(set(ids)) == 3
+
+
+def test_the_digital_twin_says_what_is_in_scope_and_takes_real_readings():
+    c = TestClient(firm_api.app)
+    t = c.get("/api/project/twin").json()
+    assert t["devices"] and len({d["id"] for d in t["devices"]}) == len(t["devices"])
+    assert any(not s["in_scope"] for s in t["systems"]), "what no document asks for is offered apart, as an add-on"
+    for s in t["systems"]:
+        assert s["devices"] == sum(1 for d in t["devices"] if d["system"] == s["key"]) and s["rule"]
+    device = t["devices"][0]
+    metric = device["metrics"][0]
+    assert t["readings"] == {}, "nothing is measured until a system sends it"
+    r = c.post("/api/project/twin/readings", json=[{"device": device["id"], "metric": metric, "value": 1}, {"device": "nope", "metric": "x", "value": 1}]).json()
+    assert r["kept"] == 1 and r["refused"] == ["nope/x"]
+    assert c.get("/api/project/twin").json()["readings"][device["id"]][metric]["value"] == 1
+    assert c.post("/api/project/twin/readings", json=[]).status_code == 400
