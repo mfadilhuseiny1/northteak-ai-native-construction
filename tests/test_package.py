@@ -1381,3 +1381,53 @@ def test_a_dkh_is_a_boq_and_its_unit_price_analysis_is_not_read_as_one():
     lines = K.read_boq_lines("D", [bill, analysis, more])
     assert [x["name"] for x in lines] == ["Pembersihan lahan"], "nor the pages that run on from it with no heading of their own"
     assert len(K.read_boq_lines("D", [analysis, more, "DAFTAR KUANTITAS DAN HARGA\n" + bill])) == 1, "a BoQ that comes after its analysis is still read"
+
+
+def _coordinator(answer):
+    """A firm whose RFI coordinator answers as scripted, with three planners' drafts, one reviewer's and one of code's."""
+    f = F.PackageFirm(lambda *a: None, 1.0)
+    f.written = {"A": {"questions": [{"subject": "Tulangan", "question": "Berapa diameter tulangan kolom?", "to": "MK", "impact": "Pembesian"}]}, "B": {"questions": [{"subject": "Tulangan", "question": "Berapa diameter tulangan balok?", "to": "MK", "impact": "Pembesian"}]}, "C": {"questions": [{"subject": "Warna", "question": "Warna cat apa?", "to": "MK", "impact": "Pengecatan"}]}}
+    f.review_questions = [{"subject": "Acuan", "question": "Dokumen mana yang berlaku?", "to": "PPK", "impact": "Semua"}]
+    f.code_questions = [{"subject": "Risiko", "question": "Tingkat risiko keselamatan?", "to": "PPK", "impact": "K3"}]
+
+    async def scripted(*_):
+        return answer
+
+    f.answer_of = scripted
+    f.stage = lambda *a, **k: None
+    return f, [{"no": "A", "name": "Kolom", "start_week": 5, "finish_week": 9}, {"no": "B", "name": "Balok", "start_week": 2, "finish_week": 9}, {"no": "C", "name": "Cat", "start_week": 20, "finish_week": 30}]
+
+
+def test_the_coordinator_joins_and_ranks_what_the_agents_ask_and_code_loses_nothing():
+    f, work = _coordinator({"questions": [
+        {"subject": "Warna cat", "ask": "Warna cat apa?", "why": "Pengecatan", "to": "MK", "level": "clarify", "from": [3]},
+        {"subject": "Tulangan kolom dan balok", "ask": "Berapa diameter tulangan?", "needs": ["Kolom", "Balok"], "why": "Pembesian menunggu", "to": "MK", "level": "stop", "from": [1, 2]},
+        {"subject": "Karangan sendiri", "ask": "Apakah ini perlu?", "level": "stop", "from": [99]},
+        {"subject": "Mengarang angka", "ask": "Apakah mutu K-350 berlaku?", "why": "Beton", "level": "bad", "from": [5]},
+    ], "dropped": [{"from": 4, "why": "kontraktor memutuskan sendiri"}]})
+    asyncio.run(f.join_questions(work))
+    first, second, third = f.joined
+    assert first["subject"] == "Tulangan kolom dan balok" and first["level"] == "stop" and first["joins"] == 2, "what would stop work comes first"
+    assert first["activities"] == ["A", "B"] and first["activity"] == "A" and first["week"] == 2, "and says all the work it holds up, and from when"
+    assert first["question"] == "Berapa diameter tulangan?\n  - Kolom\n  - Balok", "one plain sentence, and what the answer must state as a list"
+    assert second["subject"] == "Mengarang angka" and second["level"] == "clarify", "a level it cannot name is the mildest, whole-job questions before later work"
+    assert third["subject"] == "Warna cat"
+    rules = {c["rule"]: c["text"] for c in f.checks}
+    assert "1 question" in rules["questions_invented"], "a question from no draft is the agent's own, and is dropped"
+    assert "Mengarang angka" in rules["questions_figures"], "a figure no draft gave is flagged"
+    assert f.set_aside == [{"subject": "Acuan", "activity": "", "why": "kontraktor memutuskan sendiri"}] and "questions_set_aside" in rules, "what is set aside stays in plain sight"
+    assert f.drafted == 5 and "questions_kept" not in rules
+
+
+def test_a_draft_the_coordinator_passes_over_is_kept_and_a_lost_answer_leaves_the_drafts():
+    f, work = _coordinator({"questions": [{"subject": "Tulangan", "ask": "Berapa?", "level": "rework", "from": [1, 2]}], "dropped": [{"from": 3}]})
+    asyncio.run(f.join_questions(work))
+    assert [q["subject"] for q in f.joined] == ["Tulangan", "Acuan", "Risiko", "Warna"], "nothing is lost, and setting one aside needs a reason"
+    assert [q["level"] for q in f.joined] == ["rework", "clarify", "clarify", "clarify"] and any(c["rule"] == "questions_kept" and "3 draft questions" in c["text"] for c in f.checks)
+    f, work = _coordinator(None)
+    asyncio.run(f.join_questions(work))
+    assert f.joined is None and len(f.all_asked(work)) == 5 and any(c["rule"] == "questions_read" for c in f.checks), "with no answer, the drafts stand"
+    f, work = _coordinator({"questions": [], "dropped": [{"from": n, "why": "x"} for n in range(1, 6)]})
+    asyncio.run(f.join_questions(work))
+    assert f.joined is None and any(c["rule"] == "questions_read" for c in f.checks), "an empty list is not an answer"
+

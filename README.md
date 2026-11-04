@@ -41,6 +41,7 @@ Procurement, QA/QC, the document register, RFIs, the control tower and risks are
 | **Write the WBS** | Planning engineer | Writes the breakdown from the documents. With no schedule code can read, that breakdown is the plan's, and a check says so. With one, the schedule's rows, weeks and weights stand, and code flags a row the engineer left out, or work the documents require that no row covers |
 | **Link** | Planning engineer | Says what must come before what. Code works out the float, keeps the master schedule's dates, and draws the WBS tree and the critical path network |
 | **Review** | QA reviewer | Looks for where the documents disagree and what must be settled before work starts |
+| **Questions** | RFI coordinator | Joins what every agent wants to ask into one short ranked list for the consultant. Code keeps any draft it passes over, and flags a figure no draft gave |
 | **Plan** | Code | Puts it together. Nothing reaches the board until a person approves |
 
 ### What code checks

@@ -15,6 +15,7 @@ import { hue, OTHER } from "./Visual";
 /* Kinds of conflict, as a person would name them. What the documents themselves disagree on comes first. */
 const KINDS: [RegExp, string][] = [[/^wbs_/, "Asked for, not in the schedule"], [/^revoked_/, "Cites a revoked regulation"], [/^owner_/, "Far from the owner's estimate"], [/^(links$|order_|time$)/, "Order of the work"], [/^(boq_|model3d_)/, "Not covered by the BoQ or the 3D"]];
 const DISAGREE = "The documents disagree";
+const URGENCY: Record<string, [string, string]> = { stop: ["Stops work", "#e5484d"], rework: ["Risks rework", "#c98500"], clarify: ["Worth confirming", OTHER] };
 
 const CONFLICT = /^(stated_|owner_|revoked_|order_|links$|time$|boq_uncovered_|boq_other_work$|wbs_gap_|wbs_rows$|model3d_absent$)/;
 const SKIP = /^(missing_|links_open$|links_read$)/;
@@ -35,7 +36,7 @@ function ItemRow({ item, verdict, open, onSet, onSave }: { item: Item; verdict?:
       <div className="min-w-[280px] flex-1 space-y-1">
         <div className="leading-snug text-white">{item.title}</div>
         {item.detail && <div className="leading-snug text-[#abb3bf]">{item.detail}</div>}
-        {item.edit && !editing && <p className="flex flex-wrap items-center gap-1.5 text-[#d3d8de]"><span className="text-[#8f99a8]">{item.edit.label}:</span> {item.edit.value || "not stated"}{open && <button onClick={() => { setText(item.edit?.value ?? ""); setEditing(true); }} className="flex items-center gap-1 text-[12px] text-[#9cc7f5] hover:underline"><Icon name="pencil" className="h-3 w-3" />Edit</button>}</p>}
+        {item.edit && !editing && <p className="flex flex-wrap items-center gap-1.5 text-[#d3d8de]"><span className="text-[#8f99a8]">{item.edit.label}:</span> <span className="whitespace-pre-line">{item.edit.value || "not stated"}</span>{open && <button onClick={() => { setText(item.edit?.value ?? ""); setEditing(true); }} className="flex items-center gap-1 text-[12px] text-[#9cc7f5] hover:underline"><Icon name="pencil" className="h-3 w-3" />Edit</button>}</p>}
         {editing && (
           <div className="flex flex-wrap items-center gap-1.5">
             <textarea value={text} rows={text.length > 70 ? 3 : 1} aria-label={item.edit?.label} onChange={(e) => setText(e.target.value)} className={`${field} min-w-[240px] flex-1 !text-[13px]`} />
@@ -65,6 +66,8 @@ function sectionsOf(rec: Rec, cp: Rec, go: (to: string) => void, documents: Rec[
   const inAccount = (no?: string) => { const n = accountOf(no); return n < 0 ? { row: "The whole job", color: OTHER } : { row: String(accounts[n].name), color: hue(n) }; };
   const wpOf = Object.fromEntries(tree.map((b) => [packages[b.activity]?.no, b]));
   const plain = (name: unknown, no?: string) => { const a = accounts[accountOf(no)]?.name; return a && String(name).startsWith(`${a}: `) ? String(name).slice(String(a).length + 2) : String(name); };  // its row already says Elektrikal
+  const from = plan.questions_from as Rec | undefined;
+  const ranked = (q: Rec, i: number) => { const [row, color] = URGENCY[q.level], n = (q.activities as string[]).length; return { row, color, block: `q:${i}`, label: String(q.subject), sub: `${n ? `${n} work package${n === 1 ? "" : "s"}, from week ${q.week}` : "the whole job"}` }; };
   const conflict = (c: Rec): Item => {
     const kind = KINDS.find(([re]) => re.test(String(c.rule)))?.[1] ?? DISAGREE, text = String(c.text);
     const named = kind === DISAGREE ? documents.filter((d) => text.includes(String(d.title))).map((d) => String(d.id)) : [];
@@ -92,7 +95,7 @@ function sectionsOf(rec: Rec, cp: Rec, go: (to: string) => void, documents: Rec[
       ...tasks.filter((s) => ((s.unsourced ?? []) as string[]).length > 0).map((s): Item => ({ key: `figure:${s.id}`, title: `${s.id} ${s.name}`, detail: `States figures its pages do not: ${(s.unsourced as string[]).join(", ")}.`, sources: (s.sources as Rec[]).slice(0, 2), row: "Flagged by code", color: OTHER, block: "figures", label: "Tasks with figures not on their pages" })),
       ...Object.entries(packages).flatMap(([aid, p]) => ((p.assumptions ?? []) as string[]).map((a, i): Item => { const n = accountOf(p.no); return { key: `assume:${aid}:${i}`, title: a, detail: whose[aid]?.name, row: "Assumed by the planners", color: OTHER, block: `assumed:${n}`, label: String(accounts[n]?.name ?? "The whole job") }; })),
     ] },
-    { id: "input", title: "Needs your input", hint: "questions drafted for the consultant", what: "Questions drafted for the consultant, because the documents do not settle them. Edit the wording as you like. Rejecting one drops the draft when you approve the plan. Nothing is sent until a person issues it.", items: (rec.rfi_drafts as Rec[]).map((q, i): Item => ({ ...inAccount(q.activity), block: `on:${q.activity ?? ""}`, label: q.activity ? `${wpOf[q.activity]?.code ?? q.activity} ${plain(wpOf[q.activity]?.name ?? "", q.activity)}` : "The whole job", key: `q:${i}`, title: q.subject, edit: { label: "Question", value: String(q.question) }, detail: `To ${q.to}${q.activity ? `, on ${q.activity}` : ""}` })) },
+    { id: "input", title: "Needs your input", hint: "questions drafted for the consultant", what: `${from ? `The agents drafted ${from.drafts} questions, and the RFI coordinator joined them into ${(rec.rfi_drafts as Rec[]).length}, most urgent first. ` : ""}Questions for the consultant, because the documents do not settle them. Edit the wording as you like. Rejecting one drops the draft when you approve the plan. Nothing is sent until a person issues it.`, items: (rec.rfi_drafts as Rec[]).map((q, i): Item => ({ ...(q.level ? ranked(q, i) : { ...inAccount(q.activity), block: `on:${q.activity ?? ""}`, label: q.activity ? `${wpOf[q.activity]?.code ?? q.activity} ${plain(wpOf[q.activity]?.name ?? "", q.activity)}` : "The whole job" }), key: `q:${i}`, title: q.subject, edit: { label: "Question", value: String(q.question) }, detail: q.level ? `${q.impact} To ${q.to}.` : `To ${q.to}${q.activity ? `, on ${q.activity}` : ""}` })) },
   ];
 }
 

@@ -8,6 +8,7 @@
     procedures  one planner per work package reads those pages and writes its tasks and procedures
     links       the planning engineer says what must finish before what: the critical path network. Code keeps the schedule's dates, works out the float, and draws the WBS and the network
     review      a reviewer on the other model looks for where the documents disagree
+    questions   the RFI coordinator joins what every agent wants to ask into one ranked list a consultant can answer. Code checks that no draft is lost and no figure is added
     summary     the project director writes the executive summary from what the others found, using code's figures
     plan        code puts it together, and a person approves it
     model3d     code builds the 3D timeline from the WBS and the schedule the critical path gives it, once the plan is recorded, and says what it could not place and what the plan does not build
@@ -26,8 +27,8 @@ from . import firm as F, package as K, project, regulations as REG
 from .firm import RULES, SPARK, WONDER, emit, numbers_in, parse_json  # noqa: F401 - SPARK is still the orchestrator's
 from .planner import SIGNALS
 
-STAGES = [("sort", "Sorting the package"), ("read", "Reading the schedule and the prices"), ("rules", "Checking against Indonesian regulations"), ("wbs", "Writing the WBS"), ("pages", "Finding the pages for each work package"), ("procedures", "Writing the procedures"), ("links", "Building the critical path network"), ("review", "Checking the documents against each other"), ("summary", "Writing the executive summary"), ("plan", "Putting the plan together"), ("model3d", "Building the 3D timeline")]
-BY = {"sort": "Code", "read": "Code", "rules": "Code", "wbs": "Planning engineer", "pages": "Document controller", "procedures": "Planners", "links": "Planning engineer", "review": "QA reviewer", "summary": "Project director", "plan": "Code", "model3d": "Code"}  # who does each stage, as the screen shows it while it runs
+STAGES = [("sort", "Sorting the package"), ("read", "Reading the schedule and the prices"), ("rules", "Checking against Indonesian regulations"), ("wbs", "Writing the WBS"), ("pages", "Finding the pages for each work package"), ("procedures", "Writing the procedures"), ("links", "Building the critical path network"), ("review", "Checking the documents against each other"), ("questions", "Joining the questions for the consultant"), ("summary", "Writing the executive summary"), ("plan", "Putting the plan together"), ("model3d", "Building the 3D timeline")]
+BY = {"sort": "Code", "read": "Code", "rules": "Code", "wbs": "Planning engineer", "pages": "Document controller", "procedures": "Planners", "links": "Planning engineer", "review": "QA reviewer", "questions": "RFI coordinator", "summary": "Project director", "plan": "Code", "model3d": "Code"}  # who does each stage, as the screen shows it while it runs
 HOURS_A_DAY = 7  # the working day the norms use. Dates count calendar days, as the schedule does
 MOST_PAGES = 40
 MOST_TEXT = 60_000
@@ -42,6 +43,7 @@ LANGUAGE = "Write in the language of the documents: a foreman has to read this."
 PHYSICAL = "Go by what the work physically needs, not by this schedule's weeks. Where the schedule has work the other way round from what it needs, still give the physical order, and do not invent a reason that makes the schedule's order look right: code leaves the dates alone, sets that link aside and asks a person."
 KINDS = ("operation", "inspection", "handling")
 PREFIX = {"operation": "O", "inspection": "I", "handling": "H"}
+LEVELS = ("stop", "rework", "clarify")  # what a question holds up, worst first
 ROMAN = "I II III IV V VI VII VIII IX X XI XII XIII XIV XV XVI XVII XVIII XIX XX XXI XXII XXIII XXIV XXV XXVI XXVII XXVIII XXIX XXX XXXI XXXII XXXIII XXXIV XXXV XXXVI XXXVII XXXVIII XXXIX".split()
 
 
@@ -51,6 +53,7 @@ def roster() -> tuple[list[dict], list[dict]]:
             {"key": "planner", "name": "Planner", "peran": "one per work package: reads its pages and writes its tasks and procedures", "lini": "package", "jenjang": "peran", "induk": "partner", "model": MODEL, "peran_kode": "section", "target": {}},
             {"key": "engineer", "name": "Planning engineer", "peran": "builds the WBS and the critical path network from the planning documents: writes the breakdown when code cannot read a schedule, and says what must finish before what. Code works out the dates and the float, and draws both", "lini": "planning", "jenjang": "manajer", "induk": "partner", "model": MODEL, "peran_kode": "planner"},
             {"key": "reviewer", "name": "QA reviewer", "peran": "looks for where the documents disagree", "lini": "qa", "jenjang": "manajer", "induk": "partner", "model": MODEL, "peran_kode": "qa"},
+            {"key": "rfi", "name": "RFI coordinator", "peran": "turns everything the agents want to ask into one short ranked list a consultant can answer", "lini": "contract", "jenjang": "manajer", "induk": "partner", "model": MODEL, "peran_kode": "qa"},
             {"key": "director", "name": "Project director", "peran": "writes the executive summary of the project for the people who decide on it", "lini": "pimpinan", "jenjang": "manajer", "induk": "partner", "model": MODEL, "peran_kode": "qa"}]
     return team, []
 
@@ -117,6 +120,8 @@ class PackageFirm(F.Firm):
         self.rows_from = "the master schedule"  # where a row of the breakdown comes from, as a check says it
         self.instructed = ""  # what a person typed about the job, which unlike the documents is an instruction
         self.executive: dict | None = None
+        self.joined: list[dict] | None = None  # the RFI coordinator's list. None until it has answered, and then the drafts stand as written
+        self.set_aside: list[dict] = []
 
     def head(self, a: dict) -> str:
         told = f"\nThe project manager told you this about the job, in their own words. Unlike the documents, this is an instruction: plan to it. Where a contract document says otherwise, keep to the contract document and raise the difference as a question.\n<project_manager>\n{self.instructed}\n</project_manager>" if self.instructed else ""
@@ -489,7 +494,7 @@ The work package: {w['no']} {w['name']}, under {account['name']}. It runs {w['da
 Read the pages in the message, each marked with its document and page. Break the work into the tasks a crew is given, at most 12, grouped into sections. Put them in the order the work really happens on site, which is not always the order the pages describe it: a slab's formwork goes up before its rebar, and a column's rebar before its formwork. Every procedure must be something a foreman can follow on site.
 - Put in inspections where they can still stop a mistake. If the pages say the supervising consultant must approve before work goes on, that inspection is a hold point.
 - Every task cites its sources: the document, the page and the exact words, copied letter for letter. A task the pages do not support cites nothing: do not make a source up.
-- Use only figures the pages state. If a crew needs something the pages do not give, such as a size, a quantity or a bar spacing, do not guess: ask it in "questions". Ask at most 3, the ones that would really stop this crew, each gathering what belongs together.
+- Use only figures the pages state. If a crew needs something the pages do not give, such as a size, a quantity or a bar spacing, do not guess: ask it in "questions". Ask only what would really stop this crew and no page settles, each gathering what belongs together, and at most 3. Many packages need one or none, so do not fill the list: a question nobody needs costs the consultant's patience for the ones that matter.
 - crew and share_pct are your estimates: who is needed, and how much of this package's time the task takes.
 - {REG.PLANNER}
 {LANGUAGE}
@@ -649,6 +654,11 @@ Answer with JSON only: {{"links": [{{"before": "a work package's number", "after
             take(await self.answer_of("engineer", f"""{self.head(a)}
 Here is a master schedule, the links already agreed, and the work with nothing linked after it. For each of those, say what work physically needs it first, if any does. {PHYSICAL} A link nobody could defend on site is worse than no link, and some work truly has nothing after it.
 Answer with JSON only: {{"links": [{{"before": "a work package's number", "after": "a work package's number", "why": "short"}}]}}""", f"{listed}\n\nAlready linked:\n{so_far}\n\nNothing linked to it at all, so say what it physically needs first as well:\n" + "\n".join(f"{w['no']}: {w['name']}" for w in untied()) + "\n\nNothing after it yet:\n" + "\n".join(f"{w['no']}: {w['name']}" for w in loose_ends()), "links"))
+        if answer is not None and untied():  # a node on its own says nothing and looks like a mistake. The look above is asked about everything left hanging, and on a real run it does not always get to these
+            so_far = "\n".join(f"{k['before']} before {k['after']}" for k in kept)
+            take(await self.answer_of("engineer", f"""{self.head(a)}
+These work packages are still linked to nothing at all, so the critical path can say nothing about them. For each, say what it physically needs and what needs it. Code keeps the schedule's dates, so what comes before it must start no later than it does, and what comes after it must start no earlier: where the work you would name starts later, name the work it really rests on that is already under way, such as the floors below. {PHYSICAL} A link nobody could defend on site is worse than no link.
+Answer with JSON only: {{{{"links": [{{{{"before": "a work package's number", "after": "a work package's number", "why": "short"}}}}]}}}}""", f"{listed}\n\nAlready linked:\n{so_far}\n\nLinked to nothing:\n" + "\n".join(f"{w['no']}: {w['name']}, weeks {w['start_week']} to {w['finish_week']}" for w in untied()), "links"))
         if against:
             self.add_check("links", False, f"The planning engineer thinks these run in the wrong order in {self.rows_from}, which has {', '.join(f"{a['no']} before {b['no']}" for a, b in against[:6])}. Code keeps those dates, so those links are not in the critical path until a person settles the order.")
             if self.rows_from == "the master schedule":  # with no schedule these are the engineer's own estimates: nothing for the consultant to answer
@@ -709,6 +719,89 @@ Answer with JSON only: {{"findings": [{{"tag": "DOCUMENT_CONFLICT", "subject": "
 
     # -------------------------------------------------------------------------------------------- the plan
 
+    def all_asked(self, work: list[dict]) -> list[dict]:
+        """Everything the agents and code want to ask, each on the work it came from."""
+        return [{**q, "activity": w["no"]} for w in work for q in (self.written.get(w["no"]) or {}).get("questions") or []] + [{**q, "activity": ""} for q in [*getattr(self, "review_questions", []), *self.code_questions]]
+
+    async def join_questions(self, work: list[dict]) -> None:
+        """One short ranked list. Planners cannot see each other, so one gap comes up in every package. The agent joins and ranks; code keeps every draft it leaves out, and flags a figure no draft gave."""
+        drafts = self.all_asked(work)
+        if not drafts:
+            return
+        self.stage("questions", "running")
+        where = {w["no"]: w for w in work}
+        order = [w["no"] for w in work]
+
+        def place(no: str) -> str:
+            w = where.get(no)
+            return f"{no} {w['name']}, weeks {w['start_week']} to {w['finish_week']}" if w else "the whole job"
+
+        listed = "\n".join(f"{n}. [{place(q['activity'])}] {q['subject']}: {q['question']} | holds up: {q.get('impact') or 'not said'} | to: {q['to']}" for n, q in enumerate(drafts, 1))
+        lacking = "\n".join(f"- {m}" for m in self.missing) or "Nothing noted."
+        raw = await self.answer_of("rfi", f"""{self.head(self.team['rfi'])}
+The message numbers everything the agents on this contract want to ask. Each planner wrote for one work package and could not see the others, so the same gap comes up again and again. Turn it into the list a project manager would really send to the consultant: short enough to get answered, and clear to someone who has not read the plan.
+- Most of these drafts come from one cause: something the package does not have, such as working drawings, a bill of quantities or a soil report. Find those first. Ask for each once, by discipline, however many work packages wait on it, and put what it must show in "needs".
+- One question asks for one thing that one person can answer in one reply. Never glue separate questions together: if two drafts need different people or different answers, keep them apart. Joining is for what one document or one decision settles. One system or trade is normally one question, because one drawing or one schedule answers it: CCTV and fire alarm are two questions, but CCTV's cameras, cabling and interface are one, with those as its "needs". Split a system only where the answers really come from different people.
+- "ask" is one plain sentence of at most 30 words, saying what is wanted. The detail goes in "needs": at most 8 items of at most 15 words, each one thing the answer must state. Keep the names, items and figures that matter, as written. Add no figure, document or fact the drafts do not give.
+- "why" says in one sentence what work waits on it and what goes wrong without it.
+- "to" is the one role that answers it.
+- level says what a project manager does about it. "stop": phone about it this week, because work starting soon cannot go ahead without it, or the price or the contract turns on it. At most a quarter of the list is "stop": if everything is urgent, nothing is. "rework": work can start on a stated assumption, but a wrong one means redoing it or paying for it. "clarify": a sensible default exists, and the answer only confirms it.
+- "dropped" is only for a draft that is not for anyone outside to settle, because the contractor decides it himself or a draft shows it is already settled, with the reason. Not because it seems small, and not to shorten the list. Every other number goes in a question.
+{LANGUAGE}
+Answer with JSON only: {{"questions": [{{"subject": "short, and says what it is about", "ask": "one plain sentence", "needs": ["one thing the answer must state"], "why": "what waits on it", "to": "the one role that answers", "level": "stop, rework or clarify", "from": [1, 2, 3]}}], "dropped": [{{"from": 7, "why": "the reason"}}]}}""", f"What the package does not have, already known:\n{lacking}\n\nThe drafts:\n{listed}", "questions")
+        if raw is None:
+            if not self.stopped:
+                self.add_check("questions_read", False, "The RFI coordinator's answer could not be read, so the questions stand as each planner wrote them, repeats and all.")
+            self.stage("questions", "done", note="its answer could not be read")
+            return
+        taken: set[int] = set()
+        joined: list[dict] = []
+        invented = 0
+        added: list[str] = []
+        for q in raw.get("questions") or []:
+            if not isinstance(q, dict) or not _text(q.get("subject")) or not _text(q.get("ask")):
+                continue
+            ids = [n for n in q.get("from") or [] if isinstance(n, int) and 1 <= n <= len(drafts) and n not in taken]
+            if not ids:  # it joins no draft that is still free, so it is the agent's own
+                invented += 1
+                continue
+            taken.update(ids)
+            came = [drafts[n - 1] for n in ids]
+            given = numbers_in(" ".join(f"{c['subject']} {c['question']} {c.get('impact') or ''}" for c in came))
+            needs = _lines(q.get("needs"))
+            stated = " ".join([_text(q["subject"]), _text(q["ask"]), *needs, _text(q.get("why"))])
+            odd = sorted(x for x in numbers_in(stated) if len(x) >= 2 and x not in given)
+            if odd:
+                added.append(_text(q["subject"]))
+            works = sorted({c["activity"] for c in came if c["activity"]}, key=order.index)
+            level = q.get("level") if q.get("level") in LEVELS else "clarify"
+            joined.append({"subject": _text(q["subject"]), "question": "\n".join([_text(q["ask"]), *(f"  - {x}" for x in needs)]), "to": _text(q.get("to")) or came[0]["to"], "impact": _text(q.get("why")) or (came[0].get("impact") or ""), "activity": works[0] if works else "", "activities": works, "week": min((where[no]["start_week"] for no in works), default=0), "level": level, "joins": len(ids)})
+        for d in raw.get("dropped") or []:
+            n = d.get("from") if isinstance(d, dict) else None
+            if isinstance(n, int) and 1 <= n <= len(drafts) and n not in taken and _text(d.get("why")):
+                taken.add(n)
+                self.set_aside.append({"subject": drafts[n - 1]["subject"], "activity": drafts[n - 1]["activity"], "why": _text(d["why"])})
+        left = [n for n in range(1, len(drafts) + 1) if n not in taken]
+        for n in left:  # nothing the agents wanted to ask is lost because the coordinator passed over it
+            q = drafts[n - 1]
+            joined.append({**q, "activities": [q["activity"]] if q["activity"] else [], "week": where[q["activity"]]["start_week"] if q["activity"] else 0, "level": "clarify", "joins": 1})
+        if not joined:
+            self.add_check("questions_read", False, "The RFI coordinator's list came back empty, so the questions stand as each planner wrote them, repeats and all.")
+            self.stage("questions", "done", note="its list was empty")
+            return
+        if left:
+            self.add_check("questions_kept", False, f"The RFI coordinator passed over {_many(len(left), 'draft question', 'draft questions')}. Code kept {'it' if len(left) == 1 else 'them'} as written, as worth confirming.")
+        if invented:
+            self.add_check("questions_invented", False, f"Code dropped {_many(invented, 'question', 'questions')} from the RFI coordinator that added no draft not already in another question.")
+        if added:
+            self.add_check("questions_figures", False, f"{_many(len(added), 'joined question states', 'joined questions state')} a figure no draft gave: {'; '.join(added[:4])}. Check before issuing.")
+        if self.set_aside:
+            self.add_check("questions_set_aside", False, f"The RFI coordinator set aside {_many(len(self.set_aside), 'draft', 'drafts')} as not for the consultant: {'; '.join(f"{x['subject']} ({x['why']})" for x in self.set_aside[:4])}{' and more' if len(self.set_aside) > 4 else ''}. Bring one back if it does need asking.")
+        joined.sort(key=lambda q: (LEVELS.index(q["level"]), q["week"], -len(q["activities"])))
+        self.joined = joined
+        self.drafted = len(drafts)
+        self.stage("questions", "done", note=f"{len(drafts)} drafts became {_many(len(joined), 'question', 'questions')}")
+
     async def write_summary(self, s: dict, work: list[dict], links: list[dict]) -> None:
         """The executive summary. Code gives the director the figures and what the others found, and checks that every figure it writes is one of them: a summary is the page people quote."""
         self.stage("summary", "running")
@@ -718,7 +811,7 @@ Answer with JSON only: {{"findings": [{{"tag": "DOCUMENT_CONFLICT", "subject": "
         tasks = sum(len(sec["tasks"]) for w in self.written.values() for sec in w["sections"])
         flagged = "\n".join(f"- {c['text']}" for c in self.checks if not c["ok"])
         found = "\n".join(f"- {f['subject']}: {f['note']}" for f in self.found)
-        asked = [q for w in self.written.values() for q in w["questions"]] + [*getattr(self, "review_questions", []), *self.code_questions]
+        asked = self.joined if self.joined is not None else self.all_asked(work)
         days = f"The contract allows {s['contract_days']} calendar days." if s.get("contract_days") else "The documents state no time for completion."
         value = f"Priced total: Rp {s['total']:,.0f}." if s.get("total") else "No priced total."
         owner = f" The owner's estimate: Rp {s['owner_total']:,.0f}." if s.get("owner_total") else ""
@@ -807,7 +900,7 @@ Answer with JSON only: {{"summary": "two short paragraphs, separated by a blank 
         span = s["weeks"] * 7
         totals = {"steps": len(steps), "operations": sum(x["kind"] == "operation" for x in steps), "inspections": sum(x["kind"] == "inspection" for x in steps), "handling": sum(x["kind"] == "handling" for x in steps), "man_hours": round(sum(x["man_hours"] for x in steps), 1), "oh": round(sum(r["oh"] for r in roles.values()), 1), "labour_cost": 0, "material_cost": 0, "waste_cost": 0, "cost": value, "boq_value": value, "margin": 0, "days": span, "window_days": s.get("contract_days") or span, "peak_crew": 0, "peak_by": {}, "crews": {}, "programme_crew": None, "wait_days": 0, "hours_per_oh": HOURS_A_DAY}
         title = project.C_PROJECT()["name"]
-        questions = [q for w in work for q in ({**x, "activity": w["no"]} for x in info[w["no"]]["questions"])] + [{**q, "activity": ""} for q in [*getattr(self, "review_questions", []), *self.code_questions]]
+        questions = self.joined if self.joined is not None else self.all_asked(work)
         lines = [f"# Work plan: {title}", "", f"**{len(accounts)} control accounts, {len(work)} work packages, {len(steps)} tasks.** Read from {len(self.used)} of the package's documents.", "", "## What the package does not have", ""] + [f"- {m}" for m in self.missing or ["Nothing a plan needs is missing."]]
         lines += ["", "## Where the documents disagree", ""] + ([f"- **{f['subject']}.** {f['note']} ({', '.join(f'{x['doc']} p.{x['page']}' for x in f['sources'])})" for f in self.found] or ["- Nothing found."])
         lines += ["", "## Questions for the consultant, drafted and not sent", ""] + ([f"- **{q['subject']}** ({q['activity'] or 'whole project'}): {q['question']}" for q in questions] or ["- None."])
@@ -816,7 +909,7 @@ Answer with JSON only: {{"summary": "two short paragraphs, separated by a blank 
         self.summary = f"{len(work)} work packages, {len(steps)} tasks. {_many(len(self.found), 'place', 'places')} where the documents disagree, {_many(len(questions), 'question', 'questions')} for the consultant."
         self.rfi_drafts = questions
         self.result = {"kind": "package", "anchor": "activity", "title": title, "activities": [w["no"] for w in work], "sections": sections, "steps": steps, "quantities": [], "materials": [], "workforce": list(roles.values()), "crew_by_day": [], "totals": totals, "notes": [], "waste_flags": [], "source": "the consultant's documents", "checks": self.checks, "accounts": accounts, "packages": info, "links": links, "cumulative": s.get("cumulative"), "weeks": s["weeks"], "contract_days": s.get("contract_days"), "owner_total": s.get("owner_total"), "total": s.get("total"), "boq_lines": s.get("boq_lines") or [], "missing": self.missing, "failed": self.failed,
-                       "executive": self.executive, "obligations": self.obligations, "safety_risk": {k: v for k, v in (self.risk or {}).items() if k != "question"} or None}
+                       "executive": self.executive, "questions_from": {"drafts": getattr(self, "drafted", len(questions)), "set_aside": self.set_aside} if self.joined is not None else None, "obligations": self.obligations, "safety_risk": {k: v for k, v in (self.risk or {}).items() if k != "question"} or None}
         self.stage("plan", "done", note=self.summary)
 
     async def engagement(self) -> None:
@@ -852,6 +945,7 @@ Answer with JSON only: {{"summary": "two short paragraphs, separated by a blank 
         self.stage("procedures", "done", done=len(self.written), of=total, note=f"{len(self.written)} of {total} written")
         links = await self.link(work)
         await self.review()
+        await self.join_questions(work)
         await self.write_summary(s, work, links)
         self.finish(s, work, links)
         emit({"type": "done"})

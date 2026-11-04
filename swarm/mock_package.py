@@ -52,6 +52,8 @@ class MockPackageLlm(Scripted):
         written = re.findall(r"^row (\S+): (.*?), weeks", self.message, re.M)
         if key == "engineer" and written:
             return json.dumps({"accounts": [{"name": "Scripted account", "packages": [{"row": no, "name": name} for no, name in written]}], "not_in_schedule": []})
+        if key == "rfi":  # each draft as its own question: joining is the model's judgement, and a test scripts it
+            return json.dumps({"questions": [{"subject": m[1], "ask": m[2], "needs": [], "why": m[3], "to": m[4], "level": "clarify", "from": [int(m[0])]} for m in re.findall(r"^(\d+)\. \[.*?\] (.*?): (.*?) \| holds up: (.*?) \| to: (.*)$", self.message, re.M)], "dropped": []})
         if key == "reviewer":
             q = self.quotes()
             return json.dumps({"findings": [{"tag": "DOCUMENT_CONFLICT", "subject": "Scripted finding", "note": "Scripted: these are real words from the documents, and no model compared them.", "sources": q[:2]}, {"tag": "OTHER", "subject": "Made up", "note": "Scripted: this quotes words that are not in any document, so code must drop it.", "sources": [{"doc": "UP-001", "page": 1, "quote": "these words are in no document at all"}]}] if q else [],

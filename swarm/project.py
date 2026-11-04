@@ -1691,7 +1691,7 @@ def record_package_plan(run_id: str, firm: Any, mode: str) -> dict | None:
     rec = {"id": pid, "run": run_id, "mode": mode, "title": result["title"], "status": "pending", "plan": plan, "findings": firm.findings(), "attacks": {}, "report": firm.report, "summary": firm.summary, "rfi_drafts": firm.rfi_drafts, "usd": round(firm.spent, 4), "created": time.strftime("%Y-%m-%d %H:%M"), "decided_by": "", "decided_at": "", "note": "", "effects": [], "actuals": {}}
     put("plan", pid, rec, SWARM, "asked for a decision on a work plan", f"{result['totals']['steps']} tasks")
     for q in firm.rfi_drafts:
-        add_rfi({"subject": q["subject"], "question": q["question"], "to": q["to"], "activity": ids.get(q.get("activity") or "", ""), "impact": q.get("impact") or "", "drafted_by": "Planner", "plan": pid}, "draft", SWARM)
+        add_rfi({"subject": q["subject"], "question": q["question"], "to": q["to"], "activity": ids.get(q.get("activity") or "", ""), "activities": [ids[x] for x in q.get("activities") or [] if x in ids], "level": q.get("level") or "", "impact": q.get("impact") or "", "drafted_by": "RFI coordinator" if q.get("level") else "Planner", "plan": pid}, "draft", SWARM)
     return rec
 
 

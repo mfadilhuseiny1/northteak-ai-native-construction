@@ -16,7 +16,7 @@ const STEPS: Step[] = [
     say: "Before any planning, code reads the qualification and bid rules from the tender sheets, each with its page, and works the thresholds out on the owner's estimate. Our price sits inside the safe band.",
     show: "Click Harga/Biaya, then drag the slider below 80% of the HPS." },
   { route: "review", target: '[data-tour="map"]', seconds: 20, title: "A swarm of agents plans the job",
-    say: "A planning engineer writes the breakdown and the links, a document controller finds the pages, a planner per work package writes the procedures, and a QA reviewer hunts for conflicts between documents. Every claim cites a page.",
+    say: "A planning engineer writes the breakdown and the links, a document controller finds the pages, a planner per work package writes the procedures, a QA reviewer hunts for conflicts between documents, and an RFI coordinator turns every open question into one ranked list. Every claim cites a page.",
     show: "Follow the map left to right, click Conflicts, then point at Approve above it: nothing becomes real until a person approves it." },
   { route: "wbs/tree", target: '[data-tour="wbs"]', seconds: 20, title: "Agents propose, code calculates",
     say: "The agents propose the breakdown. Code, not the model, works out every date, float and cost, so the numbers on screen can be trusted.",
