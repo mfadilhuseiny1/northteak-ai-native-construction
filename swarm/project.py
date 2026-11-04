@@ -330,6 +330,16 @@ def project_list() -> dict:
     return {**known, "projects": [{**p, **_standing(SCENARIO_DB if p.get("scenario") else SCENARIO_DB.parent / "projects" / f"{p['id']}.db"), "running": bool(busy) and p["id"] == known["active"]} for p in known["projects"]]}
 
 
+def answers_folder() -> Path:
+    """Where a run keeps its agents' finished answers until a plan comes of them, beside the project's records. It is made when there is one to keep."""
+    return DB.parent / "answers" / DB.stem
+
+
+def kept_answers() -> int:
+    """How many finished answers a stopped run left for the next one to pick up."""
+    return sum(1 for _ in answers_folder().glob("*.json"))
+
+
 def upload_folder() -> Path:
     """Where a project's uploads live, beside its records."""
     folder = DB.parent / "uploads" / DB.stem

@@ -67,8 +67,21 @@ button, a, select, input, textarea { transition: background-color .15s ease, bor
 .kb-sheen::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgb(255 255 255 / .45), transparent); animation: kb-sheen 1.6s linear infinite; }
 @keyframes kb-sheen { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
 
+/* The agent swarm. A wire carries work only while the agent at its end is working, and a ring grows from a node only while it is. A paused replay stands still. */
+.sw-flow { stroke-dasharray: 7 9; animation: sw-flow .8s linear infinite; }
+@keyframes sw-flow { to { stroke-dashoffset: -16; } }
+.sw-ping { transform-box: fill-box; transform-origin: center; animation: sw-ping 1.6s ease-out infinite; }
+@keyframes sw-ping { from { transform: scale(1); opacity: .75; } to { transform: scale(1.65); opacity: 0; } }
+.sw-done { transform-box: fill-box; transform-origin: center; animation: sw-ping .9s ease-out both; }
+.sw-still .sw-flow, .sw-still .sw-ping { animation-play-state: paused; }
+.sw-node { outline: none; }
+.sw-node:hover circle:not(.sw-ping), .sw-node:hover rect, .sw-node:focus-visible circle:not(.sw-ping), .sw-node:focus-visible rect { stroke: #fff; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+  .sw-flow { animation: none; }
+  .sw-ping { animation: none; opacity: .4; }
+  .sw-done { animation: none; opacity: 0; }
   .kb-led, .kb-card::before { animation: none; opacity: 1; }  /* the rule above would make an endless blink flicker, so these stop: the light stays, steady */
   .kb-sheen::after { animation: none; opacity: 0; }
 }

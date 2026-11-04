@@ -2,11 +2,11 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { Icon } from "@/components/Icon";
 import { API_URL } from "@/lib/api";
-import { Running } from "./AnalysisView";
 import { api, Empty, field, good, Loading, money, notifyChanged, Pill, primary, Problem, quiet, useData, useGo, type Rec } from "./kit";
 import { SourceLink } from "./SourceDrawer";
 import { ContractChecklist } from "./ContractChecklist";
 import { ReviewFlow, SectionDiagram, type Item, type Section } from "./ReviewMap";
+import { SwarmModule } from "./SwarmModule";
 import { TenderSelection } from "./TenderSelection";
 import { hue, OTHER } from "./Visual";
 
@@ -110,7 +110,7 @@ export function ReviewModule() {
   const list = (data?.plans ?? []) as Rec[];
   const rec = list.find((p) => p.status === "pending") ?? list.find((p) => p.status === "approved") ?? list.find((p) => p.status !== "superseded");
   const sections = useMemo(() => (rec && cpm.data ? sectionsOf(rec, cpm.data, go, (docs.data?.documents ?? []) as Rec[]) : []), [rec, cpm.data, go, docs.data]);
-  if (run.data?.run?.status === "running") return <Running data={run.data} onStop={() => void api(`/api/aip/runs/${run.data?.run.id}/cancel`, {}).then(() => run.reload())} />;
+  if (run.data?.run?.status === "running") return <SwarmModule />;
   if (!data || !cpm.data) return <div className="flex-1 bg-[#111820]"><Problem err={err || cpm.err} />{!err && !cpm.err && <Loading />}</div>;
   if (!rec) return <div className="min-h-0 flex-1 space-y-2 overflow-y-auto bg-[#111820] p-3 text-[13px]"><Empty>Nothing to review yet. <button onClick={() => go("home")} className="underline">Start on Home</button>.</Empty><TenderSelection /><ContractChecklist /></div>;
   const pending = rec.status === "pending";

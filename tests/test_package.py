@@ -11,6 +11,7 @@ import csv
 import io
 import json
 import shutil
+import time
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -1430,4 +1431,145 @@ def test_a_draft_the_coordinator_passes_over_is_kept_and_a_lost_answer_leaves_th
     f, work = _coordinator({"questions": [], "dropped": [{"from": n, "why": "x"} for n in range(1, 6)]})
     asyncio.run(f.join_questions(work))
     assert f.joined is None and any(c["rule"] == "questions_read" for c in f.checks), "an empty list is not an answer"
+
+
+def _stopped_at_links(monkeypatch, client):
+    """A run stopped when every planner has finished, as a person pressing Stop would."""
+    async def stop(*_):
+        raise asyncio.CancelledError
+
+    with monkeypatch.context() as m:
+        m.setattr(F.PackageFirm, "link", stop)
+        client.post("/api/aip/konsultan", json={"nama": "Analysis", "versi": "mock", "jenis": "package"})
+        for _ in range(600):
+            a = client.get("/api/aip/analysis").json()
+            if a["run"] and a["run"]["status"] != "running":
+                assert a["run"]["status"] == "cancelled", a["problems"]
+                return a
+            time.sleep(0.05)
+    raise AssertionError("it did not stop")
+
+
+def _turns(monkeypatch) -> list[str]:
+    asked: list[str] = []
+    real = F.F.Firm.turn
+
+    async def counted(self, key, *a, **k):
+        asked.append(key)
+        return await real(self, key, *a, **k)
+
+    monkeypatch.setattr(F.F.Firm, "turn", counted)
+    return asked
+
+
+def test_stopping_a_run_keeps_what_was_finished_and_the_next_picks_it_up(client, monkeypatch):
+    stopped = _stopped_at_links(monkeypatch, client)
+    assert stopped["kept"] > 2, "every finished answer is on disk"
+    assert client.get("/api/project/plans").json()["plans"] == [], "and a stopped run makes no plan"
+    asked = _turns(monkeypatch)
+    plan = analyse(client)
+    assert plan["status"] == "pending" and not any(k.startswith("planner") or k == "controller" for k in asked), "no finished work is paid for twice"
+    assert {"engineer", "reviewer", "director"} <= set(asked), "only what was left is asked"
+    assert client.get("/api/aip/analysis").json()["kept"] == 0, "and once a plan comes of them, the next analysis asks afresh"
+    del asked[:]
+    analyse(client)
+    assert any(k.startswith("planner") for k in asked)
+
+
+def test_stopping_a_run_leaves_the_plan_waiting_as_it_was(client, monkeypatch):
+    first = analyse(client)
+    before = ([a["id"] for a in P.all_of("activity")], [r["id"] for r in P.all_of("rfi")], first["id"])
+    _stopped_at_links(monkeypatch, client)
+    plans = client.get("/api/project/plans").json()["plans"]
+    assert [(p["id"], p["status"]) for p in plans] == [(first["id"], "pending")], "the plan waiting is untouched"
+    assert ([a["id"] for a in P.all_of("activity")], [r["id"] for r in P.all_of("rfi")], plans[0]["id"]) == before, "and so are its work and its questions"
+
+
+def test_a_person_can_drop_what_a_stopped_run_kept_and_a_new_instruction_asks_afresh(client, monkeypatch):
+    assert _stopped_at_links(monkeypatch, client)["kept"]
+    assert client.post("/api/aip/analysis/forget").json() == {"kept": 0}
+    asked = _turns(monkeypatch)
+    analyse(client)
+    assert any(k.startswith("planner") for k in asked), "start over means start over"
+
+
+def test_a_scripted_answer_is_never_picked_up_by_a_real_run(tmp_path):
+    answers = {}
+
+    def path_of(mock):
+        f = F.PackageFirm(lambda *a: None, 1.0, mock=mock)
+        f.keep_in = tmp_path
+        f.team["engineer"] = {**f.team["engineer"]}
+        return f
+
+    async def scripted(self, key, text, tools, prompt, must_read=True):
+        answers[self.mock] = answers.get(self.mock, 0) + 1
+        return f"answer {self.mock}"
+
+    real = F.F.Firm.work
+    F.F.Firm.work = scripted
+    try:
+        assert asyncio.run(path_of(True).work("engineer", "T", [], "P")) == "answer True"
+        assert asyncio.run(path_of(True).work("engineer", "T", [], "P")) == "answer True"
+        assert answers == {True: 1}, "the same question is answered once"
+        assert asyncio.run(path_of(False).work("engineer", "T", [], "P")) == "answer False", "a real run asks for itself"
+        assert asyncio.run(path_of(False).work("engineer", "T2", [], "P")) == "answer False" and answers[False] == 2, "and what it is told is part of the question"
+    finally:
+        F.F.Firm.work = real
+
+
+def test_a_run_reads_back_as_a_timeline_from_its_first_moment(client):
+    plan = analyse(client)
+    got = client.get("/api/aip/swarm").json()
+    assert got["run"]["id"] == plan["run"] and got["run"]["status"] == "succeeded" and got["run"]["plan_status"] == "pending" and [r["id"] for r in got["runs"]] == [plan["run"]]
+    events = got["events"]
+    assert events[0]["at"] == 0 and [e["at"] for e in events] == sorted(e["at"] for e in events), "seconds from the start, in order"
+    first = next(e for e in events if e["type"] == "firm")
+    assert [s["key"] for s in first["stages"]] == [k for k, _ in F.STAGES] and any(a["key"] == "rfi" for a in first["team"]), "every stage is known from the start"
+    assert any(e["type"] == "agent_status" and e["status"] == "bekerja" for e in events)
+    assert not any("teks" in e or "laporan" in e or "prompt" in e for e in events), "and no pages or prompts travel with it"
+    work = {w["no"] for a in got["outline"] for w in a["packages"]}
+    assert work == {w["no"] for a in plan["plan"]["accounts"] for w in a["packages"]} and got["by"]["questions"] == "RFI coordinator"
+    assert {a["no"] for e in events if e["type"] == "instances" for a in e["agents"] if a.get("no")} == work, "each planner names its work"
+    assert client.get(f"/api/aip/swarm?after={got['next']}").json()["events"] == [], "and a screen following along gets only what is new"
+    assert client.get("/api/aip/swarm?run=run-nope").json()["run"]["id"] == plan["run"], "a run it does not know falls back to the latest"
+
+
+def test_any_agent_in_a_run_says_what_it_was_told_and_what_it_made(client):
+    plan = analyse(client)
+    run = plan["run"]
+    events = client.get("/api/aip/swarm").json()["events"]
+    no, key = next((a["no"], a["key"]) for e in events if e["type"] == "instances" for a in e["agents"] if a.get("no"))
+    got = client.get(f"/api/aip/runs/{run}/agents/{key}").json()
+    assert got["no"] == no and got["told"].startswith("The work package:") and "Answer with JSON only" not in got["told"] and "RULES" not in got["told"]
+    assert got["made"]["tasks"] and got["made"]["tasks"][0]["name"] and got["made"]["scope"] and got["made"]["code"]
+    assert client.get(f"/api/aip/runs/{run}/agents/rfi").json()["made"]["questions"][0]["subject"]
+    assert client.get(f"/api/aip/runs/{run}/agents/director").json()["made"]["summary"]
+    assert client.get(f"/api/aip/runs/{run}/agents/reviewer").json()["made"]["findings"]
+    assert client.get(f"/api/aip/runs/{run}/agents/engineer?stage=links").json()["made"]["links"]
+    assert "master schedule" in client.get(f"/api/aip/runs/{run}/agents/engineer?stage=links").json()["told"]
+    assert client.get(f"/api/aip/runs/{run}/agents/nobody").status_code == 404
+    assert client.get("/api/aip/runs/run-nope/agents/rfi").status_code == 404
+
+
+def test_a_run_going_is_saved_as_it_goes_so_a_restart_leaves_a_record_of_it(client, monkeypatch):
+    seen = {}
+
+    async def look(self, work):
+        run = firm_api.STORE / f"{next(iter(firm_api.RUNS))}.json"
+        seen["on disk"] = json.loads(run.read_text(encoding="utf-8"))
+        raise asyncio.CancelledError
+
+    monkeypatch.setattr(firm_api, "SAVE_EVERY", 0)
+    monkeypatch.setattr(firm_api, "STORE", P.answers_folder().parent.parent / "runs-test")
+    with monkeypatch.context() as m:
+        m.setattr(F.PackageFirm, "link", look)
+        client.post("/api/aip/konsultan", json={"nama": "Analysis", "versi": "mock", "jenis": "package"})
+        for _ in range(600):
+            a = client.get("/api/aip/analysis").json()
+            if a["run"] and a["run"]["status"] != "running":
+                break
+            time.sleep(0.05)
+    assert seen["on disk"]["run"]["status"] == "running" and "firm" not in seen["on disk"], "saved part way through, without the live agents"
+    assert any(e.get("type") == "wp" for e in seen["on disk"]["events"]), "with the work done so far"
 

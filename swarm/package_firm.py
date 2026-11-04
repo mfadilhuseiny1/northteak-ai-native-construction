@@ -19,8 +19,10 @@ Agents reason, code calculates. Every quotation an agent gives is checked agains
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import re
+from pathlib import Path
 from typing import Any
 
 from . import firm as F, package as K, project, regulations as REG
@@ -120,8 +122,35 @@ class PackageFirm(F.Firm):
         self.rows_from = "the master schedule"  # where a row of the breakdown comes from, as a check says it
         self.instructed = ""  # what a person typed about the job, which unlike the documents is an instruction
         self.executive: dict | None = None
+        self.keep_in: Path | None = None  # where finished answers are kept, for a run that may be stopped. The API sets it
+        self.picked_up = 0
         self.joined: list[dict] | None = None  # the RFI coordinator's list. None until it has answered, and then the drafts stand as written
         self.set_aside: list[dict] = []
+
+    async def work(self, key: str, text: str, tools: list, prompt: str, must_read: bool = True) -> str:
+        """One agent's turn, with its answer kept on disk the moment it arrives. So a person pressing Stop, a spending limit or a restart loses only the turns still under way: run again on the same documents and the same instructions, and each kept answer is picked up unpaid. Anything that changes what an agent is told changes the question, so it is asked again."""
+        if self.keep_in is None:
+            return await super().work(key, text, tools, prompt, must_read)
+        path = self.keep_in / f"{hashlib.sha256(json.dumps([self.mock, text, prompt], ensure_ascii=False).encode('utf-8')).hexdigest()[:32]}.json"
+        if path.exists() and not self.stopped:
+            try:
+                body = json.loads(path.read_text(encoding="utf-8"))["answer"]
+            except (OSError, ValueError, KeyError):
+                path.unlink(missing_ok=True)
+            else:
+                a = self.team[key]
+                self.picked_up += 1
+                self.reports[key] = body
+                emit({"type": "instruksi", "agent": key, "instans_dari": a.get("instans_dari"), "model": a["model"], "teks": text[:16000], "prompt": prompt[:4000]})
+                emit({"type": "agent_status", "agent": key, "status": "selesai", "ms": 0, "calls": 0, "tags": 0, "laporan": body[:1500], "kept": True})
+                return body
+        body = await super().work(key, text, tools, prompt, must_read)
+        if not self.stopped and not (self.handoffs.get(key) or {}).get("stopped"):
+            self.keep_in.mkdir(parents=True, exist_ok=True)
+            part = path.with_suffix(".part")
+            part.write_text(json.dumps({"agent": key, "answer": body}, ensure_ascii=False), encoding="utf-8")
+            part.replace(path)
+        return body
 
     def head(self, a: dict) -> str:
         told = f"\nThe project manager told you this about the job, in their own words. Unlike the documents, this is an instruction: plan to it. Where a contract document says otherwise, keep to the contract document and raise the difference as a question.\n<project_manager>\n{self.instructed}\n</project_manager>" if self.instructed else ""
@@ -931,6 +960,7 @@ Answer with JSON only: {{"summary": "two short paragraphs, separated by a blank 
         for n, g in enumerate(K.uncovered(self.boq_lines, [w["name"] for w in work] + [a["name"] for a in s["accounts"]]), 1):
             self.add_check(f"boq_uncovered_{n}", False, f"The BoQ's section {g['section']} ({g['rows']} rows, from page {g['page']}) is not in the WBS: no work package or control account uses its words. It is not in the schedule, the cost or the 3D timeline until a person says where it belongs.")
         total = len(work)
+        emit({"type": "outline", "accounts": [{"name": a["name"], "packages": [{"no": w["no"], "name": w["name"]} for w in a["packages"]]} for a in s["accounts"]]})
         self.stage("procedures", "running", done=0, of=total)
 
         async def one(n: int, w: dict) -> None:

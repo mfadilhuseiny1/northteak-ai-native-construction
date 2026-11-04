@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Icon, type IconName } from "@/components/Icon";
 import { API_URL } from "@/lib/api";
 import { BoqSection, ExecutiveSummary, Repository } from "./AnalysisWorkspace";
-import { Running } from "./AnalysisView";
+import { SwarmModule } from "./SwarmModule";
 import { CategorySelect } from "./DocCategory";
 import { api, field, Label, Loading, money, notifyChanged, primary, Problem, quiet, useData, useGo, type Rec } from "./kit";
 import { PlanningModule } from "./PlanningModule";
@@ -206,6 +206,7 @@ function Proposal({ rec, docs }: { rec: Rec; docs: Rec[] }) {
 }
 
 function Conversation({ project }: { project: Rec }) {
+  const go = useGo();
   const sorted = useData("/api/project/package");
   const run = useData("/api/aip/analysis");
   const plans = useData("/api/project/plans");
@@ -219,12 +220,14 @@ function Conversation({ project }: { project: Rec }) {
   }, [running, poll]);
   const err = sorted.err || run.err || plans.err;
   if (!sorted.data || !run.data || !plans.data) return <div className="flex-1"><Problem err={err} />{!err && <Loading />}</div>;
-  if (running) return <Running data={run.data} onStop={() => void api(`/api/aip/runs/${run.data?.run.id}/cancel`, {}).then(() => run.reload())} />;
+  if (running) return <SwarmModule />;
   const docs = sorted.data.documents as Rec[];
   const list = plans.data.plans as Rec[];
   const rec = list.find((p) => p.status === "approved") ?? list.find((p) => p.status === "pending") ?? null;
   const last = list.find((p) => p.status !== "superseded");
-  const problem = run.data.run && ["failed", "cancelled"].includes(run.data.run.status) && !rec;
+  const ended = run.data.run && ["failed", "cancelled"].includes(run.data.run.status);
+  const problem = ended && !rec;
+  const kept = Number(run.data.kept ?? 0);
   if (!docs.length && !problem) return (
     <div className="min-h-0 flex-1 overflow-y-auto">
       <div className="mx-auto w-full max-w-[780px] space-y-5 px-6 py-10">
@@ -244,6 +247,7 @@ function Conversation({ project }: { project: Rec }) {
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-[900px] space-y-3 px-6 py-5">
           <Thread docs={docs} />
+          {kept > 0 && <Agents><p className="font-medium text-white">The last analysis was stopped, and nothing was lost.</p><p>{rec ? "The proposal here is as it was, and " : ""}{many(kept, "finished answer")} {kept === 1 ? "is" : "are"} kept, so carrying on pays only for the rest. Adding anything for the agents starts them over, because each of them has to hear it.</p><button onClick={() => go("swarm")} className={quiet}>Carry on in Agent Swarm</button></Agents>}
           {rec ? <Reply rec={rec} /> : problem ? <Agents><p className="font-medium text-white">That did not finish.</p><p>{String((run.data.problems as string[])[0] ?? "Nothing was kept from it.")}</p><p className="text-[#abb3bf]">Send again to retry, with anything you want to add.</p></Agents>
             : last?.status === "rejected" ? <Agents><p className="font-medium text-white">You rejected the last proposal.</p><p className="text-[#abb3bf]">The agents remember your reason. Tell them what to change, and they plan it again.</p></Agents>
             : <Agents><p>{many(sorted.data.used, "document")} ready, and the agents have not started. Add anything else you want them to know, then send.</p></Agents>}
