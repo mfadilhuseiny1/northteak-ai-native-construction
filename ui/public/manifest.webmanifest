@@ -1,6 +1,6 @@
 {
-  "name": "SiteSwarm: site",
-  "short_name": "SiteSwarm",
+  "name": "NorthTeak: site",
+  "short_name": "NorthTeak",
   "description": "Tasks, daily logs and photos from site",
   "start_url": "/field",
   "scope": "/field",

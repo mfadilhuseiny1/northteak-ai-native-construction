@@ -10,7 +10,7 @@ import { flush, queueJson, queuePhoto, waiting, type Refused } from "./queue";
 const NEXT: Record<string, [string, string]> = { open: ["doing", "Start"], doing: ["review", "Ready for review"], review: ["done", "Done"] };
 const STATE: Record<string, [string, string]> = { open: ["To do", "#8f99a8"], doing: ["In progress", "#3987e5"], review: ["In review", "#fab219"], done: ["Done", "#29a383"] };
 const WEATHER = ["Sunny", "Cloudy", "Rain", "Heavy rain"];
-const KEPT = "siteswarm.field.board";
+const KEPT = "northteak.field.board";
 
 function read<T>(key: string, fallback: T): T {
   try { const v = localStorage.getItem(key); return v ? (JSON.parse(v) as T) : fallback; } catch { return fallback; }
@@ -55,8 +55,8 @@ function Tasks({ board, onMove }: { board: Rec | null; onMove: (c: Rec, status: 
 
 function Log({ board, today, onSave }: { board: Rec | null; today: string; onSave: (body: Rec) => void }) {
   const blank = { area: "", weather: "Sunny", crew: "", activity: "", text: "" };
-  const [f, setF] = useState(() => read("siteswarm.field.draft", blank));
-  useEffect(() => { try { localStorage.setItem("siteswarm.field.draft", JSON.stringify(f)); } catch {} }, [f]);
+  const [f, setF] = useState(() => read("northteak.field.draft", blank));
+  useEffect(() => { try { localStorage.setItem("northteak.field.draft", JSON.stringify(f)); } catch {} }, [f]);
   const box = "w-full rounded-lg border border-white/15 bg-black/25 px-3 py-3 text-[16px] text-white placeholder:text-[#6b7480] focus:border-[#f5b82e]/70 focus:outline-none";
   const acts = useMemo(() => [...new Map(((board?.cards ?? []) as Rec[]).filter((c) => c.activity).map((c) => [c.activity, c.activity_name || c.title])).entries()], [board]);
   return (
@@ -122,7 +122,7 @@ function Site() {
       navigator.serviceWorker.register("/sw.js", { scope: "/field" }).catch(() => {});
       navigator.serviceWorker.ready.then(() => {  // this page's own scripts loaded before the worker was running, and without them the next visit with no signal is a page with nothing behind it
         const mine = performance.getEntriesByType("resource").map((e) => e.name).filter((u) => u.includes("/_next/static/"));
-        return caches.open("siteswarm-field-1").then((c) => c.addAll(mine));
+        return caches.open("northteak-field-1").then((c) => c.addAll(mine));
       }).catch(() => {});
     }
     return () => { window.removeEventListener("online", up); window.removeEventListener("offline", down); clearInterval(t); };

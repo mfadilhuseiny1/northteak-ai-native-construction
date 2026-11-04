@@ -21,7 +21,7 @@ function SignIn({ onDone }: { onDone: () => void }) {
   return (
     <div className="fixed inset-0 flex items-center justify-center overflow-y-auto bg-[#111820] p-4">
       <form onSubmit={send} className="w-full max-w-[360px] space-y-3 rounded-xl border border-white/10 bg-[#1c2733] p-5 text-[13px]">
-        <div><p className="text-[18px] font-bold text-white">SiteSwarm</p><p className="text-[#abb3bf]">Sign in to your project.</p></div>
+        <div><span role="img" aria-label="NorthTeak" className="logo-full mb-2 h-8 w-[164px] text-white" /><p className="text-[#abb3bf]">Sign in to your project.</p></div>
         <label className="block"><Label>Email</Label><input autoFocus type="email" autoComplete="username" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} className={field} /></label>
         <label className="block"><Label>Password</Label><input type="password" autoComplete="current-password" value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} className={field} /></label>
         {err && <p role="alert" className="text-[12px] text-[#ffb4b4]">{err}</p>}

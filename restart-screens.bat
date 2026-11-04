@@ -30,7 +30,7 @@ if errorlevel 3 (
 )
 powershell -NoProfile -Command "foreach ($i in 1..10) { if (-not (Get-NetTCPConnection -State Listen -LocalPort 8310 -ErrorAction SilentlyContinue)) { exit 0 }; Start-Sleep 1 }; exit 1" >nul 2>&1
 if errorlevel 1 (
-  echo Port 8310 is still in use. Close the old "SiteSwarm screens" window yourself, then run this again.
+  echo Port 8310 is still in use. Close the old "NorthTeak screens" window yourself, then run this again.
   pause
   exit /b 1
 )
@@ -39,11 +39,11 @@ echo Starting the screens...
 rem Until accounts exist the screens listen only on this computer, so nothing is open to the network by accident.
 set "LISTEN=127.0.0.1"
 for /f %%a in ('.venv\Scripts\python.exe -W ignore -c "from swarm import accounts; print('0.0.0.0' if accounts.enabled() else '127.0.0.1')"') do set "LISTEN=%%a"
-start "SiteSwarm screens" /d ui cmd /k npx next start -p 8310 -H %LISTEN%
-powershell -NoProfile -Command "$ok=$false; foreach ($i in 1..30) { try { if ((Invoke-WebRequest -UseBasicParsing 'http://127.0.0.1:8310/' -TimeoutSec 2).Content -match 'SiteSwarm') { $ok=$true; break } } catch { Start-Sleep 1 } }; if ($ok) { exit 0 } else { exit 1 }" >nul 2>&1
+start "NorthTeak screens" /d ui cmd /k npx next start -p 8310 -H %LISTEN%
+powershell -NoProfile -Command "$ok=$false; foreach ($i in 1..30) { try { if ((Invoke-WebRequest -UseBasicParsing 'http://127.0.0.1:8310/' -TimeoutSec 2).Content -match 'NorthTeak') { $ok=$true; break } } catch { Start-Sleep 1 } }; if ($ok) { exit 0 } else { exit 1 }" >nul 2>&1
 if errorlevel 1 (
   echo.
-  echo The screens did not come up on port 8310. Read the "SiteSwarm screens" window for the error.
+  echo The screens did not come up on port 8310. Read the "NorthTeak screens" window for the error.
   pause
   exit /b 1
 )

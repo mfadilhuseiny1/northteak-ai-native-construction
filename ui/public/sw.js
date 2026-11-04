@@ -1,6 +1,6 @@
 /* Keeps the site's screen opening with no signal. It holds the page and the scripts and styles it needs, never the records: those are kept by the page itself, and every /api request goes straight to the network. */
 
-const CACHE = "siteswarm-field-1";
+const CACHE = "northteak-field-1";
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.add("/field")));

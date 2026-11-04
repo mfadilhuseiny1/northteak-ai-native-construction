@@ -1,8 +1,8 @@
-# SiteSwarm
+# NorthTeak
 
 **From a planning consultant's documents to procedures a site can work from. AI agents read the package, code does the sums, and a person decides.**
 
-A contractor receives a tender package of hundreds of pages, and has to turn it into work a crew can start on. SiteSwarm takes the whole package and works through the same steps a contractor's planner would:
+A contractor receives a tender package of hundreds of pages, and has to turn it into work a crew can start on. NorthTeak takes the whole package and works through the same steps a contractor's planner would:
 
 ```
 Documents → AI analysis → WBS → Procedures → Cost estimate → Critical path → Gantt chart → 3D timeline → Kanban

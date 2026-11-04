@@ -131,7 +131,7 @@ def test_a_consultant_answers_an_rfi_from_a_link_with_no_account():
     outsider = _client()
     seen = outsider.get(f"/api/public/reply/{token}").json()
     assert seen["title"] == "Mutu beton" and "f'c kolom" in seen["body"] and seen["open"] is True and seen["project"]
-    assert outsider.get("/api/project/overview", headers={"cookie": f"siteswarm={token}"}).status_code == 401, "a link opens that one item and nothing else"
+    assert outsider.get("/api/project/overview", headers={"cookie": f"northteak={token}"}).status_code == 401, "a link opens that one item and nothing else"
     assert outsider.post(f"/api/public/reply/{token}", json={"name": " ", "text": "K-350"}).status_code == 409
     assert outsider.post(f"/api/public/reply/{token}", json={"name": "Agus", "text": " "}).status_code == 409
     assert outsider.post(f"/api/public/reply/{token}", json={"name": "Agus", "text": "f'c 30 MPa"}).status_code == 200

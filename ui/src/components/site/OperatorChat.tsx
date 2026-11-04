@@ -32,7 +32,7 @@ const STARTERS = [
 ];
 
 type Turn = { id: string; q: string; status: string; events: AipEvent[]; spent?: number };
-const LAST = "siteswarm.operator.last";
+const LAST = "northteak.operator.last";
 const remember = (id: string | null) => { try { if (id) sessionStorage.setItem(LAST, id); else sessionStorage.removeItem(LAST); } catch { /* storage off */ } };
 const remembered = (): string | null => { try { return sessionStorage.getItem(LAST); } catch { return null; } };
 

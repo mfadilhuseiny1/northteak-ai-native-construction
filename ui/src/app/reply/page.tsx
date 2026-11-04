@@ -34,7 +34,7 @@ export default function ReplyPage() {
   return (
     <div className="fixed inset-0 overflow-y-auto bg-[#111820]">
       <main className="mx-auto w-full max-w-[640px] space-y-4 px-4 py-6 text-[15px] leading-relaxed">
-        <p className="text-[12px] font-semibold uppercase tracking-[.1em] text-[#f5b82e]">SiteSwarm</p>
+        <span role="img" aria-label="NorthTeak" className="logo-full h-6 w-[123px] text-white" />
         {!item && !err && <p className="text-[#abb3bf]">Memuat…</p>}
         {!item && err && <div className="rounded-xl border border-white/10 bg-[#1c2733] p-4 text-[#ffb4b4]">{err}</div>}
         {item && (

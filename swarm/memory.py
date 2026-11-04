@@ -27,7 +27,7 @@ from typing import Callable
 from . import project as P
 
 os.environ["MEM0_TELEMETRY"] = "False"  # on by default, and read once, when mem0 is imported. This is the only file that imports it
-os.environ["MEM0_DIR"] = str(Path(tempfile.gettempdir()) / "siteswarm-mem0")  # else it makes ~/.mem0. All it keeps there is a random id
+os.environ["MEM0_DIR"] = str(Path(tempfile.gettempdir()) / "northteak-mem0")  # else it makes ~/.mem0. All it keeps there is a random id
 
 DIMS = 2048  # fewer, and unrelated texts collide often enough to reach FLOOR. More buys nothing, at 20 KB a memory
 USER = "project"  # mem0 asks for a scope. Each project has its own folder, so one name is enough

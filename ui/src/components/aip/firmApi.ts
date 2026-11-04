@@ -2,7 +2,7 @@
 import { API_URL } from "@/lib/api";
 import type { AipEvent, Rec, Run } from "@/components/aip/aipRun";
 
-/* SiteSwarm: the firm orchestration, the signal ledger and the semantic layer, the risk register and the pre-agent review. */
+/* NorthTeak: the firm orchestration, the signal ledger and the semantic layer, the risk register and the pre-agent review. */
 
 async function req<T = Rec>(path: string, init?: RequestInit): Promise<T> {
   const r = await fetch(`${API_URL}${path}`, { cache: "no-store", ...init });

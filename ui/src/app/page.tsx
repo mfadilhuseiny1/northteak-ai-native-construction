@@ -42,7 +42,7 @@ const TABS = GROUPS.flatMap(([, tabs]) => tabs);
 const OFF_MENU = ["documents", "schedule", "procurement", "quality", "tower", "risks", "agents"];  // out of the menu to keep the flow plain. A link that needs one still opens it: an RFI to answer, a hold point to sign
 const MOVED: Record<string, string> = { "new": "home", "planning": "home", "analysis": "review", "wbs/plan": "review", "tower/swarm": "swarm", "documents/rfis": "exchange/rfis", "kanban/daily": "site", "list": "wbs/packages", "schedule": "gantt", "schedule/gantt": "gantt", "schedule/network": "critical" };
 const SETUP_QUESTIONS = ["Where do the documents disagree, and what should I settle before approving?", "What is missing from this package?", "Which assumptions should I check first?", "Explain the critical path in plain words."];
-const COPILOT = "siteswarm.copilot";
+const COPILOT = "northteak.copilot";
 
 function readRoute() {
   const text = typeof window === "undefined" ? "" : decodeURIComponent(window.location.hash.slice(1));

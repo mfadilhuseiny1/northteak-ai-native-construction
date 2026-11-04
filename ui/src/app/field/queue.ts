@@ -2,7 +2,7 @@
 
 import type { Rec } from "@/components/site/kit";
 
-const KEY = "siteswarm.field.queue";
+const KEY = "northteak.field.queue";
 const STORE = "photos";
 type Job = { id: string; path: string; label: string; body?: Rec; photo?: { caption: string } };
 export type Refused = { label: string; why: string };
@@ -18,7 +18,7 @@ const newId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
 function photos(): Promise<IDBDatabase> {
   return new Promise((done, fail) => {
-    const open = indexedDB.open("siteswarm-field", 1);
+    const open = indexedDB.open("northteak-field", 1);
     open.onupgradeneeded = () => open.result.createObjectStore(STORE);
     open.onsuccess = () => done(open.result);
     open.onerror = () => fail(open.error);

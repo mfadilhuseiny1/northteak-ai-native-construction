@@ -2,7 +2,7 @@
 import { useMemo, useRef, useState } from "react";
 import { modelName, type Agent } from "./aipRun";
 
-/* SiteSwarm as a network: the orchestrator in the centre, the domain leads on the inner ring, the project objects each one
+/* NorthTeak as a network: the orchestrator in the centre, the domain leads on the inner ring, the project objects each one
    owns on the outer ring in its sector, the relations between objects as curved links, and the quality chain
    (writer → validator → project manager composer) beside it. Hover a node to see its neighbourhood; click an object to open it in
    Object Explorer; wheel to zoom, drag to pan, double-click to reset. Live (during a run): the domain leads at work glow, the
@@ -91,7 +91,7 @@ export function AgentGraph({ agents, roles, links = [], active, touched, compact
         nodes.push({ id: `sub:${s.key}`, kind: "sub", label: s.technique, sub: s.family, x: ax + orbit * Math.cos(sa), y: ay + orbit * Math.sin(sa),
           r: compact ? 4 : 5, color, agent: s.key, angle: (sa * 180) / Math.PI,
           info: s.family === "firm"
-            ? `${s.name}: SiteSwarm firm line (orchestrator, domain lead, analyst) that flags signals and fills the risk register. ${s.research?.[0] ?? ""}`
+            ? `${s.name}: NorthTeak firm line (orchestrator, domain lead, analyst) that flags signals and fills the risk register. ${s.research?.[0] ?? ""}`
             : s.family === "analyst"
             ? `${s.name}: analyst formed for this question, scope ${s.technique}; uses the tools and permissions of ${a.name}.`
             : `${s.name}: sub-agent formed by ${a.name} to test ${s.technique} on the same fold as the other techniques.`
@@ -229,7 +229,7 @@ export function AgentGraph({ agents, roles, links = [], active, touched, compact
 
   return (
     <div ref={wrap} className="relative h-full w-full select-none" onPointerLeave={() => { setHover(null); setTip(null); }}>
-      <svg ref={svg} viewBox={`${view.x} ${view.y} ${view.w} ${view.h}`} className="h-full w-full touch-none" role="img" aria-label="SiteSwarm agent network"
+      <svg ref={svg} viewBox={`${view.x} ${view.y} ${view.w} ${view.h}`} className="h-full w-full touch-none" role="img" aria-label="NorthTeak agent network"
         onWheel={(e) => {
           const r = svg.current!.getBoundingClientRect();
           const fx = (e.clientX - r.left) / r.width, fy = (e.clientY - r.top) / r.height;

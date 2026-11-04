@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Rec } from "./aipRun";
 
-/* Charts and cell formatting of SiteSwarm's dynamic screen, drawn natively (SVG) on the app's dark surface. Specs from the
+/* Charts and cell formatting of NorthTeak's dynamic screen, drawn natively (SVG) on the app's dark surface. Specs from the
    data-viz method: thin marks with 4px rounded data ends, a 2px surface gap, hairline grid, a hover tooltip on every
    mark, a table view for every chart, the categorical palette validated on #1c2733 (blue, orange, aqua, yellow,
    magenta, green: all checks pass), one hue for magnitude, emphasis (the entity the answer is about) over rainbow. */

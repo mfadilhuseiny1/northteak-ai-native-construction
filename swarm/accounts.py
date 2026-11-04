@@ -19,7 +19,7 @@ from pydantic import BaseModel
 
 from . import project as P
 
-COOKIE = "siteswarm"
+COOKIE = "northteak"
 DAYS = 14
 MOST_TRIES = 5
 WAIT = 60  # seconds a person waits after too many wrong passwords

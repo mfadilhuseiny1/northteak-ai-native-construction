@@ -100,7 +100,7 @@ def schema() -> dict:
                 continue
             for k, (floor, x, y, z) in enumerate(_place(model, rule, floors)):
                 devices.append({"id": f"{key}-{kind}-{k + 1:03d}", "system": key, "kind": kind, "name": label, "floor": floor, "x": round(x, 2), "y": round(y, 2), "z": round(z, 2),
-                                "metrics": metrics, "topic": f"siteswarm/{P.DB.stem}/{floor.lower().replace(' ', '-')}/{key}/{key}-{kind}-{k + 1:03d}"})
+                                "metrics": metrics, "topic": f"northteak/{P.DB.stem}/{floor.lower().replace(' ', '-')}/{key}/{key}-{kind}-{k + 1:03d}"})
                 count += 1
         rule_text = "; ".join(f"{label}: {('one per %d m²' % r[1]) if r[0] == 'area' else ('%d a floor' % r[1]) if r[0] == 'floor' else ('one every %d floors' % r[1]) if r[0] == 'every' else ('%d at the ground' % r[1]) if r[0] == 'ground' else ('%d on the roof' % r[1])}"
                               for _, label, r, _ in kinds)
