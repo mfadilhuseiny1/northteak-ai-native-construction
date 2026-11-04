@@ -6,7 +6,7 @@ import { api, useGo, type Rec } from "./kit";
 /* The three-minute demo, for a presenter: each step opens its screen, lights up the part to look at, and says what to say and what to show.
    It changes nothing in the records; the presenter does the clicking. A clicker's Page Down and Page Up move it on and back. */
 
-type Step = { route: string; target?: string; seconds: number; title: string; say: string; show: string };
+type Step = { route: string; target?: string; seconds: number; title: string; say: string; show: string; right?: boolean; replay?: boolean };
 
 const STEPS: Step[] = [
   { route: "home", target: '[data-tour="drop"]', seconds: 15, title: "One ZIP in",
@@ -15,9 +15,9 @@ const STEPS: Step[] = [
   { route: "review", target: '[data-tour="tender"]', seconds: 20, title: "Can we even bid?",
     say: "Before any planning, code reads the qualification and bid rules from the tender sheets, each with its page, and works the thresholds out on the owner's estimate. Our price sits inside the safe band.",
     show: "Click Harga/Biaya, then drag the slider below 80% of the HPS." },
-  { route: "swarm", target: '[data-tour="swarm"]', seconds: 20, title: "A swarm of agents plans the job",
+  { route: "swarm", target: '[data-tour="swarm"]', seconds: 20, right: true, replay: true, title: "A swarm of agents plans the job",
     say: "This is the real run, replayed. A document controller finds the pages, one planner per work package writes the procedures side by side, a QA reviewer hunts for conflicts, and an RFI coordinator turns every open question into one ranked list. Circles are agents, squares are code.",
-    show: "Press Replay, then click any node to see what it was told and what it made." },
+    show: "It replays by itself, sixty times faster. Click any node to see what it was told and what it made." },
   { route: "review", target: '[data-tour="map"]', seconds: 15, title: "A person decides",
     say: "Nothing is real yet. The whole proposal is on one map, every claim cites a page, and nothing reaches the site until a person approves it.",
     show: "Follow the map left to right, click Conflicts, then point at Approve above it." },
@@ -96,7 +96,11 @@ export function DemoTour({ onClose }: { onClose: () => void }) {
       const el = document.querySelector(step.target!) as HTMLElement | null;
       if (!el) { setRect(null); return; }
       const r = el.getBoundingClientRect();
-      if (!scrolled && r.height > 0) { reveal(el); scrolled = true; }
+      if (!scrolled && r.height > 0) {
+        reveal(el);
+        scrolled = true;
+        if (step.replay) window.setTimeout(() => window.dispatchEvent(new Event("swarm-replay")), 500);
+      }
       const top = Math.max(r.top, 52), bottom = Math.min(r.bottom, window.innerHeight - 6);
       const next = { left: Math.round(r.left), top: Math.round(top), width: Math.round(r.width), height: Math.round(Math.max(0, bottom - top)) };
       setRect((old) => (old && old.left === next.left && old.top === next.top && old.width === next.width && old.height === next.height ? old : next));
@@ -123,7 +127,7 @@ export function DemoTour({ onClose }: { onClose: () => void }) {
   return (
     <>
       {rect && rect.height > 0 && <div aria-hidden className="pointer-events-none fixed z-[60] rounded-xl transition-all duration-300" style={{ left: rect.left - 6, top: rect.top - 6, width: rect.width + 12, height: rect.height + 12, boxShadow: "0 0 0 3px #f5b82e, 0 0 32px 6px rgb(245 184 46 / .35), 0 0 0 9999px rgb(5 8 12 / .55)" }} />}
-      <div role="dialog" aria-label="Demo" className="fixed bottom-5 left-5 z-[61] w-[440px] max-w-[calc(100vw-40px)] overflow-hidden rounded-2xl border border-[#f5b82e]/50 bg-[#141c25]/95 shadow-[0_18px_60px_rgb(0_0_0/.6)] backdrop-blur">
+      <div role="dialog" aria-label="Demo" className={`fixed bottom-5 ${step.right ? "right-5" : "left-5"} z-[61] w-[440px] max-w-[calc(100vw-40px)] overflow-hidden rounded-2xl border border-[#f5b82e]/50 bg-[#141c25]/95 shadow-[0_18px_60px_rgb(0_0_0/.6)] backdrop-blur`}>
         <div className="flex h-1.5 gap-[2px] bg-black/30">
           {STEPS.map((s, n) => <span key={n} className="h-full overflow-hidden bg-white/10" style={{ width: `${(s.seconds / TOTAL) * 100}%` }}><span className="block h-full bg-[#f5b82e] transition-all" style={{ width: n < i ? "100%" : n > i ? "0%" : `${Math.min(100, (inStep / s.seconds) * 100)}%` }} /></span>)}
         </div>

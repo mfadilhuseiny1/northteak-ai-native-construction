@@ -213,7 +213,7 @@ function Network({ order, outline, frame, at, lit, pick, onPick }: { order: Rec[
       {map.lanes.map((l) => {
         const mine = map.chips.filter((c) => outline.find((a) => a.name === l.name)?.packages.some((w: Rec) => w.no === c.no));
         const done = mine.filter((c) => stateOf(c) === "done").length;
-        return <text key={l.name} x={l.x} y={l.y} fontSize={11} fontWeight={600} fill="#d3d8de">{l.name}<tspan fill="#8f99a8" fontWeight={400}>{`   ${done} of ${l.n}`}</tspan></text>;
+        return <text key={l.name} x={l.x} y={l.y} fontSize={11} fontWeight={600} fill="#d3d8de" stroke="#111820" strokeWidth={4} paintOrder="stroke">{l.name}<tspan fill="#8f99a8" fontWeight={400}>{`   ${done} of ${l.n}`}</tspan></text>;
       })}
       {map.spots.map((s) => frame.stages[s.key] && <Station key={s.key} s={frame.stages[s.key]} spot={s} on={pick === `stage:${s.key}`} onPick={() => onPick(`stage:${s.key}`)} />)}
       {map.chips.map((c) => <PlannerNode key={c.no} c={c} state={stateOf(c)} fresh={fresh(c)} on={pick === `planner:${c.no}`} onPick={() => onPick(`planner:${c.no}`)} />)}
@@ -411,6 +411,11 @@ export function SwarmModule() {
 
   const closedAt = data?.run && !running ? data.run.elapsed as number : null;
   const stats = useMemo(() => measure(events, closedAt), [events, closedAt]);
+  useEffect(() => {  // the demo starts the replay for the person presenting
+    const replay = () => { setSpeed(60); setAt(0); setPlaying(true); };
+    window.addEventListener("swarm-replay", replay);
+    return () => window.removeEventListener("swarm-replay", replay);
+  }, []);
   const liveEnd = data?.run ? (running ? data.run.elapsed + (Date.now() - data.fetched) / 1000 : Math.max(stats.end, data.run.elapsed ?? 0)) : 0;
   const end = Math.max(1, liveEnd);
   useEffect(() => {
